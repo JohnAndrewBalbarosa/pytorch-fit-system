@@ -1,0 +1,374 @@
+"""Collect a bounded Indeed manifest using deterministic live search controls.
+
+This is the job-finder stage only. It never opens an application form, uploads a
+resume, or clicks an Apply control. The resulting manifest is consumed separately
+by ``run_indeed_unattended.py``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
+
+ROOT = next(path for path in Path(__file__).resolve().parents if (path / "pyproject.toml").exists())
+sys.path.insert(0, str(ROOT / "src"))
+
+from resume_builder.job_application import ApplicationSubmissionHistory  # noqa: E402
+from resume_builder.job_application.indeed_unattended import (  # noqa: E402
+    IndeedUnattendedJob,
+    IndeedUnattendedManifest,
+    has_recent_exact_submission,
+)
+from resume_builder.job_finder import (  # noqa: E402
+    AccessGuard,
+    INDEED_ADAPTER,
+    JobListing,
+    WorkMode,
+    apply_listing_rules,
+)
+
+_COUNTRY_HOSTS = {
+    "Australia": "au.indeed.com",
+    "Canada": "ca.indeed.com",
+}
+_DEFAULT_KEYWORDS = (
+    "machine learning",
+    "data automation",
+    "backend software engineer",
+    "software engineer intern",
+)
+_TITLE_BLOCKERS = re.compile(
+    r"\b(senior|staff|principal|manager|director|head|lead|sales|"
+    r"business development|account executive|marketing|recruiter)\b",
+    re.IGNORECASE,
+)
+_ROLE_PROFILES = (
+    (
+        re.compile(
+            r"\b(data analyst|data engineer|automation|analytics|business intelligence)\b",
+            re.I,
+        ),
+        "automation-data.pdf",
+        ("data", "automation", "analytics", "business intelligence"),
+    ),
+    (
+        re.compile(
+            r"\b(machine learning|artificial intelligence|ai |ai-|llm|data scientist|"
+            r"ai trainer|ai agent|ml)\b",
+            re.I,
+        ),
+        "ai-ml-research.pdf",
+        (
+            "machine learning",
+            "artificial intelligence",
+            "data scientist",
+            "llm",
+            "ai agent",
+            "ai trainer",
+        ),
+    ),
+    (
+        re.compile(
+            r"\b(software|backend|back-end|front end|front-end|frontend|full stack|"
+            r"full-stack|web developer|python developer)\b",
+            re.I,
+        ),
+        "software-systems.pdf",
+        (
+            "software",
+            "backend",
+            "back-end",
+            "frontend",
+            "front-end",
+            "full stack",
+            "full-stack",
+            "web developer",
+        ),
+    ),
+)
+_DESCRIPTION_BLOCKERS = (
+    "must reside in australia",
+    "australian residents only",
+    "candidates located in australia only",
+    "must be located in australia",
+    "must reside in canada",
+    "canadian residents only",
+    "must be located in canada",
+    "minimum 2 years",
+    "minimum of 2 years",
+    "at least 2 years",
+    "2+ years of professional",
+    "minimum 3 years",
+    "minimum of 3 years",
+    "at least 3 years",
+    "3+ years",
+    "minimum 5 years",
+    "minimum of 5 years",
+    "at least 5 years",
+    "5+ years",
+    "bilingual required",
+    "fluent in french",
+    "french and english required",
+    "mandarin required",
+)
+_REMOTE_TERMS = ("remote", "work from home", "work from anywhere", "fully remote")
+_EARLY_CAREER_TERMS = (
+    "intern",
+    "internship",
+    "student",
+    "graduate",
+    "entry level",
+    "entry-level",
+    "early career",
+)
+
+
+def _clean(value: str | None) -> str:
+    return " ".join((value or "").split())
+
+
+def canonical_indeed_listing_url(value: str, *, host: str) -> str:
+    """Reduce Indeed card redirects to the stable host + ``/viewjob?jk=`` identity."""
+    key = parse_qs(urlsplit(value).query).get("jk", [""])[0].strip()
+    if not key or not re.fullmatch(r"[A-Za-z0-9]+", key):
+        return ""
+    return f"https://{host}/viewjob?jk={key}"
+
+
+def candidate_from_listing(
+    listing: JobListing,
+    *,
+    target_country: str,
+) -> IndeedUnattendedJob | None:
+    """Map one rendered card to a conservative, auditable application candidate."""
+    host = _COUNTRY_HOSTS[target_country]
+    title = _clean(listing.title)
+    company = _clean(listing.company)
+    if not title or not company or _TITLE_BLOCKERS.search(title):
+        return None
+    matched_profile = next(
+        (
+            (resume_file, role_terms)
+            for pattern, resume_file, role_terms in _ROLE_PROFILES
+            if pattern.search(title)
+        ),
+        None,
+    )
+    if matched_profile is None:
+        return None
+    listing_url = canonical_indeed_listing_url(listing.detail_url or "", host=host)
+    if not listing_url:
+        return None
+    resume_file, role_terms = matched_profile
+    key = parse_qs(urlsplit(listing_url).query)["jk"][0]
+    required_groups = [list(role_terms), list(_REMOTE_TERMS)]
+    if re.search(r"\b(intern|internship|graduate|entry.level|student)\b", title, re.I):
+        required_groups.append(list(_EARLY_CAREER_TERMS))
+    slug = re.sub(r"[^a-z0-9]+", "-", f"{company}-{title}".casefold()).strip("-")[:72]
+    return IndeedUnattendedJob(
+        task_id=f"{slug}-{key}",
+        company=company,
+        job_title=title,
+        listing_url=listing_url,
+        target_country=target_country,
+        work_mode="remote",
+        resume_file=resume_file,
+        required_any_groups=required_groups,
+        blocked_terms=list(_DESCRIPTION_BLOCKERS),
+    )
+
+
+def _stable_content(page, *, attempts: int = 40) -> str:
+    for _ in range(attempts):
+        try:
+            html = page.content()
+            if html.strip():
+                return html
+        except Exception:
+            pass
+        page.wait_for_timeout(250)
+    raise RuntimeError("rendered page content did not stabilize")
+
+
+def _execute_search(page, *, keyword: str) -> list[JobListing]:
+    html = _stable_content(page)
+    decision = AccessGuard().classify(url=page.url, html=html)
+    if not decision.should_continue:
+        raise RuntimeError(f"access gate requires human handoff: {decision.reason}")
+    plan = INDEED_ADAPTER.build_search_plan(
+        page.url,
+        html,
+        keyword=keyword,
+        work_mode=WorkMode.REMOTE,
+    )
+    for step in plan.steps:
+        locator = page.locator(step.selector).first
+        locator.wait_for(state="visible", timeout=10_000)
+        if step.action == "fill":
+            locator.fill(step.value or "")
+        elif step.action == "click":
+            locator.click(no_wait_after=True)
+        else:
+            raise RuntimeError(f"unsupported deterministic search action: {step.action}")
+    try:
+        page.wait_for_load_state("domcontentloaded", timeout=10_000)
+    except Exception:
+        # Indeed may leave background requests pending after the rendered results update.
+        pass
+    try:
+        page.locator("div.job_seen_beacon").first.wait_for(state="attached", timeout=10_000)
+    except Exception:
+        pass
+    page.wait_for_timeout(2_000)
+    html = _stable_content(page)
+    decision = AccessGuard().classify(url=page.url, html=html)
+    if not decision.should_continue:
+        raise RuntimeError(f"search result access gate requires human handoff: {decision.reason}")
+    layout = INDEED_ADAPTER.build_listing_layout(page.url, html)
+    listings, _, _, _ = apply_listing_rules(
+        html,
+        page.url,
+        f"{urlsplit(page.url).scheme}://{urlsplit(page.url).netloc}",
+        layout.rules,
+    )
+    return listings
+
+
+def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
+    from playwright.sync_api import sync_playwright
+
+    history = ApplicationSubmissionHistory(args.database)
+    selected: list[IndeedUnattendedJob] = []
+    identities: set[tuple[str, str]] = set()
+    listing_keys: set[tuple[str, str]] = set()
+    country_limit = (args.max_candidates + len(args.target_country) - 1) // len(
+        args.target_country
+    )
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.connect_over_cdp(args.cdp_url)
+        if not browser.contexts:
+            raise RuntimeError("Chrome has no browser context")
+        context = browser.contexts[0]
+        for country in args.target_country:
+            host = _COUNTRY_HOSTS[country]
+            country_count = 0
+            page = next(
+                (
+                    candidate
+                    for candidate in context.pages
+                    if (urlsplit(candidate.url).hostname or "").lower() == host
+                    and urlsplit(candidate.url).path.rstrip("/") == "/jobs"
+                ),
+                None,
+            )
+            owns_page = page is None
+            if page is None:
+                page = context.new_page()
+            try:
+                if owns_page:
+                    try:
+                        page.goto(
+                            f"https://{host}/jobs",
+                            wait_until="domcontentloaded",
+                            timeout=15_000,
+                        )
+                    except Exception:
+                        if (urlsplit(page.url).hostname or "").lower() != host:
+                            raise
+                        try:
+                            page.evaluate("window.stop()")
+                        except Exception:
+                            pass
+                page.wait_for_timeout(1_000)
+                for keyword in args.keyword:
+                    for listing in _execute_search(page, keyword=keyword):
+                        candidate = candidate_from_listing(
+                            listing,
+                            target_country=country,
+                        )
+                        if candidate is None:
+                            continue
+                        identity = (
+                            " ".join(candidate.company.casefold().split()),
+                            " ".join(candidate.job_title.casefold().split()),
+                        )
+                        key = parse_qs(urlsplit(candidate.listing_url).query)["jk"][0]
+                        listing_identity = (host, key)
+                        if identity in identities or listing_identity in listing_keys:
+                            continue
+                        if has_recent_exact_submission(
+                            history,
+                            company=candidate.company,
+                            job_title=candidate.job_title,
+                            within_days=args.duplicate_days,
+                        ):
+                            continue
+                        identities.add(identity)
+                        listing_keys.add(listing_identity)
+                        selected.append(candidate)
+                        country_count += 1
+                        if len(selected) >= args.max_candidates:
+                            return IndeedUnattendedManifest(jobs=selected)
+                        if country_count >= country_limit:
+                            break
+                    if country_count >= country_limit:
+                        break
+            finally:
+                if owns_page:
+                    page.close()
+    if not selected:
+        raise RuntimeError("no eligible candidate cards were collected")
+    return IndeedUnattendedManifest(jobs=selected)
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--cdp-url", default="http://127.0.0.1:9222")
+    parser.add_argument(
+        "--database",
+        type=Path,
+        default=ROOT / ".cache" / "application-submissions.sqlite3",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=ROOT / "out" / "indeed-unattended" / "candidate-manifest.json",
+    )
+    parser.add_argument(
+        "--target-country",
+        action="append",
+        choices=tuple(_COUNTRY_HOSTS),
+        required=True,
+    )
+    parser.add_argument("--keyword", action="append", default=[])
+    parser.add_argument("--max-candidates", type=int, default=12)
+    parser.add_argument("--duplicate-days", type=int, default=30)
+    return parser
+
+
+def main() -> int:
+    args = _parser().parse_args()
+    if not args.keyword:
+        args.keyword = list(_DEFAULT_KEYWORDS)
+    if not 1 <= args.max_candidates <= 12:
+        raise SystemExit("--max-candidates must be between 1 and 12")
+    manifest = collect(args)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = args.output.with_suffix(args.output.suffix + ".tmp")
+    temporary.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+    temporary.replace(args.output)
+    print(f"Indeed candidate manifest: {args.output}", flush=True)
+    print(f"Candidates: {len(manifest.jobs)}", flush=True)
+    for job in manifest.jobs:
+        print(
+            f"- {job.target_country} | {job.company} | {job.job_title} | {job.resume_file}",
+            flush=True,
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

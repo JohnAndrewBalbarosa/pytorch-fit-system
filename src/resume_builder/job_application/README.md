@@ -126,6 +126,40 @@ python tools/job_finder/application_cdp_tag.py apply --rules out/live-indeed-app
 
 The preview never fills fields, uploads a resume, clicks Continue, or submits an application.
 
+## Bounded Indeed batch
+
+Job discovery and application execution remain separate commands. The deterministic collector uses
+the live Indeed search controls, enforces `remote`, searches only the human-selected Australia and
+Canada hosts, removes recent exact duplicates, rejects senior or mismatched titles, and writes a
+reviewable manifest:
+
+```bash
+python tools/job_finder/collect_indeed_candidates.py \
+  --target-country Australia \
+  --target-country Canada \
+  --max-candidates 12 \
+  --output out/indeed-unattended/candidate-manifest.json
+```
+
+The bounded scheduler then consumes that manifest with three independent CDP pages. Final Submit
+remains disabled unless `--autonomous-submit` is present. If `--verified-phone` is omitted, the
+runner may preserve the visible saved Indeed number only when the separate country control exactly
+matches the explicitly supplied ISO country. Missing or mismatched contact data stops before
+Continue.
+
+```bash
+python tools/job_finder/run_indeed_unattended.py \
+  --manifest out/indeed-unattended/candidate-manifest.json \
+  --artifact-dir /path/to/approved/resume-artifacts \
+  --target-submissions 3 \
+  --max-parallel 3 \
+  --max-candidates 12 \
+  --verification-wait-minutes 180 \
+  --phone-country-calling-code +63 \
+  --phone-country-iso PH \
+  --autonomous-submit
+```
+
 ## Workflow state machine
 
 ```mermaid

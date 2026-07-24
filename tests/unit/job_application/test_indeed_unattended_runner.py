@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from threading import Lock
 import time
+from types import SimpleNamespace
 
 from resume_builder.job_application import BatchApplicationOutcome, BatchApplicationStatus
 
@@ -132,3 +133,52 @@ def test_unresolved_validation_is_parked_then_reentered(tmp_path):
 
     assert runner.run(args, worker=worker) == 0
     assert calls == 2
+
+
+class _ContactLocator:
+    def __init__(self, *, value="", data_value=""):
+        self.value = value
+        self.data_value = data_value
+        self.first = self
+
+    def count(self):
+        return 1
+
+    def input_value(self):
+        return self.value
+
+    def get_attribute(self, name):
+        return self.data_value if name == "data-value" else None
+
+
+class _ContactPage:
+    url = "https://smartapply.indeed.com/beta/indeedapply/form/contact-info-module"
+
+    def __init__(self, phone, country):
+        self.phone = _ContactLocator(value=phone)
+        self.country = _ContactLocator(data_value=country)
+
+    def locator(self, selector):
+        return self.country if "combobox" in selector else self.phone
+
+
+def test_runtime_phone_uses_saved_value_only_for_matching_country():
+    args = SimpleNamespace(
+        verified_phone="",
+        phone_country_iso="PH",
+    )
+
+    assert runner._runtime_verified_phone(_ContactPage("9000000000", "PH"), args) == "9000000000"
+    assert runner._runtime_verified_phone(_ContactPage("9000000000", "AU"), args) == ""
+
+
+def test_runtime_phone_prefers_explicit_verified_value():
+    args = SimpleNamespace(
+        verified_phone="+63 900 000 0000",
+        phone_country_iso="PH",
+    )
+
+    assert (
+        runner._runtime_verified_phone(_ContactPage("different", "AU"), args)
+        == "+63 900 000 0000"
+    )

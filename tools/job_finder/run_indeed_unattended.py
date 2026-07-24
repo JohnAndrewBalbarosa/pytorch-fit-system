@@ -139,6 +139,23 @@ def _select_resume(job: IndeedUnattendedJob, artifact_dir: Path, description: st
     )
 
 
+def _runtime_verified_phone(page, args: argparse.Namespace) -> str:
+    """Use an explicit phone or the matching saved contact value visible in Indeed."""
+    explicit = getattr(args, "verified_phone", "")
+    if explicit:
+        return explicit
+    if "/contact-info-module" not in urlsplit(str(page.url)).path:
+        return ""
+    phone = page.locator("input[name=phone], input[type=tel]").first
+    country = page.locator("[role=combobox][aria-haspopup=listbox]").first
+    if not phone.count() or not country.count():
+        return ""
+    value = phone.input_value().strip()
+    observed_iso = (country.get_attribute("data-value") or "").strip().upper()
+    expected_iso = args.phone_country_iso.strip().upper()
+    return value if value and observed_iso == expected_iso else ""
+
+
 def _matching_existing_page(context, job: IndeedUnattendedJob):
     listing_url = job.listing_url.rstrip("/")
     company = " ".join(job.company.casefold().split())
@@ -189,16 +206,17 @@ def _run_application(
             f"resume evidence JSON is missing for {resume_path.name}",
         )
     resume = load_resume_artifact(resume_json)
+    verified_phone = _runtime_verified_phone(application_page, args)
     policy = ApplicationPermissionPolicy(
         autonomous_draft_writes=True,
         autonomous_sensitive_writes=True,
-        autonomous_submit=True,
+        autonomous_submit=getattr(args, "autonomous_submit", False),
         allowed_domains={"smartapply.indeed.com"},
     )
     approvals = SmartApplyApprovals(
         resume_upload=True,
         resume_continue=True,
-        final_submit=True,
+        final_submit=getattr(args, "autonomous_submit", False),
     )
     result = None
     approved_questions = None
@@ -223,7 +241,7 @@ def _run_application(
             approved_resume=resume_path,
             approvals=approvals,
             permission_policy=policy,
-            verified_phone=args.verified_phone,
+            verified_phone=verified_phone,
             phone_country_calling_code=args.phone_country_calling_code,
             phone_country_iso=args.phone_country_iso,
             question_plan=question_plan,
@@ -531,7 +549,19 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-candidates", type=int, default=12)
     parser.add_argument("--verification-wait-minutes", type=int, default=180)
     parser.add_argument("--duplicate-days", type=int, default=30)
-    parser.add_argument("--verified-phone", required=True)
+    parser.add_argument(
+        "--autonomous-submit",
+        action="store_true",
+        help="Explicitly permit validated final Submit on smartapply.indeed.com for this batch.",
+    )
+    parser.add_argument(
+        "--verified-phone",
+        default="",
+        help=(
+            "Explicit runtime-verified phone. When omitted, the runner may preserve a non-empty "
+            "Indeed contact value only when its visible country control matches --phone-country-iso."
+        ),
+    )
     parser.add_argument("--phone-country-calling-code", required=True)
     parser.add_argument("--phone-country-iso", required=True)
     parser.add_argument(
