@@ -147,6 +147,25 @@ runner may preserve the visible saved Indeed number only when the separate count
 matches the explicitly supplied ISO country. Missing or mismatched contact data stops before
 Continue.
 
+For a user-approved saved contact number on a foreign-locale form,
+`--use-saved-contact-phone` uses that visible runtime value and reconciles the separate country
+control to the explicit `--phone-country-iso`. `--process-all-candidates` exhausts the bounded
+manifest rather than stopping after the confirmation target. External or missing Indeed Smart
+Apply controls are skipped.
+
+To resume an already-open application while processing every relevant current Indeed tab, merge a
+reviewed seed manifest with the live tabs before launching:
+
+```bash
+python tools/job_finder/collect_indeed_candidates.py \
+  --target-country Australia \
+  --target-country Canada \
+  --open-tabs-only \
+  --seed-manifest out/indeed-unattended/candidate-manifest.json \
+  --max-candidates 24 \
+  --output out/indeed-unattended/all-current-manifest.json
+```
+
 ```bash
 python tools/job_finder/run_indeed_unattended.py \
   --manifest out/indeed-unattended/candidate-manifest.json \

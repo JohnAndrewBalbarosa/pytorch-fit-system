@@ -247,11 +247,82 @@ def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
     country_limit = (args.max_candidates + len(args.target_country) - 1) // len(
         args.target_country
     )
+
+    def add_candidate(candidate: IndeedUnattendedJob | None) -> bool:
+        if candidate is None:
+            return False
+        host = (urlsplit(candidate.listing_url).hostname or "").lower()
+        identity = (
+            " ".join(candidate.company.casefold().split()),
+            " ".join(candidate.job_title.casefold().split()),
+        )
+        key = parse_qs(urlsplit(candidate.listing_url).query)["jk"][0]
+        listing_identity = (host, key)
+        if identity in identities or listing_identity in listing_keys:
+            return False
+        if has_recent_exact_submission(
+            history,
+            company=candidate.company,
+            job_title=candidate.job_title,
+            within_days=args.duplicate_days,
+        ):
+            return False
+        identities.add(identity)
+        listing_keys.add(listing_identity)
+        selected.append(candidate)
+        return True
+
+    for seed_path in getattr(args, "seed_manifest", []):
+        seed = IndeedUnattendedManifest.model_validate_json(
+            seed_path.read_text(encoding="utf-8")
+        )
+        for candidate in seed.jobs:
+            add_candidate(candidate)
+            if len(selected) >= args.max_candidates:
+                return IndeedUnattendedManifest(jobs=selected)
+
     with sync_playwright() as playwright:
         browser = playwright.chromium.connect_over_cdp(args.cdp_url)
         if not browser.contexts:
             raise RuntimeError("Chrome has no browser context")
         context = browser.contexts[0]
+        if args.open_tabs_only:
+            allowed = {
+                _COUNTRY_HOSTS[country]: country for country in args.target_country
+            }
+            for page in context.pages:
+                parts = urlsplit(page.url)
+                host = (parts.hostname or "").lower()
+                if host not in allowed or parts.path.rstrip("/") != "/viewjob":
+                    continue
+                html = _stable_content(page)
+                decision = AccessGuard().classify(url=page.url, html=html)
+                if not decision.should_continue:
+                    raise RuntimeError(
+                        f"open-tab access gate requires human handoff: {decision.reason}"
+                    )
+                title_locator = page.locator("h1").first
+                company_locator = page.locator(
+                    "[data-testid=inlineHeader-companyName], [data-company-name=true]"
+                ).first
+                listing = JobListing(
+                    title=title_locator.inner_text() if title_locator.count() else "",
+                    company=company_locator.inner_text() if company_locator.count() else "",
+                    detail_url=page.url,
+                    source_url=page.url,
+                )
+                add_candidate(
+                    candidate_from_listing(
+                        listing,
+                        target_country=allowed[host],
+                    )
+                )
+                if len(selected) >= args.max_candidates:
+                    break
+            if not selected:
+                raise RuntimeError("no eligible current Indeed tabs were collected")
+            return IndeedUnattendedManifest(jobs=selected)
+
         for country in args.target_country:
             host = _COUNTRY_HOSTS[country]
             country_count = 0
@@ -289,26 +360,8 @@ def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
                             listing,
                             target_country=country,
                         )
-                        if candidate is None:
+                        if not add_candidate(candidate):
                             continue
-                        identity = (
-                            " ".join(candidate.company.casefold().split()),
-                            " ".join(candidate.job_title.casefold().split()),
-                        )
-                        key = parse_qs(urlsplit(candidate.listing_url).query)["jk"][0]
-                        listing_identity = (host, key)
-                        if identity in identities or listing_identity in listing_keys:
-                            continue
-                        if has_recent_exact_submission(
-                            history,
-                            company=candidate.company,
-                            job_title=candidate.job_title,
-                            within_days=args.duplicate_days,
-                        ):
-                            continue
-                        identities.add(identity)
-                        listing_keys.add(listing_identity)
-                        selected.append(candidate)
                         country_count += 1
                         if len(selected) >= args.max_candidates:
                             return IndeedUnattendedManifest(jobs=selected)
@@ -344,7 +397,19 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
     )
     parser.add_argument("--keyword", action="append", default=[])
+    parser.add_argument(
+        "--seed-manifest",
+        action="append",
+        type=Path,
+        default=[],
+        help="Merge reviewed candidates before live collection, preserving exact deduplication.",
+    )
     parser.add_argument("--max-candidates", type=int, default=12)
+    parser.add_argument(
+        "--open-tabs-only",
+        action="store_true",
+        help="Collect only currently open AU/CA Indeed /viewjob tabs; do not run searches.",
+    )
     parser.add_argument("--duplicate-days", type=int, default=30)
     return parser
 
@@ -353,8 +418,8 @@ def main() -> int:
     args = _parser().parse_args()
     if not args.keyword:
         args.keyword = list(_DEFAULT_KEYWORDS)
-    if not 1 <= args.max_candidates <= 12:
-        raise SystemExit("--max-candidates must be between 1 and 12")
+    if not 1 <= args.max_candidates <= 24:
+        raise SystemExit("--max-candidates must be between 1 and 24")
     manifest = collect(args)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_suffix(args.output.suffix + ".tmp")

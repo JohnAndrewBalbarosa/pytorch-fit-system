@@ -153,7 +153,15 @@ def _runtime_verified_phone(page, args: argparse.Namespace) -> str:
     value = phone.input_value().strip()
     observed_iso = (country.get_attribute("data-value") or "").strip().upper()
     expected_iso = args.phone_country_iso.strip().upper()
-    return value if value and observed_iso == expected_iso else ""
+    if value and observed_iso == expected_iso:
+        return value
+    if (
+        value
+        and observed_iso
+        and getattr(args, "use_saved_contact_phone", False)
+    ):
+        return value
+    return ""
 
 
 def _matching_existing_page(context, job: IndeedUnattendedJob):
@@ -344,7 +352,12 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
 
         application_page, apply_error = _open_smart_apply(page, context)
         if apply_error:
-            return _outcome(job, BatchApplicationStatus.HUMAN_HANDOFF, apply_error)
+            status = (
+                BatchApplicationStatus.SKIPPED
+                if apply_error == "no verified visible Indeed Apply control"
+                else BatchApplicationStatus.HUMAN_HANDOFF
+            )
+            return _outcome(job, status, apply_error)
         return _retire_if_submitted(
             application_page,
             _run_application(
@@ -420,18 +433,23 @@ def run(args: argparse.Namespace, *, worker=_worker) -> int:
         active = {}
         while scheduled or active:
             now = time.monotonic()
-            safe_parallel = min(args.max_parallel, args.target_submissions - confirmed)
+            process_all = getattr(args, "process_all_candidates", False)
+            safe_parallel = (
+                args.max_parallel
+                if process_all
+                else min(args.max_parallel, args.target_submissions - confirmed)
+            )
             while (
                 scheduled
                 and scheduled[0][0] <= now
                 and len(active) < safe_parallel
-                and confirmed < args.target_submissions
+                and (process_all or confirmed < args.target_submissions)
             ):
                 _, _, job = heapq.heappop(scheduled)
                 candidates_started.add(job.task_id)
                 active[executor.submit(worker, job, args)] = job
             if not active:
-                if confirmed >= args.target_submissions:
+                if not process_all and confirmed >= args.target_submissions:
                     scheduled.clear()
                     break
                 if scheduled:
@@ -479,7 +497,7 @@ def run(args: argparse.Namespace, *, worker=_worker) -> int:
                     candidates_started=candidates_started,
                 ),
             )
-            if confirmed >= args.target_submissions:
+            if not process_all and confirmed >= args.target_submissions:
                 scheduled.clear()
             if time.monotonic() >= deadline:
                 for _, _, job in scheduled:
@@ -493,11 +511,14 @@ def run(args: argparse.Namespace, *, worker=_worker) -> int:
                             ),
                         )
                 scheduled.clear()
-    terminal_status = (
-        "target_reached"
-        if confirmed >= args.target_submissions
-        else "bounded_without_target"
-    )
+    if getattr(args, "process_all_candidates", False):
+        terminal_status = "all_candidates_processed"
+    else:
+        terminal_status = (
+            "target_reached"
+            if confirmed >= args.target_submissions
+            else "bounded_without_target"
+        )
     _write_json(
         args.output / "run.json",
         _run_payload(
@@ -510,6 +531,10 @@ def run(args: argparse.Namespace, *, worker=_worker) -> int:
             candidates_started=candidates_started,
         ),
     )
+    if getattr(args, "process_all_candidates", False):
+        return 1 if any(
+            item.status == BatchApplicationStatus.FAILED for item in outcomes.values()
+        ) else 0
     if confirmed >= args.target_submissions:
         return 0
     return 1 if any(
@@ -547,6 +572,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-submissions", type=int, default=3)
     parser.add_argument("--max-parallel", type=int, default=3)
     parser.add_argument("--max-candidates", type=int, default=12)
+    parser.add_argument(
+        "--process-all-candidates",
+        action="store_true",
+        help="Process every bounded manifest candidate instead of stopping at the target count.",
+    )
     parser.add_argument("--verification-wait-minutes", type=int, default=180)
     parser.add_argument("--duplicate-days", type=int, default=30)
     parser.add_argument(
@@ -562,6 +592,14 @@ def _parser() -> argparse.ArgumentParser:
             "Indeed contact value only when its visible country control matches --phone-country-iso."
         ),
     )
+    parser.add_argument(
+        "--use-saved-contact-phone",
+        action="store_true",
+        help=(
+            "Treat a non-empty visible Indeed contact number as the verified runtime number, "
+            "then reconcile its separate country control to --phone-country-iso."
+        ),
+    )
     parser.add_argument("--phone-country-calling-code", required=True)
     parser.add_argument("--phone-country-iso", required=True)
     parser.add_argument(
@@ -574,12 +612,12 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = _parser().parse_args()
-    if not 1 <= args.target_submissions <= 12:
-        raise SystemExit("--target-submissions must be between 1 and 12")
+    if not 1 <= args.target_submissions <= 24:
+        raise SystemExit("--target-submissions must be between 1 and 24")
     if not 1 <= args.max_parallel <= 5:
         raise SystemExit("--max-parallel must be between 1 and 5")
-    if not 1 <= args.max_candidates <= 12:
-        raise SystemExit("--max-candidates must be between 1 and 12")
+    if not 1 <= args.max_candidates <= 24:
+        raise SystemExit("--max-candidates must be between 1 and 24")
     if not 1 <= args.verification_wait_minutes <= 720:
         raise SystemExit("--verification-wait-minutes must be between 1 and 720")
     args.output = _unique_run_directory(args.output)

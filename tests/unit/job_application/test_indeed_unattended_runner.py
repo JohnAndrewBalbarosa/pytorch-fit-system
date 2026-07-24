@@ -172,6 +172,16 @@ def test_runtime_phone_uses_saved_value_only_for_matching_country():
     assert runner._runtime_verified_phone(_ContactPage("9000000000", "AU"), args) == ""
 
 
+def test_runtime_phone_can_use_explicitly_approved_saved_value_before_country_reconcile():
+    args = SimpleNamespace(
+        verified_phone="",
+        phone_country_iso="PH",
+        use_saved_contact_phone=True,
+    )
+
+    assert runner._runtime_verified_phone(_ContactPage("9000000000", "AU"), args) == "9000000000"
+
+
 def test_runtime_phone_prefers_explicit_verified_value():
     args = SimpleNamespace(
         verified_phone="+63 900 000 0000",
@@ -182,3 +192,24 @@ def test_runtime_phone_prefers_explicit_verified_value():
         runner._runtime_verified_phone(_ContactPage("different", "AU"), args)
         == "+63 900 000 0000"
     )
+
+
+def test_process_all_mode_does_not_stop_at_submission_target(tmp_path):
+    args = _args(tmp_path, count=4, target=1)
+    args.process_all_candidates = True
+    started = []
+
+    def worker(job, _args):
+        started.append(job.task_id)
+        status = (
+            BatchApplicationStatus.SKIPPED
+            if job.task_id == "job-1"
+            else BatchApplicationStatus.SUBMITTED
+        )
+        return _outcome(job, status)
+
+    assert runner.run(args, worker=worker) == 0
+    payload = json.loads((args.output / "run.json").read_text(encoding="utf-8"))
+    assert payload["status"] == "all_candidates_processed"
+    assert payload["confirmed_submissions"] == 3
+    assert set(started) == {"job-0", "job-1", "job-2", "job-3"}
