@@ -1,0 +1,16 @@
+[Unit]
+Description=PyTorch FIT Indeed event-driven submission watcher
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/xy/Desktop/projects/pytorch-fit-system
+Environment=PATH=/home/xy/.nvm/versions/node/v24.10.0/bin:/usr/local/bin:/usr/bin
+ExecStart=/usr/bin/env node --no-warnings tools/job_finder/indeed_event_watcher.mjs --cdp-url http://127.0.0.1:9222 --database .cache/application-submissions.sqlite3 --state .cache/indeed-event-watcher-state.json --manifest .cache/binance-current-manifest.json
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/xy/Desktop/projects/pytorch-fit-system/out/indeed-event-watcher.log
+StandardError=append:/home/xy/Desktop/projects/pytorch-fit-system/out/indeed-event-watcher.log
+
+[Install]
+WantedBy=default.target
