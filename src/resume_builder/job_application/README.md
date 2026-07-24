@@ -158,7 +158,12 @@ submission outcomes remain open for human recovery.
 If the foreign form embedded its old calling code inside the saved visible value,
 `--saved-phone-original-calling-code` must be the prefix observed in that form. The runner strips
 that exact prefix before applying `--phone-country-calling-code`; it never guesses or rewrites the
-remaining national number.
+remaining national number. When the form still exposes its original foreign country control, the
+runner can read that visible calling-code prefix directly for the same normalization.
+
+Literal qualification checks combine the exact rendered job title with the full description. This
+allows an explicit title such as `(Fully Remote)` to satisfy the remote requirement without
+silently broadening a role whose title and description contain no remote evidence.
 
 To resume an already-open application while processing every relevant current Indeed tab, merge a
 reviewed seed manifest with the live tabs before launching:

@@ -139,6 +139,11 @@ def _select_resume(job: IndeedUnattendedJob, artifact_dir: Path, description: st
     )
 
 
+def _qualification_evidence(job: IndeedUnattendedJob, description: str) -> str:
+    """Combine the exact rendered title with the full description for literal rules."""
+    return "\n".join(part for part in (job.job_title.strip(), description.strip()) if part)
+
+
 def _runtime_verified_phone(page, args: argparse.Namespace) -> str:
     """Use an explicit phone or the matching saved contact value visible in Indeed."""
     explicit = getattr(args, "verified_phone", "")
@@ -158,6 +163,14 @@ def _runtime_verified_phone(page, args: argparse.Namespace) -> str:
         for character in getattr(args, "saved_phone_original_calling_code", "")
         if character.isdigit()
     )
+    if (
+        not original_calling_code
+        and observed_iso != expected_iso
+        and getattr(args, "use_saved_contact_phone", False)
+    ):
+        original_calling_code = "".join(
+            character for character in country.inner_text() if character.isdigit()
+        )
     visible_digits = "".join(character for character in value if character.isdigit())
     if original_calling_code and visible_digits.startswith(original_calling_code):
         return visible_digits[len(original_calling_code) :]
@@ -354,7 +367,7 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
             )
         description = _visible_text(page, "#jobDescriptionText")
         allowed, reason = description_is_allowed(
-            description,
+            _qualification_evidence(job, description),
             required_any_groups=job.required_any_groups,
             blocked_terms=job.blocked_terms,
         )

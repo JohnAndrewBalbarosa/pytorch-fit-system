@@ -136,9 +136,10 @@ def test_unresolved_validation_is_parked_then_reentered(tmp_path):
 
 
 class _ContactLocator:
-    def __init__(self, *, value="", data_value=""):
+    def __init__(self, *, value="", data_value="", text=""):
         self.value = value
         self.data_value = data_value
+        self.text = text
         self.first = self
 
     def count(self):
@@ -150,13 +151,16 @@ class _ContactLocator:
     def get_attribute(self, name):
         return self.data_value if name == "data-value" else None
 
+    def inner_text(self):
+        return self.text
+
 
 class _ContactPage:
     url = "https://smartapply.indeed.com/beta/indeedapply/form/contact-info-module"
 
-    def __init__(self, phone, country):
+    def __init__(self, phone, country, country_text=""):
         self.phone = _ContactLocator(value=phone)
-        self.country = _ContactLocator(data_value=country)
+        self.country = _ContactLocator(data_value=country, text=country_text)
 
     def locator(self, selector):
         return self.country if "combobox" in selector else self.phone
@@ -192,6 +196,23 @@ def test_runtime_phone_strips_observed_original_calling_code():
 
     assert (
         runner._runtime_verified_phone(_ContactPage("+61 900 000 0000", "PH"), args)
+        == "9000000000"
+    )
+
+
+def test_runtime_phone_strips_calling_code_observed_from_foreign_country_control():
+    args = SimpleNamespace(
+        verified_phone="",
+        phone_country_iso="PH",
+        use_saved_contact_phone=True,
+        saved_phone_original_calling_code="",
+    )
+
+    assert (
+        runner._runtime_verified_phone(
+            _ContactPage("+1 900 000 0000", "CA", "+1"),
+            args,
+        )
         == "9000000000"
     )
 
@@ -268,3 +289,18 @@ def test_human_handoff_keeps_page_open():
 
     assert runner._retire_if_terminal(page, outcome) is outcome
     assert page.closed is False
+
+
+def test_qualification_evidence_includes_exact_remote_title():
+    job = runner.IndeedUnattendedJob(
+        task_id="job",
+        company="Company",
+        job_title="AI Agent Engineer (Fully Remote)",
+        listing_url="https://au.indeed.com/viewjob?jk=job",
+        target_country="Australia",
+    )
+
+    evidence = runner._qualification_evidence(job, "Build reliable AI agents.")
+
+    assert "Fully Remote" in evidence
+    assert "Build reliable AI agents." in evidence
