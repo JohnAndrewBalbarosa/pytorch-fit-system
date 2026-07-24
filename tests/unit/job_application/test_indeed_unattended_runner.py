@@ -304,3 +304,115 @@ def test_qualification_evidence_includes_exact_remote_title():
 
     assert "Fully Remote" in evidence
     assert "Build reliable AI agents." in evidence
+
+
+class _ApplyLocator:
+    def __init__(self, page):
+        self.page = page
+        self.first = self
+
+    def count(self):
+        return 1
+
+    def is_visible(self):
+        return self.page.waited_ms >= self.page.control_visible_after_ms
+
+    def click(self):
+        self.page.clicks += 1
+        self.page.on_click()
+
+
+class _ApplyPage:
+    def __init__(self, *, url, control_visible_after_ms=0):
+        self.url = url
+        self.control_visible_after_ms = control_visible_after_ms
+        self.waited_ms = 0
+        self.clicks = 0
+        self.on_click = lambda: None
+        self._locator = _ApplyLocator(self)
+        self.on_wait = lambda: None
+
+    def locator(self, _selector):
+        return self._locator
+
+    def wait_for_timeout(self, milliseconds):
+        self.waited_ms += milliseconds
+        self.on_wait()
+
+
+def test_open_smart_apply_waits_for_delayed_visible_apply_control():
+    page = _ApplyPage(
+        url="https://ca.indeed.com/viewjob?jk=job",
+        control_visible_after_ms=500,
+    )
+    context = SimpleNamespace(pages=[page])
+    page.on_click = lambda: setattr(
+        page,
+        "url",
+        "https://smartapply.indeed.com/beta/indeedapply/form/contact-info-module",
+    )
+
+    application_page, error = runner._open_smart_apply(
+        page,
+        context,
+        control_timeout_ms=1_000,
+        navigation_timeout_ms=1_000,
+        poll_ms=250,
+    )
+
+    assert application_page is page
+    assert error == ""
+    assert page.clicks == 1
+    assert page.waited_ms == 500
+
+
+def test_open_smart_apply_waits_for_about_blank_popup_navigation():
+    listing_page = _ApplyPage(url="https://au.indeed.com/viewjob?jk=job")
+    popup = SimpleNamespace(url="about:blank")
+    context = SimpleNamespace(pages=[listing_page])
+
+    def open_popup():
+        context.pages.append(popup)
+
+    def navigate_popup():
+        if listing_page.waited_ms >= 500:
+            popup.url = (
+                "https://smartapply.indeed.com/"
+                "beta/indeedapply/form/profile-location"
+            )
+
+    listing_page.on_click = open_popup
+    listing_page.on_wait = navigate_popup
+
+    application_page, error = runner._open_smart_apply(
+        listing_page,
+        context,
+        control_timeout_ms=0,
+        navigation_timeout_ms=1_000,
+        poll_ms=250,
+    )
+
+    assert application_page is popup
+    assert error == ""
+    assert listing_page.clicks == 1
+    assert listing_page.waited_ms == 500
+
+
+def test_open_smart_apply_does_not_click_when_control_never_becomes_visible():
+    page = _ApplyPage(
+        url="https://ca.indeed.com/viewjob?jk=job",
+        control_visible_after_ms=2_000,
+    )
+    context = SimpleNamespace(pages=[page])
+
+    application_page, error = runner._open_smart_apply(
+        page,
+        context,
+        control_timeout_ms=1_000,
+        navigation_timeout_ms=1_000,
+        poll_ms=250,
+    )
+
+    assert application_page is None
+    assert error == "no verified visible Indeed Apply control"
+    assert page.clicks == 0

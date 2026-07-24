@@ -101,31 +101,66 @@ def _visible_text(page, selector: str) -> str:
     return locator.inner_text() if locator.count() and locator.is_visible() else ""
 
 
-def _open_smart_apply(page, context):
-    before_pages = set(context.pages)
-    apply_control = None
-    for selector in _APPLY_SELECTORS:
-        candidate = page.locator(selector).first
-        if candidate.count() and candidate.is_visible():
-            apply_control = candidate
-            break
+def _visible_apply_control(page, *, timeout_ms: int, poll_ms: int):
+    waited_ms = 0
+    while True:
+        for selector in _APPLY_SELECTORS:
+            candidate = page.locator(selector).first
+            if candidate.count() and candidate.is_visible():
+                return candidate
+        if waited_ms >= timeout_ms:
+            return None
+        delay_ms = min(poll_ms, timeout_ms - waited_ms)
+        page.wait_for_timeout(delay_ms)
+        waited_ms += delay_ms
+
+
+def _open_smart_apply(
+    page,
+    context,
+    *,
+    control_timeout_ms: int = 10_000,
+    navigation_timeout_ms: int = 15_000,
+    poll_ms: int = 250,
+):
+    before_pages = tuple(context.pages)
+    apply_control = _visible_apply_control(
+        page,
+        timeout_ms=control_timeout_ms,
+        poll_ms=poll_ms,
+    )
     if apply_control is None:
         return None, "no verified visible Indeed Apply control"
+
+    # Click exactly once. A new Indeed Apply page commonly exists as about:blank
+    # before its real navigation starts, so do not classify the first URL.
     apply_control.click()
-    page.wait_for_timeout(2_000)
-    new_pages = [candidate for candidate in context.pages if candidate not in before_pages]
-    application_page = new_pages[-1] if new_pages else page
-    try:
-        application_page.wait_for_load_state("domcontentloaded", timeout=8_000)
-    except Exception:
-        pass
+    waited_ms = 0
+    application_page = page
+    while True:
+        new_pages = [
+            candidate
+            for candidate in context.pages
+            if all(candidate is not existing for existing in before_pages)
+        ]
+        candidates = [*reversed(new_pages), page]
+        for candidate in candidates:
+            host = (urlsplit(str(candidate.url)).hostname or "").lower()
+            if host == "smartapply.indeed.com":
+                return candidate, ""
+        if new_pages:
+            application_page = new_pages[-1]
+        if waited_ms >= navigation_timeout_ms:
+            break
+        delay_ms = min(poll_ms, navigation_timeout_ms - waited_ms)
+        page.wait_for_timeout(delay_ms)
+        waited_ms += delay_ms
+
     host = (urlsplit(str(application_page.url)).hostname or "").lower()
-    if host != "smartapply.indeed.com":
-        return (
-            application_page,
-            f"apply control did not reach Indeed Smart Apply: {host or 'unknown'}",
-        )
-    return application_page, ""
+    return (
+        application_page,
+        f"apply control did not reach Indeed Smart Apply: {host or 'unknown'}",
+    )
 
 
 def _select_resume(job: IndeedUnattendedJob, artifact_dir: Path, description: str) -> Path | None:
