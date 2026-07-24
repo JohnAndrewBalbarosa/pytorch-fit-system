@@ -151,7 +151,9 @@ For a user-approved saved contact number on a foreign-locale form,
 `--use-saved-contact-phone` uses that visible runtime value and reconciles the separate country
 control to the explicit `--phone-country-iso`. `--process-all-candidates` exhausts the bounded
 manifest rather than stopping after the confirmation target. External or missing Indeed Smart
-Apply controls are skipped.
+Apply controls are skipped. A worker closes its page only after a terminal `skipped` outcome or
+deterministic submitted confirmation; verification, validation, questionnaires, and unknown
+submission outcomes remain open for human recovery.
 
 If the foreign form embedded its old calling code inside the saved visible value,
 `--saved-phone-original-calling-code` must be the prefix observed in that form. The runner strips

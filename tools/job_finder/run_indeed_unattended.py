@@ -283,8 +283,11 @@ def _run_application(
     return indeed_batch_outcome(job.batch_task(), result)
 
 
-def _retire_if_submitted(page, outcome: BatchApplicationOutcome) -> BatchApplicationOutcome:
-    if outcome.status == BatchApplicationStatus.SUBMITTED:
+def _retire_if_terminal(page, outcome: BatchApplicationOutcome) -> BatchApplicationOutcome:
+    if outcome.status in {
+        BatchApplicationStatus.SKIPPED,
+        BatchApplicationStatus.SUBMITTED,
+    }:
         try:
             page.close()
         except Exception:
@@ -316,7 +319,7 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
         context = browser.contexts[0]
         page, is_application_page = _matching_existing_page(context, job)
         if is_application_page:
-            return _retire_if_submitted(
+            return _retire_if_terminal(
                 page,
                 _run_application(
                     page,
@@ -356,7 +359,10 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
             blocked_terms=job.blocked_terms,
         )
         if not allowed:
-            return _outcome(job, BatchApplicationStatus.SKIPPED, reason)
+            return _retire_if_terminal(
+                page,
+                _outcome(job, BatchApplicationStatus.SKIPPED, reason),
+            )
 
         application_page, apply_error = _open_smart_apply(page, context)
         if apply_error:
@@ -365,8 +371,11 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
                 if apply_error == "no verified visible Indeed Apply control"
                 else BatchApplicationStatus.HUMAN_HANDOFF
             )
-            return _outcome(job, status, apply_error)
-        return _retire_if_submitted(
+            return _retire_if_terminal(
+                application_page,
+                _outcome(job, status, apply_error),
+            )
+        return _retire_if_terminal(
             application_page,
             _run_application(
                 application_page,

@@ -227,3 +227,44 @@ def test_process_all_mode_does_not_stop_at_submission_target(tmp_path):
     assert payload["status"] == "all_candidates_processed"
     assert payload["confirmed_submissions"] == 3
     assert set(started) == {"job-0", "job-1", "job-2", "job-3"}
+
+
+class _ClosablePage:
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+def test_terminal_skip_and_submission_retire_page():
+    job = runner.IndeedUnattendedJob(
+        task_id="job",
+        company="Company",
+        job_title="Backend Engineer",
+        listing_url="https://ca.indeed.com/viewjob?jk=job",
+        target_country="Canada",
+    )
+    for status in (
+        BatchApplicationStatus.SKIPPED,
+        BatchApplicationStatus.SUBMITTED,
+    ):
+        page = _ClosablePage()
+        outcome = _outcome(job, status)
+        assert runner._retire_if_terminal(page, outcome) is outcome
+        assert page.closed is True
+
+
+def test_human_handoff_keeps_page_open():
+    job = runner.IndeedUnattendedJob(
+        task_id="job",
+        company="Company",
+        job_title="Backend Engineer",
+        listing_url="https://ca.indeed.com/viewjob?jk=job",
+        target_country="Canada",
+    )
+    page = _ClosablePage()
+    outcome = _outcome(job, BatchApplicationStatus.HUMAN_HANDOFF)
+
+    assert runner._retire_if_terminal(page, outcome) is outcome
+    assert page.closed is False
