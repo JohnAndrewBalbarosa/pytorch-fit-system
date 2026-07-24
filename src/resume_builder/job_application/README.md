@@ -153,6 +153,11 @@ control to the explicit `--phone-country-iso`. `--process-all-candidates` exhaus
 manifest rather than stopping after the confirmation target. External or missing Indeed Smart
 Apply controls are skipped.
 
+If the foreign form embedded its old calling code inside the saved visible value,
+`--saved-phone-original-calling-code` must be the prefix observed in that form. The runner strips
+that exact prefix before applying `--phone-country-calling-code`; it never guesses or rewrites the
+remaining national number.
+
 To resume an already-open application while processing every relevant current Indeed tab, merge a
 reviewed seed manifest with the live tabs before launching:
 

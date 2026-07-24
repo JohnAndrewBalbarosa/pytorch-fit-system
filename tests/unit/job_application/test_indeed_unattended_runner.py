@@ -182,6 +182,20 @@ def test_runtime_phone_can_use_explicitly_approved_saved_value_before_country_re
     assert runner._runtime_verified_phone(_ContactPage("9000000000", "AU"), args) == "9000000000"
 
 
+def test_runtime_phone_strips_observed_original_calling_code():
+    args = SimpleNamespace(
+        verified_phone="",
+        phone_country_iso="PH",
+        use_saved_contact_phone=True,
+        saved_phone_original_calling_code="+61",
+    )
+
+    assert (
+        runner._runtime_verified_phone(_ContactPage("+61 900 000 0000", "PH"), args)
+        == "9000000000"
+    )
+
+
 def test_runtime_phone_prefers_explicit_verified_value():
     args = SimpleNamespace(
         verified_phone="+63 900 000 0000",

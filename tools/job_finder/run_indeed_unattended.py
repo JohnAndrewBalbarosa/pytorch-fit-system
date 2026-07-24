@@ -153,6 +153,14 @@ def _runtime_verified_phone(page, args: argparse.Namespace) -> str:
     value = phone.input_value().strip()
     observed_iso = (country.get_attribute("data-value") or "").strip().upper()
     expected_iso = args.phone_country_iso.strip().upper()
+    original_calling_code = "".join(
+        character
+        for character in getattr(args, "saved_phone_original_calling_code", "")
+        if character.isdigit()
+    )
+    visible_digits = "".join(character for character in value if character.isdigit())
+    if original_calling_code and visible_digits.startswith(original_calling_code):
+        return visible_digits[len(original_calling_code) :]
     if value and observed_iso == expected_iso:
         return value
     if (
@@ -598,6 +606,14 @@ def _parser() -> argparse.ArgumentParser:
         help=(
             "Treat a non-empty visible Indeed contact number as the verified runtime number, "
             "then reconcile its separate country control to --phone-country-iso."
+        ),
+    )
+    parser.add_argument(
+        "--saved-phone-original-calling-code",
+        default="",
+        help=(
+            "Observed calling-code prefix currently embedded in the saved visible phone value. "
+            "It is stripped before reconciling to --phone-country-calling-code."
         ),
     )
     parser.add_argument("--phone-country-calling-code", required=True)
