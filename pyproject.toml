@@ -20,6 +20,7 @@ dependencies = [
     "anthropic>=0.40",
     "reportlab>=4.2",
     "python-multipart>=0.0.9",
+    "pymongo>=4.10",
     "pyyaml>=6.0",
     "requests>=2.32",
     "lxml>=5",

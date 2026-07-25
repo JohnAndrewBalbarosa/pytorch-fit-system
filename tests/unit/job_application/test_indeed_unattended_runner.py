@@ -6,7 +6,12 @@ from threading import Lock
 import time
 from types import SimpleNamespace
 
-from resume_builder.job_application import BatchApplicationOutcome, BatchApplicationStatus
+from resume_builder.job_application import (
+    ApprovedIndeedQuestionAnswerSet,
+    ApprovedIndeedQuestionAnswers,
+    BatchApplicationOutcome,
+    BatchApplicationStatus,
+)
 
 
 _SCRIPT = Path(__file__).parents[3] / "tools" / "job_finder" / "run_indeed_unattended.py"
@@ -47,6 +52,52 @@ def _args(tmp_path: Path, *, count: int, target: int = 3) -> argparse.Namespace:
 
 def _outcome(job, status):
     return BatchApplicationOutcome(task=job.batch_task(), status=status)
+
+
+def test_runner_loads_approved_questions_from_mongodb_by_default(monkeypatch):
+    expected = ApprovedIndeedQuestionAnswerSet(
+        pages=[
+            ApprovedIndeedQuestionAnswers(
+                question_set_fingerprint="a" * 40,
+                answers={"Where do you currently live?": "Philippines"},
+            )
+        ]
+    )
+    observed = {}
+
+    class _Repository:
+        def __init__(self, uri, *, database):
+            observed.update(uri=uri, database=database)
+
+        def ping(self):
+            observed["pinged"] = True
+
+        def load(self, *, domain):
+            observed["domain"] = domain
+            return expected
+
+        def close(self):
+            observed["closed"] = True
+
+    monkeypatch.setattr(runner, "MongoQuestionnaireRepository", _Repository)
+
+    loaded = runner._load_approved_questions(
+        SimpleNamespace(
+            questionnaire_store="mongodb",
+            mongodb_uri="mongodb://localhost:27017",
+            mongodb_database="pytorch_fit",
+            approved_answers=None,
+        )
+    )
+
+    assert loaded == expected
+    assert observed == {
+        "uri": "mongodb://localhost:27017",
+        "database": "pytorch_fit",
+        "pinged": True,
+        "domain": "smartapply.indeed.com",
+        "closed": True,
+    }
 
 
 def test_scheduler_replenishes_skips_and_stops_at_exact_target(tmp_path):

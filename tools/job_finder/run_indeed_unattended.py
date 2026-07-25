@@ -23,6 +23,9 @@ from resume_builder.job_application import (  # noqa: E402
     BatchApplicationStatus,
     HumanVerificationQueue,
     ApprovedIndeedQuestionAnswerSet,
+    DEFAULT_MONGODB_DATABASE,
+    DEFAULT_MONGODB_URI,
+    MongoQuestionnaireRepository,
     SmartApplyApprovals,
     check_access_gate,
     indeed_batch_outcome,
@@ -283,11 +286,7 @@ def _run_application(
         final_submit=getattr(args, "autonomous_submit", False),
     )
     result = None
-    approved_questions = None
-    if getattr(args, "approved_answers", None):
-        approved_questions = ApprovedIndeedQuestionAnswerSet.model_validate_json(
-            args.approved_answers.read_text(encoding="utf-8")
-        )
+    approved_questions = _load_approved_questions(args)
     for _ in range(8):
         question_plan = None
         if (
@@ -329,6 +328,35 @@ def _run_application(
     if result is None:
         return _outcome(job, BatchApplicationStatus.FAILED, "runner produced no result")
     return indeed_batch_outcome(job.batch_task(), result)
+
+
+def _load_approved_questions(
+    args: argparse.Namespace,
+) -> ApprovedIndeedQuestionAnswerSet | None:
+    source = getattr(args, "questionnaire_store", "")
+    approved_answers = getattr(args, "approved_answers", None)
+    if not source:
+        source = "json" if approved_answers else "mongodb"
+    if source == "json":
+        if approved_answers is None:
+            raise ValueError("--approved-answers is required for questionnaire-store=json")
+        return ApprovedIndeedQuestionAnswerSet.model_validate_json(
+            approved_answers.read_text(encoding="utf-8")
+        )
+    if source != "mongodb":
+        raise ValueError(f"unsupported questionnaire store: {source}")
+    repository = MongoQuestionnaireRepository(
+        getattr(args, "mongodb_uri", DEFAULT_MONGODB_URI),
+        database=getattr(args, "mongodb_database", DEFAULT_MONGODB_DATABASE),
+    )
+    try:
+        repository.ping()
+        answer_set = repository.load(domain="smartapply.indeed.com")
+    finally:
+        repository.close()
+    if answer_set is None:
+        raise RuntimeError("MongoDB has no approved smartapply.indeed.com questionnaire profiles")
+    return answer_set
 
 
 def _retire_if_terminal(page, outcome: BatchApplicationOutcome) -> BatchApplicationOutcome:
@@ -678,8 +706,16 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--approved-answers",
         type=Path,
-        help="Local exact-label answer profile scoped to an observed question fingerprint.",
+        help="JSON fallback profile used only with --questionnaire-store=json.",
     )
+    parser.add_argument(
+        "--questionnaire-store",
+        choices=("mongodb", "json"),
+        default="mongodb",
+        help="Load exact approved questionnaire documents from MongoDB by default.",
+    )
+    parser.add_argument("--mongodb-uri", default=DEFAULT_MONGODB_URI)
+    parser.add_argument("--mongodb-database", default=DEFAULT_MONGODB_DATABASE)
     return parser
 
 

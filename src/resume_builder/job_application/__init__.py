@@ -130,6 +130,11 @@ from resume_builder.job_application.indeed_questionnaire import (
     observe_indeed_screening_questions,
     question_set_fingerprint,
 )
+from resume_builder.job_application.questionnaire_store import (
+    DEFAULT_MONGODB_DATABASE,
+    DEFAULT_MONGODB_URI,
+    MongoQuestionnaireRepository,
+)
 
 __all__ = [
     "ApplicationPlan",
@@ -229,4 +234,7 @@ __all__ = [
     "build_approved_indeed_question_plan",
     "observe_indeed_screening_questions",
     "question_set_fingerprint",
+    "DEFAULT_MONGODB_DATABASE",
+    "DEFAULT_MONGODB_URI",
+    "MongoQuestionnaireRepository",
 ]
