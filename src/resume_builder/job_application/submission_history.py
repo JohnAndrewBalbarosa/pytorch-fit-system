@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Protocol
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from pydantic import BaseModel
 
@@ -74,6 +74,8 @@ class ApplicationHistoryEntry(BaseModel):
     confirmation_source: ConfirmationSource | None = None
     source_domain: str = ""
     source_url: str = ""
+    company_id: int | None = None
+    job_posting_id: int | None = None
 
 
 def normalize_exact_identity(value: str) -> str:
@@ -90,8 +92,28 @@ def _safe_source_url(url: str) -> str:
     return f"{parts.scheme}://{parts.netloc}{parts.path}" if parts.scheme else ""
 
 
+def _provider_identity(url: str) -> tuple[str, str]:
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+    if host == "indeed.com" or host.endswith(".indeed.com"):
+        job_ids = parse_qs(parts.query).get("jk", [])
+        if len(job_ids) == 1:
+            job_id = job_ids[0].strip()
+            if job_id and job_id.isalnum():
+                return "indeed", job_id
+    return "", ""
+
+
+def _title_is_expanded_variant(first: str, second: str) -> bool:
+    """Recognize an exact title expanded with Indeed's metadata suffix."""
+    first_key = normalize_exact_identity(first)
+    second_key = normalize_exact_identity(second)
+    shorter, longer = sorted((first_key, second_key), key=len)
+    return bool(shorter and longer.startswith(f"{shorter} | "))
+
+
 class ApplicationSubmissionHistory:
-    """Durable SQL history for exact company/title submission decisions."""
+    """Durable normalized SQL history for companies, postings, and submissions."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -118,23 +140,57 @@ class ApplicationSubmissionHistory:
         title_key = normalize_exact_identity(title_value)
         safe_url = _safe_source_url(source_url)
         domain = (urlsplit(safe_url).hostname or "").lower()
+        provider, provider_job_id = _provider_identity(source_url)
 
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            company_id = self._ensure_company(
+                connection,
+                company_value,
+                company_key,
+                timestamp_text,
+            )
+            job_posting_id = self._ensure_job_posting(
+                connection,
+                company_id=company_id,
+                job_title=title_value,
+                title_key=title_key,
+                provider=provider,
+                provider_job_id=provider_job_id,
+                source_url=safe_url,
+                timestamp=timestamp_text,
+            )
             recent = connection.execute(
                 """
                 SELECT id, applied_at
                 FROM applications
-                WHERE company_key = ?
-                  AND job_title_key = ?
+                WHERE (
+                    job_posting_id = ?
+                    OR (company_key = ? AND job_title_key = ?)
+                  )
                   AND state = ?
                   AND applied_at >= ?
                 ORDER BY applied_at DESC
                 LIMIT 1
                 """,
-                (company_key, title_key, LedgerState.SUBMITTED.value, cutoff),
+                (
+                    job_posting_id,
+                    company_key,
+                    title_key,
+                    LedgerState.SUBMITTED.value,
+                    cutoff,
+                ),
             ).fetchone()
             if recent:
+                connection.execute(
+                    """
+                    UPDATE applications
+                    SET company_id = COALESCE(company_id, ?),
+                        job_posting_id = COALESCE(job_posting_id, ?)
+                    WHERE id = ?
+                    """,
+                    (company_id, job_posting_id, recent["id"]),
+                )
                 reservation = SubmissionReservation(
                     decision=SubmissionDecision.RECENT_DUPLICATE,
                     matched_application_id=recent["id"],
@@ -155,14 +211,17 @@ class ApplicationSubmissionHistory:
                 """
                 SELECT id, updated_at
                 FROM applications
-                WHERE company_key = ?
-                  AND job_title_key = ?
+                WHERE (
+                    job_posting_id = ?
+                    OR (company_key = ? AND job_title_key = ?)
+                  )
                   AND state IN (?, ?)
                   AND updated_at >= ?
                 ORDER BY updated_at DESC
                 LIMIT 1
                 """,
                 (
+                    job_posting_id,
                     company_key,
                     title_key,
                     LedgerState.SUBMITTING.value,
@@ -190,8 +249,9 @@ class ApplicationSubmissionHistory:
                 """
                 INSERT INTO applications (
                     company, job_title, company_key, job_title_key, state,
-                    applied_at, updated_at, confirmation, source_domain, source_url
-                ) VALUES (?, ?, ?, ?, ?, NULL, ?, '', ?, ?)
+                    applied_at, updated_at, confirmation, source_domain, source_url,
+                    company_id, job_posting_id
+                ) VALUES (?, ?, ?, ?, ?, NULL, ?, '', ?, ?, ?, ?)
                 """,
                 (
                     company_value,
@@ -202,6 +262,8 @@ class ApplicationSubmissionHistory:
                     timestamp_text,
                     domain,
                     safe_url,
+                    company_id,
+                    job_posting_id,
                 ),
             )
             application_id = int(cursor.lastrowid)
@@ -292,6 +354,16 @@ class ApplicationSubmissionHistory:
         source_url: str = "",
     ) -> ApplicationHistoryEntry:
         """Seed a known confirmed submission without duplicating a recent record."""
+        reconciled = self._reconcile_title_variant(
+            company=company,
+            job_title=job_title,
+            applied_at=applied_at,
+            confirmation=confirmation,
+            confirmation_source=confirmation_source,
+            source_url=source_url,
+        )
+        if reconciled is not None:
+            return reconciled
         reservation = self.reserve_submission(
             company=company,
             job_title=job_title,
@@ -317,6 +389,99 @@ class ApplicationSubmissionHistory:
                 confirmation_source=confirmation_source,
                 now=datetime.fromisoformat(entry.applied_at) if entry.applied_at else applied_at,
             )
+        return entry
+
+    def _reconcile_title_variant(
+        self,
+        *,
+        company: str,
+        job_title: str,
+        applied_at: datetime,
+        confirmation: str,
+        confirmation_source: ConfirmationSource,
+        source_url: str,
+    ) -> ApplicationHistoryEntry | None:
+        """Update one unambiguous same-day expanded title instead of inserting a duplicate."""
+        company_value, title_value = self._validated_identity(company, job_title)
+        company_key = normalize_exact_identity(company_value)
+        title_key = normalize_exact_identity(title_value)
+        timestamp = applied_at.astimezone(timezone.utc).isoformat()
+        safe_url = _safe_source_url(source_url)
+        provider, provider_job_id = _provider_identity(source_url)
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            company_id = self._ensure_company(connection, company_value, company_key, timestamp)
+            if provider and provider_job_id:
+                provider_match = connection.execute(
+                    """
+                    SELECT a.id
+                    FROM applications AS a
+                    JOIN job_postings AS j ON j.id = a.job_posting_id
+                    WHERE j.provider = ? AND j.provider_job_id = ?
+                      AND a.state = ?
+                    LIMIT 1
+                    """,
+                    (provider, provider_job_id, LedgerState.SUBMITTED.value),
+                ).fetchone()
+                if provider_match:
+                    self._update_application_identity(
+                        connection,
+                        application_id=provider_match["id"],
+                        company_id=company_id,
+                        company=company_value,
+                        company_key=company_key,
+                        job_title=title_value,
+                        title_key=title_key,
+                        provider=provider,
+                        provider_job_id=provider_job_id,
+                        source_url=safe_url,
+                        timestamp=timestamp,
+                    )
+                    application_id = int(provider_match["id"])
+                    connection.commit()
+                    return self.get(application_id)
+
+            candidates = connection.execute(
+                """
+                SELECT id, job_title
+                FROM applications
+                WHERE company_key = ? AND state = ?
+                  AND substr(applied_at, 1, 10) = ?
+                """,
+                (company_key, LedgerState.SUBMITTED.value, timestamp[:10]),
+            ).fetchall()
+            variants = [
+                row for row in candidates if _title_is_expanded_variant(row["job_title"], title_value)
+            ]
+            if len(variants) != 1:
+                return None
+            application_id = int(variants[0]["id"])
+            self._update_application_identity(
+                connection,
+                application_id=application_id,
+                company_id=company_id,
+                company=company_value,
+                company_key=company_key,
+                job_title=title_value,
+                title_key=title_key,
+                provider=provider,
+                provider_job_id=provider_job_id,
+                source_url=safe_url,
+                timestamp=timestamp,
+            )
+            self._insert_audit(
+                connection,
+                timestamp,
+                company_value,
+                title_value,
+                "identity_reconciled",
+                LedgerState.SUBMITTED.value,
+                "same-day expanded Indeed title matched one existing application",
+                application_id=application_id,
+            )
+        entry = self.get(application_id)
+        if entry is None:
+            raise RuntimeError("reconciled application history entry was not found")
         return entry
 
     def get(self, application_id: int) -> ApplicationHistoryEntry | None:
@@ -442,6 +607,7 @@ class ApplicationSubmissionHistory:
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
         return connection
 
     def _initialize(self) -> None:
@@ -460,7 +626,9 @@ class ApplicationSubmissionHistory:
                     confirmation TEXT NOT NULL DEFAULT '',
                     confirmation_source TEXT NOT NULL DEFAULT '',
                     source_domain TEXT NOT NULL DEFAULT '',
-                    source_url TEXT NOT NULL DEFAULT ''
+                    source_url TEXT NOT NULL DEFAULT '',
+                    company_id INTEGER,
+                    job_posting_id INTEGER
                 );
                 CREATE INDEX IF NOT EXISTS idx_applications_recent_exact
                     ON applications(company_key, job_title_key, state, applied_at);
@@ -480,6 +648,40 @@ class ApplicationSubmissionHistory:
                 );
                 CREATE INDEX IF NOT EXISTS idx_submission_audit_application
                     ON submission_audit(application_id, event_at);
+
+                CREATE TABLE IF NOT EXISTS companies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    name_key TEXT NOT NULL UNIQUE,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS job_postings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    company_id INTEGER NOT NULL,
+                    provider TEXT NOT NULL DEFAULT '',
+                    provider_job_id TEXT NOT NULL DEFAULT '',
+                    canonical_title TEXT NOT NULL,
+                    title_key TEXT NOT NULL,
+                    source_url TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(company_id) REFERENCES companies(id)
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_job_postings_provider_identity
+                    ON job_postings(provider, provider_job_id)
+                    WHERE provider <> '' AND provider_job_id <> '';
+                CREATE INDEX IF NOT EXISTS idx_job_postings_company_title
+                    ON job_postings(company_id, title_key);
+                CREATE TABLE IF NOT EXISTS job_title_aliases (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    job_posting_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    title_key TEXT NOT NULL,
+                    observed_at TEXT NOT NULL,
+                    FOREIGN KEY(job_posting_id) REFERENCES job_postings(id),
+                    UNIQUE(job_posting_id, title_key)
+                );
                 """
             )
             columns = {
@@ -491,6 +693,212 @@ class ApplicationSubmissionHistory:
                     "ALTER TABLE applications "
                     "ADD COLUMN confirmation_source TEXT NOT NULL DEFAULT ''"
                 )
+            if "company_id" not in columns:
+                connection.execute("ALTER TABLE applications ADD COLUMN company_id INTEGER")
+            if "job_posting_id" not in columns:
+                connection.execute("ALTER TABLE applications ADD COLUMN job_posting_id INTEGER")
+            self._backfill_normalized_identities(connection)
+
+    def _backfill_normalized_identities(self, connection: sqlite3.Connection) -> None:
+        timestamp = _utc_now().isoformat()
+        rows = connection.execute(
+            """
+            SELECT id, company, company_key, job_title, job_title_key, source_url
+            FROM applications
+            WHERE company_id IS NULL OR job_posting_id IS NULL
+            ORDER BY id
+            """
+        ).fetchall()
+        for row in rows:
+            company_id = self._ensure_company(
+                connection,
+                row["company"],
+                row["company_key"],
+                timestamp,
+            )
+            provider, provider_job_id = _provider_identity(row["source_url"])
+            posting_id = self._ensure_job_posting(
+                connection,
+                company_id=company_id,
+                job_title=row["job_title"],
+                title_key=row["job_title_key"],
+                provider=provider,
+                provider_job_id=provider_job_id,
+                source_url=row["source_url"],
+                timestamp=timestamp,
+            )
+            connection.execute(
+                "UPDATE applications SET company_id = ?, job_posting_id = ? WHERE id = ?",
+                (company_id, posting_id, row["id"]),
+            )
+
+    @staticmethod
+    def _ensure_company(
+        connection: sqlite3.Connection,
+        name: str,
+        name_key: str,
+        timestamp: str,
+    ) -> int:
+        connection.execute(
+            """
+            INSERT INTO companies (name, name_key, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(name_key) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at
+            """,
+            (name, name_key, timestamp, timestamp),
+        )
+        row = connection.execute(
+            "SELECT id FROM companies WHERE name_key = ?",
+            (name_key,),
+        ).fetchone()
+        return int(row["id"])
+
+    @staticmethod
+    def _ensure_job_posting(
+        connection: sqlite3.Connection,
+        *,
+        company_id: int,
+        job_title: str,
+        title_key: str,
+        provider: str,
+        provider_job_id: str,
+        source_url: str,
+        timestamp: str,
+    ) -> int:
+        row = None
+        if provider and provider_job_id:
+            row = connection.execute(
+                "SELECT id FROM job_postings WHERE provider = ? AND provider_job_id = ?",
+                (provider, provider_job_id),
+            ).fetchone()
+        if row is None:
+            row = connection.execute(
+                """
+                SELECT id FROM job_postings
+                WHERE company_id = ? AND title_key = ?
+                ORDER BY id LIMIT 1
+                """,
+                (company_id, title_key),
+            ).fetchone()
+        if row is None:
+            cursor = connection.execute(
+                """
+                INSERT INTO job_postings (
+                    company_id, provider, provider_job_id, canonical_title, title_key,
+                    source_url, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    company_id,
+                    provider,
+                    provider_job_id,
+                    job_title,
+                    title_key,
+                    source_url,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            posting_id = int(cursor.lastrowid)
+        else:
+            posting_id = int(row["id"])
+            connection.execute(
+                """
+                UPDATE job_postings
+                SET provider = CASE WHEN provider = '' THEN ? ELSE provider END,
+                    provider_job_id = CASE WHEN provider_job_id = '' THEN ? ELSE provider_job_id END,
+                    canonical_title = ?, title_key = ?,
+                    source_url = CASE WHEN ? <> '' THEN ? ELSE source_url END,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    provider,
+                    provider_job_id,
+                    job_title,
+                    title_key,
+                    source_url,
+                    source_url,
+                    timestamp,
+                    posting_id,
+                ),
+            )
+        connection.execute(
+            """
+            INSERT INTO job_title_aliases (job_posting_id, title, title_key, observed_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(job_posting_id, title_key) DO UPDATE
+            SET title = excluded.title, observed_at = excluded.observed_at
+            """,
+            (posting_id, job_title, title_key, timestamp),
+        )
+        return posting_id
+
+    def _update_application_identity(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        application_id: int,
+        company_id: int,
+        company: str,
+        company_key: str,
+        job_title: str,
+        title_key: str,
+        provider: str,
+        provider_job_id: str,
+        source_url: str,
+        timestamp: str,
+    ) -> None:
+        old = connection.execute(
+            "SELECT job_title, job_title_key FROM applications WHERE id = ?",
+            (application_id,),
+        ).fetchone()
+        posting_id = self._ensure_job_posting(
+            connection,
+            company_id=company_id,
+            job_title=old["job_title"],
+            title_key=old["job_title_key"],
+            provider=provider,
+            provider_job_id=provider_job_id,
+            source_url=source_url,
+            timestamp=timestamp,
+        )
+        connection.execute(
+            """
+            INSERT INTO job_title_aliases (job_posting_id, title, title_key, observed_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(job_posting_id, title_key) DO UPDATE
+            SET title = excluded.title, observed_at = excluded.observed_at
+            """,
+            (posting_id, job_title, title_key, timestamp),
+        )
+        connection.execute(
+            """
+            UPDATE job_postings
+            SET canonical_title = ?, title_key = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (job_title, title_key, timestamp, posting_id),
+        )
+        connection.execute(
+            """
+            UPDATE applications
+            SET company = ?, company_key = ?, job_title = ?, job_title_key = ?,
+                source_domain = ?, source_url = ?, company_id = ?, job_posting_id = ?
+            WHERE id = ?
+            """,
+            (
+                company,
+                company_key,
+                job_title,
+                title_key,
+                (urlsplit(source_url).hostname or "").lower(),
+                source_url,
+                company_id,
+                posting_id,
+                application_id,
+            ),
+        )
 
     @staticmethod
     def _entry(row: sqlite3.Row) -> ApplicationHistoryEntry:
@@ -509,6 +917,8 @@ class ApplicationSubmissionHistory:
             ),
             source_domain=row["source_domain"],
             source_url=row["source_url"],
+            company_id=row["company_id"] if "company_id" in row.keys() else None,
+            job_posting_id=row["job_posting_id"] if "job_posting_id" in row.keys() else None,
         )
 
 

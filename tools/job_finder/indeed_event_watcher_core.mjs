@@ -13,6 +13,14 @@ export function sanitizeSourceUrl(value) {
   return `${url.protocol}//${url.host}${url.pathname}`;
 }
 
+export function indeedProviderJobId(task, sourceUrl) {
+  const taskId = String(task?.task_id ?? "").trim();
+  if (/^[a-zA-Z0-9]+$/.test(taskId)) return taskId;
+  const url = new URL(sourceUrl);
+  const jobId = String(url.searchParams.get("jk") ?? "").trim();
+  return /^[a-zA-Z0-9]+$/.test(jobId) ? jobId : "";
+}
+
 export function isExactIndeedConfirmation(snapshot) {
   return (
     snapshot.host === "smartapply.indeed.com" &&
@@ -81,27 +89,48 @@ export class SubmissionStore {
     const cutoff = new Date(observedAt.getTime() - DUPLICATE_WINDOW_MS).toISOString();
     const safeUrl = sanitizeSourceUrl(sourceUrl);
     const domain = new URL(safeUrl).hostname.toLowerCase();
+    const providerJobId = indeedProviderJobId(task, sourceUrl);
     const confirmation = "observable Indeed post-apply page reached by event watcher";
     this.database.exec("BEGIN IMMEDIATE");
     try {
+      const identity = this.#ensureNormalizedIdentity({
+        company,
+        companyKey,
+        jobTitle,
+        titleKey,
+        provider: providerJobId ? "indeed" : "",
+        providerJobId,
+        sourceUrl: safeUrl,
+        observedAt: now,
+      });
       const existing = this.database
         .prepare(
           `SELECT id FROM applications
-           WHERE company_key = ? AND job_title_key = ? AND state = ? AND applied_at >= ?
+           WHERE (job_posting_id = ? OR (company_key = ? AND job_title_key = ?))
+             AND state = ? AND applied_at >= ?
            ORDER BY applied_at DESC LIMIT 1`,
         )
-        .get(companyKey, titleKey, SUBMITTED, cutoff);
+        .get(identity.jobPostingId, companyKey, titleKey, SUBMITTED, cutoff);
       if (existing) {
+        this.database
+          .prepare(
+            `UPDATE applications
+             SET company_id = COALESCE(company_id, ?),
+                 job_posting_id = COALESCE(job_posting_id, ?)
+             WHERE id = ?`,
+          )
+          .run(identity.companyId, identity.jobPostingId, existing.id);
         this.database.exec("COMMIT");
         return { status: "matched_existing", applicationId: Number(existing.id) };
       }
       const unresolved = this.database
         .prepare(
           `SELECT id, state FROM applications
-           WHERE company_key = ? AND job_title_key = ? AND state IN (?, ?)
+           WHERE (job_posting_id = ? OR (company_key = ? AND job_title_key = ?))
+             AND state IN (?, ?)
            ORDER BY updated_at DESC LIMIT 1`,
         )
-        .get(companyKey, titleKey, ...UNRESOLVED);
+        .get(identity.jobPostingId, companyKey, titleKey, ...UNRESOLVED);
       let applicationId;
       if (unresolved) {
         applicationId = Number(unresolved.id);
@@ -109,7 +138,8 @@ export class SubmissionStore {
           .prepare(
             `UPDATE applications
              SET state = ?, applied_at = ?, updated_at = ?, confirmation = ?,
-                 confirmation_source = ?, source_domain = ?, source_url = ?
+                 confirmation_source = ?, source_domain = ?, source_url = ?,
+                 company_id = ?, job_posting_id = ?
              WHERE id = ?`,
           )
           .run(
@@ -120,6 +150,8 @@ export class SubmissionStore {
             "browser",
             domain,
             safeUrl,
+            identity.companyId,
+            identity.jobPostingId,
             applicationId,
           );
       } else {
@@ -128,8 +160,8 @@ export class SubmissionStore {
             `INSERT INTO applications (
                company, job_title, company_key, job_title_key, state,
                applied_at, updated_at, confirmation, confirmation_source,
-               source_domain, source_url
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               source_domain, source_url, company_id, job_posting_id
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             company,
@@ -143,6 +175,8 @@ export class SubmissionStore {
             "browser",
             domain,
             safeUrl,
+            identity.companyId,
+            identity.jobPostingId,
           );
         applicationId = Number(inserted.lastInsertRowid);
       }
@@ -186,7 +220,9 @@ export class SubmissionStore {
         confirmation TEXT NOT NULL DEFAULT '',
         source_domain TEXT NOT NULL DEFAULT '',
         source_url TEXT NOT NULL DEFAULT '',
-        confirmation_source TEXT NOT NULL DEFAULT ''
+        confirmation_source TEXT NOT NULL DEFAULT '',
+        company_id INTEGER,
+        job_posting_id INTEGER
       );
       CREATE INDEX IF NOT EXISTS idx_applications_recent_exact
         ON applications(company_key, job_title_key, state, applied_at);
@@ -205,6 +241,160 @@ export class SubmissionStore {
       );
       CREATE INDEX IF NOT EXISTS idx_submission_audit_application
         ON submission_audit(application_id, event_at);
+      CREATE TABLE IF NOT EXISTS companies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        name_key TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS job_postings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_id INTEGER NOT NULL,
+        provider TEXT NOT NULL DEFAULT '',
+        provider_job_id TEXT NOT NULL DEFAULT '',
+        canonical_title TEXT NOT NULL,
+        title_key TEXT NOT NULL,
+        source_url TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(company_id) REFERENCES companies(id)
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_job_postings_provider_identity
+        ON job_postings(provider, provider_job_id)
+        WHERE provider <> '' AND provider_job_id <> '';
+      CREATE INDEX IF NOT EXISTS idx_job_postings_company_title
+        ON job_postings(company_id, title_key);
+      CREATE TABLE IF NOT EXISTS job_title_aliases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_posting_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        title_key TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        FOREIGN KEY(job_posting_id) REFERENCES job_postings(id),
+        UNIQUE(job_posting_id, title_key)
+      );
     `);
+    const columns = this.database.prepare("PRAGMA table_info(applications)").all();
+    const columnNames = new Set(columns.map((column) => column.name));
+    if (!columnNames.has("company_id")) {
+      this.database.exec("ALTER TABLE applications ADD COLUMN company_id INTEGER");
+    }
+    if (!columnNames.has("job_posting_id")) {
+      this.database.exec("ALTER TABLE applications ADD COLUMN job_posting_id INTEGER");
+    }
+    const timestamp = new Date().toISOString();
+    const legacyRows = this.database
+      .prepare(
+        `SELECT id, company, job_title, company_key, job_title_key, source_url
+         FROM applications WHERE company_id IS NULL OR job_posting_id IS NULL
+         ORDER BY id`,
+      )
+      .all();
+    for (const row of legacyRows) {
+      const identity = this.#ensureNormalizedIdentity({
+        company: row.company,
+        companyKey: row.company_key,
+        jobTitle: row.job_title,
+        titleKey: row.job_title_key,
+        provider: "",
+        providerJobId: "",
+        sourceUrl: row.source_url,
+        observedAt: timestamp,
+      });
+      this.database
+        .prepare("UPDATE applications SET company_id = ?, job_posting_id = ? WHERE id = ?")
+        .run(identity.companyId, identity.jobPostingId, row.id);
+    }
+  }
+
+  #ensureNormalizedIdentity({
+    company,
+    companyKey,
+    jobTitle,
+    titleKey,
+    provider,
+    providerJobId,
+    sourceUrl,
+    observedAt,
+  }) {
+    this.database
+      .prepare(
+        `INSERT INTO companies (name, name_key, created_at, updated_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(name_key) DO UPDATE
+         SET name = excluded.name, updated_at = excluded.updated_at`,
+      )
+      .run(company, companyKey, observedAt, observedAt);
+    const companyRow = this.database
+      .prepare("SELECT id FROM companies WHERE name_key = ?")
+      .get(companyKey);
+    const companyId = Number(companyRow.id);
+    let posting;
+    if (provider && providerJobId) {
+      posting = this.database
+        .prepare("SELECT id FROM job_postings WHERE provider = ? AND provider_job_id = ?")
+        .get(provider, providerJobId);
+    }
+    if (!posting) {
+      posting = this.database
+        .prepare(
+          `SELECT id FROM job_postings
+           WHERE company_id = ? AND title_key = ? ORDER BY id LIMIT 1`,
+        )
+        .get(companyId, titleKey);
+    }
+    let jobPostingId;
+    if (posting) {
+      jobPostingId = Number(posting.id);
+      this.database
+        .prepare(
+          `UPDATE job_postings
+           SET provider = CASE WHEN provider = '' THEN ? ELSE provider END,
+               provider_job_id = CASE WHEN provider_job_id = '' THEN ? ELSE provider_job_id END,
+               canonical_title = ?, title_key = ?,
+               source_url = CASE WHEN ? <> '' THEN ? ELSE source_url END,
+               updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(
+          provider,
+          providerJobId,
+          jobTitle,
+          titleKey,
+          sourceUrl,
+          sourceUrl,
+          observedAt,
+          jobPostingId,
+        );
+    } else {
+      const inserted = this.database
+        .prepare(
+          `INSERT INTO job_postings (
+             company_id, provider, provider_job_id, canonical_title, title_key,
+             source_url, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          companyId,
+          provider,
+          providerJobId,
+          jobTitle,
+          titleKey,
+          sourceUrl,
+          observedAt,
+          observedAt,
+        );
+      jobPostingId = Number(inserted.lastInsertRowid);
+    }
+    this.database
+      .prepare(
+        `INSERT INTO job_title_aliases (job_posting_id, title, title_key, observed_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(job_posting_id, title_key) DO UPDATE
+         SET title = excluded.title, observed_at = excluded.observed_at`,
+      )
+      .run(jobPostingId, jobTitle, titleKey, observedAt);
+    return { companyId, jobPostingId };
   }
 }

@@ -51,6 +51,7 @@ test("event confirmation inserts once and remains idempotent", () => {
   const databasePath = join(directory, "applications.sqlite3");
   const store = new SubmissionStore(databasePath);
   const task = {
+    task_id: "5bae6308f955f822",
     company: "Binance",
     job_title: "Applied Data Scientist",
   };
@@ -72,6 +73,14 @@ test("event confirmation inserts once and remains idempotent", () => {
   const rows = database.prepare("SELECT * FROM applications").all();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].state, "submitted");
+  const companies = database.prepare("SELECT * FROM companies").all();
+  const postings = database.prepare("SELECT * FROM job_postings").all();
+  assert.equal(companies.length, 1);
+  assert.equal(companies[0].name, "Binance");
+  assert.equal(postings.length, 1);
+  assert.equal(postings[0].company_id, companies[0].id);
+  assert.equal(postings[0].provider, "indeed");
+  assert.equal(postings[0].provider_job_id, "5bae6308f955f822");
   assert.equal(
     rows[0].source_url,
     "https://smartapply.indeed.com/beta/indeedapply/form/post-apply",

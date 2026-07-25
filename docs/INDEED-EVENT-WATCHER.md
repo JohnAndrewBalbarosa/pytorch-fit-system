@@ -17,6 +17,19 @@ application. It writes SQLite only when all three conditions hold:
 Cookie values, storage state, credentials, form values, and URL query values are never logged or
 stored. The SQL operation is idempotent and retains the exact company/title duplicate policy.
 
+Submission identity is normalized without collapsing distinct openings:
+
+- `companies` stores one normalized company identity.
+- `job_postings` stores many postings for that company and uses Indeed's non-secret `jk` job ID
+  when the rendered Applied page exposes it.
+- `job_title_aliases` preserves earlier or expanded titles for the same posting.
+- `applications` remains the confirmation ledger and points to both the company and posting.
+
+This means one company can own many jobs, while a renamed posting such as a title with an added
+technology suffix reconciles in place instead of creating a second application. Query parameters
+are still removed from stored source URLs; only the validated alphanumeric Indeed job ID is retained
+as provider identity.
+
 Run in the foreground:
 
 ```bash

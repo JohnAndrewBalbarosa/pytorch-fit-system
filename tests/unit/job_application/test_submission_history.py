@@ -52,6 +52,17 @@ def test_different_exact_title_at_same_company_is_allowed(tmp_path):
     )
 
     assert second.decision == SubmissionDecision.RESERVED
+    with history._connect() as connection:
+        companies = connection.execute("SELECT id, name FROM companies").fetchall()
+        postings = connection.execute(
+            "SELECT company_id, canonical_title FROM job_postings ORDER BY id"
+        ).fetchall()
+    assert [(row["id"], row["name"]) for row in companies] == [(1, "Example Co")]
+    assert [row["company_id"] for row in postings] == [1, 1]
+    assert [row["canonical_title"] for row in postings] == [
+        "Backend Engineer",
+        "Machine Learning Engineer",
+    ]
 
 
 def test_same_exact_application_after_30_days_is_allowed(tmp_path):
@@ -190,3 +201,67 @@ def test_existing_legacy_confirmation_gets_source_without_changing_date(tmp_path
 
     assert reconciled.confirmation_source == ConfirmationSource.BROWSER
     assert reconciled.applied_at == original.applied_at
+
+
+def test_expanded_indeed_title_reconciles_one_posting_without_duplicate(tmp_path):
+    history = ApplicationSubmissionHistory(tmp_path / "applications.sqlite3")
+    original = history.record_existing_submission(
+        company="Dezai",
+        job_title="Backend Software Engineer Intern (Contract)",
+        applied_at=NOW,
+        source_url="https://smartapply.indeed.com/beta/indeedapply/form/post-apply",
+    )
+
+    reconciled = history.record_existing_submission(
+        company="Dezai",
+        job_title="Backend Software Engineer Intern (Contract) | Node.js • Prisma • PostgreSQL",
+        applied_at=NOW,
+        source_url="https://au.indeed.com/viewjob?jk=c432f5d2c17c2b53&hl=en",
+    )
+
+    assert reconciled.id == original.id
+    assert reconciled.job_title.endswith("| Node.js • Prisma • PostgreSQL")
+    with history._connect() as connection:
+        application_count = connection.execute("SELECT count(*) FROM applications").fetchone()[0]
+        posting = connection.execute(
+            """
+            SELECT provider, provider_job_id, canonical_title
+            FROM job_postings WHERE id = ?
+            """,
+            (reconciled.job_posting_id,),
+        ).fetchone()
+        aliases = connection.execute(
+            "SELECT title FROM job_title_aliases WHERE job_posting_id = ? ORDER BY id",
+            (reconciled.job_posting_id,),
+        ).fetchall()
+    assert application_count == 1
+    assert (posting["provider"], posting["provider_job_id"]) == (
+        "indeed",
+        "c432f5d2c17c2b53",
+    )
+    assert posting["canonical_title"] == reconciled.job_title
+    assert [row["title"] for row in aliases] == [
+        "Backend Software Engineer Intern (Contract)",
+        "Backend Software Engineer Intern (Contract) | Node.js • Prisma • PostgreSQL",
+    ]
+
+
+def test_same_provider_job_id_matches_after_title_change(tmp_path):
+    history = ApplicationSubmissionHistory(tmp_path / "applications.sqlite3")
+    first = history.record_existing_submission(
+        company="Example Co",
+        job_title="AI Developer",
+        applied_at=NOW,
+        source_url="https://au.indeed.com/viewjob?jk=abc123",
+    )
+
+    renamed = history.record_existing_submission(
+        company="Example Co",
+        job_title="Artificial Intelligence Developer",
+        applied_at=NOW + timedelta(hours=1),
+        source_url="https://au.indeed.com/viewjob?jk=abc123&hl=en",
+    )
+
+    assert renamed.id == first.id
+    assert renamed.job_title == "Artificial Intelligence Developer"
+    assert len(history.recent_submissions(now=NOW + timedelta(hours=2))) == 1
