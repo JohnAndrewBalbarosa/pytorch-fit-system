@@ -40,10 +40,11 @@ an AI call. AI is an ambiguity fallback only; cookie values and credentials neve
 Login/sign-up walls, expired/unknown sessions, CAPTCHA, and verification stop for human handoff.
 `check_access_gate` performs this check deterministically; it never solves or bypasses a challenge.
 `HumanVerificationQueue` can persist blocked applications using only a redacted application
-reference, domain, query-free URL, reason, timestamps, and status. After the user completes the
-challenge in the same legitimate browser session, a clear recheck resolves the queue item and the
-normal runner can resume. Cookies, credentials, storage state, proxy rotation, fingerprint
-spoofing, solver services, and other anti-bot evasion are outside this pipeline.
+reference, domain, query-free URL, reason, timestamps, status, and the non-secret Chrome target ID
+needed to resume the exact handoff tab. After the user completes the challenge in the same
+legitimate browser session, a clear recheck resolves the queue item and the normal runner can
+resume. Cookies, credentials, storage state, proxy rotation, fingerprint spoofing, solver services,
+and other anti-bot evasion are outside this pipeline.
 
 Confirmed submissions are stored separately in `ApplicationSubmissionHistory`, backed by SQLite.
 Before a final click, the runner atomically checks normalized-exact company and job-title keys. A

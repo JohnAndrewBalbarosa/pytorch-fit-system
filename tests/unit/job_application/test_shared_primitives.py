@@ -96,6 +96,29 @@ def test_submit_gate_stops_on_indeed_cloudflare_verification_page():
     assert result.access.reason == "verification_required"
 
 
+def test_submit_gate_stops_on_cloudflare_human_verification_copy():
+    result = evaluate_final_submit_gate(
+        _Page(body="Verify you are human. Performing security verification."),
+        "#submit",
+    )
+
+    assert not result.allowed
+    assert result.access.reason == "verification_required"
+
+
+def test_submit_gate_stops_on_visible_cloudflare_turnstile():
+    class _CloudflarePage(_Page):
+        def locator(self, selector):
+            if "cf-turnstile" in selector:
+                return _Locator(count=1, visible=True)
+            return super().locator(selector)
+
+    result = evaluate_final_submit_gate(_CloudflarePage(), "#submit")
+
+    assert not result.allowed
+    assert result.access.evidence == "visible Cloudflare challenge"
+
+
 def test_resume_matcher_accepts_arbitrary_website_profiles(tmp_path: Path):
     backend = tmp_path / "backend.pdf"
     data = tmp_path / "data.pdf"

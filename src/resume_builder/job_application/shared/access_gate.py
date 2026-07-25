@@ -66,6 +66,16 @@ def check_access_gate(page: Any) -> AccessGateResult:
     for selector, reason, evidence in (
         ('iframe[src*="hcaptcha"]', "captcha", "visible hCaptcha"),
         (
+            'iframe[src*="challenges.cloudflare.com"]',
+            "verification_required",
+            "visible Cloudflare challenge frame",
+        ),
+        (
+            ".cf-turnstile, #challenge-stage, #challenge-running, form#challenge-form",
+            "verification_required",
+            "visible Cloudflare challenge",
+        ),
+        (
             "[data-testid=challenge-form]",
             "verification_required",
             "visible verification challenge",
@@ -84,6 +94,10 @@ def check_access_gate(page: Any) -> AccessGateResult:
     for marker, reason in (
         ("verify you are human", "verification_required"),
         ("additional verification required", "verification_required"),
+        ("performing security verification", "verification_required"),
+        ("checking if the site connection is secure", "verification_required"),
+        ("checking your browser before accessing", "verification_required"),
+        ("enable javascript and cookies to continue", "verification_required"),
         ("cloudflare errors", "verification_required"),
         ("sign in to continue", "signed_out"),
         ("access denied", "blocked"),

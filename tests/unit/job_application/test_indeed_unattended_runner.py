@@ -342,6 +342,65 @@ def test_human_handoff_keeps_page_open():
     assert page.closed is False
 
 
+def test_pending_human_handoff_resumes_exact_browser_target(monkeypatch):
+    job = runner.IndeedUnattendedJob(
+        task_id="job",
+        company="Company",
+        job_title="Backend Engineer",
+        listing_url="https://ca.indeed.com/viewjob?jk=job",
+        target_country="Canada",
+    )
+    listing = SimpleNamespace(url=job.listing_url)
+    verification = SimpleNamespace(
+        url="https://smartapply.indeed.com/beta/indeedapply/form/verification"
+    )
+    context = SimpleNamespace(pages=[verification, listing])
+    queue = SimpleNamespace(
+        pending=lambda: [
+            SimpleNamespace(
+                application_reference=job.batch_task().application_reference,
+                browser_target_id="verification-target",
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        runner,
+        "_browser_target_id",
+        lambda page: "verification-target" if page is verification else "listing-target",
+    )
+
+    page, is_application_page = runner._matching_existing_page(context, job, queue)
+
+    assert page is verification
+    assert is_application_page is True
+
+
+def test_pending_listing_challenge_resumes_listing_flow(monkeypatch):
+    job = runner.IndeedUnattendedJob(
+        task_id="job",
+        company="Company",
+        job_title="Backend Engineer",
+        listing_url="https://ca.indeed.com/viewjob?jk=job",
+        target_country="Canada",
+    )
+    listing = SimpleNamespace(url=job.listing_url)
+    context = SimpleNamespace(pages=[listing])
+    queue = SimpleNamespace(
+        pending=lambda: [
+            SimpleNamespace(
+                application_reference=job.batch_task().application_reference,
+                browser_target_id="listing-target",
+            )
+        ]
+    )
+    monkeypatch.setattr(runner, "_browser_target_id", lambda _page: "listing-target")
+
+    page, is_application_page = runner._matching_existing_page(context, job, queue)
+
+    assert page is listing
+    assert is_application_page is False
+
+
 def test_qualification_evidence_includes_exact_remote_title():
     job = runner.IndeedUnattendedJob(
         task_id="job",
@@ -355,6 +414,62 @@ def test_qualification_evidence_includes_exact_remote_title():
 
     assert "Fully Remote" in evidence
     assert "Build reliable AI agents." in evidence
+
+
+class _TextLocator:
+    def __init__(self, page, selector):
+        self.page = page
+        self.selector = selector
+        self.first = self
+
+    def count(self):
+        return 1
+
+    def is_visible(self):
+        return True
+
+    def inner_text(self):
+        return self.page.text_at(self.selector)
+
+
+class _HydratingListingPage:
+    def __init__(self):
+        self.waited_ms = 0
+
+    def locator(self, selector):
+        return _TextLocator(self, selector)
+
+    def text_at(self, selector):
+        if self.waited_ms < 500:
+            return "Loading..." if selector == "body" else ""
+        if selector == "body":
+            return "Company — Backend Engineer"
+        return "Build APIs with Python."
+
+    def wait_for_timeout(self, milliseconds):
+        self.waited_ms += milliseconds
+
+
+def test_listing_evidence_waits_for_hydrated_identity_and_description():
+    job = runner.IndeedUnattendedJob(
+        task_id="job",
+        company="Company",
+        job_title="Backend Engineer",
+        listing_url="https://ca.indeed.com/viewjob?jk=job",
+        target_country="Canada",
+    )
+    page = _HydratingListingPage()
+
+    body, description = runner._wait_for_listing_evidence(
+        page,
+        job,
+        timeout_ms=1_000,
+        poll_ms=250,
+    )
+
+    assert body == "Company — Backend Engineer"
+    assert description == "Build APIs with Python."
+    assert page.waited_ms == 500
 
 
 class _ApplyLocator:

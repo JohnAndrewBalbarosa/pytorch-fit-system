@@ -86,6 +86,25 @@ def test_clear_recheck_resolves_matching_queue_item(tmp_path):
     assert queue.pending() == []
 
 
+def test_queue_preserves_browser_target_for_exact_human_resume(tmp_path):
+    queue = HumanVerificationQueue(tmp_path / "verification.json")
+    blocked = AccessGateResult(
+        state=AccessGateState.HUMAN_REQUIRED,
+        reason="captcha",
+    )
+
+    queued = queue.enqueue(
+        application_reference="Company — Backend Engineer",
+        url="https://smartapply.indeed.com/form?token=secret",
+        result=blocked,
+        browser_target_id="target-123",
+    )
+
+    assert queued.browser_target_id == "target-123"
+    assert queue.pending()[0].browser_target_id == "target-123"
+    assert "secret" not in queue.path.read_text(encoding="utf-8")
+
+
 def test_only_blocked_results_can_be_enqueued(tmp_path):
     queue = HumanVerificationQueue(tmp_path / "verification.json")
 

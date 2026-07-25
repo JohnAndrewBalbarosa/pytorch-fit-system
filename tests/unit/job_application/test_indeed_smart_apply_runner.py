@@ -38,7 +38,16 @@ class _Locator:
         return self
 
     def count(self):
-        if self.selector.startswith(("iframe", "[data-testid=challenge")):
+        if self.selector.startswith(
+            (
+                "iframe",
+                "[data-testid=challenge",
+                ".cf-turnstile",
+                "#challenge-stage",
+                "#challenge-running",
+                "form#challenge-form",
+            )
+        ):
             return 0
         if (
             self.selector == "[data-testid=submit-application-button]"

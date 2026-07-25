@@ -48,6 +48,7 @@ class VerificationQueueEntry(BaseModel):
     created_at: str
     updated_at: str
     occurrences: int = 1
+    browser_target_id: str = ""
 
 
 def _safe_application_reference(application_reference: str, safe_url: str) -> str:
@@ -71,6 +72,7 @@ class HumanVerificationQueue:
         application_reference: str,
         url: str,
         result: AccessGateResult,
+        browser_target_id: str = "",
     ) -> VerificationQueueEntry:
         if not result.blocked:
             raise ValueError("only human-required access results may be queued")
@@ -92,6 +94,9 @@ class HumanVerificationQueue:
                 created_at=existing.get("created_at", now) if existing else now,
                 updated_at=now,
                 occurrences=int(existing.get("occurrences", 0)) + 1 if existing else 1,
+                browser_target_id=browser_target_id or (
+                    str(existing.get("browser_target_id", "")) if existing else ""
+                ),
             )
             payload[entry_id] = entry.model_dump(mode="json")
             self._save(payload)

@@ -87,21 +87,78 @@ def _check_access(page, job, queue):
         )
         return access
     host = (urlsplit(str(page.url)).hostname or "").lower()
-    already_pending = any(
-        item.application_reference == reference and item.domain == host for item in queue.pending()
-    )
-    if not already_pending:
+    matching_pending = [
+        item
+        for item in queue.pending()
+        if item.application_reference == reference and item.domain == host
+    ]
+    target_id = _browser_target_id(page)
+    if not matching_pending or (
+        target_id and not any(item.browser_target_id for item in matching_pending)
+    ):
         queue.enqueue(
             application_reference=reference,
             url=str(page.url),
             result=access,
+            browser_target_id=target_id,
         )
     return access
+
+
+def _browser_target_id(page) -> str:
+    """Return Chrome's non-secret page identity for exact human-handoff resume."""
+    session = None
+    try:
+        session = page.context.new_cdp_session(page)
+        result = session.send("Target.getTargetInfo")
+        return str(result.get("targetInfo", {}).get("targetId", ""))
+    except Exception:
+        return ""
+    finally:
+        if session is not None:
+            try:
+                session.detach()
+            except Exception:
+                pass
 
 
 def _visible_text(page, selector: str) -> str:
     locator = page.locator(selector).first
     return locator.inner_text() if locator.count() and locator.is_visible() else ""
+
+
+def _wait_for_listing_evidence(
+    page,
+    job: IndeedUnattendedJob,
+    *,
+    timeout_ms: int = 10_000,
+    poll_ms: int = 250,
+) -> tuple[str, str]:
+    """Wait for hydrated identity and description before qualification checks."""
+    expected_company = " ".join(job.company.casefold().split())
+    expected_title = " ".join(job.job_title.casefold().split())
+    waited_ms = 0
+    body_text = ""
+    description = ""
+    while True:
+        try:
+            body_text = _visible_text(page, "body")
+            description = _visible_text(page, "#jobDescriptionText")
+        except Exception:
+            body_text = ""
+            description = ""
+        normalized_body = " ".join(body_text.casefold().split())
+        if (
+            expected_company in normalized_body
+            and expected_title in normalized_body
+            and description.strip()
+        ):
+            return body_text, description
+        if waited_ms >= timeout_ms:
+            return body_text, description
+        delay_ms = min(poll_ms, timeout_ms - waited_ms)
+        page.wait_for_timeout(delay_ms)
+        waited_ms += delay_ms
 
 
 def _visible_apply_control(page, *, timeout_ms: int, poll_ms: int):
@@ -223,13 +280,25 @@ def _runtime_verified_phone(page, args: argparse.Namespace) -> str:
     return ""
 
 
-def _matching_existing_page(context, job: IndeedUnattendedJob):
+def _matching_existing_page(
+    context,
+    job: IndeedUnattendedJob,
+    queue: HumanVerificationQueue | None = None,
+):
     listing_url = job.listing_url.rstrip("/")
     company = " ".join(job.company.casefold().split())
     title = " ".join(job.job_title.casefold().split())
-    for page in reversed(context.pages):
-        if str(page.url).rstrip("/") == listing_url:
-            return page, False
+    pending_target_ids = {
+        entry.browser_target_id
+        for entry in (queue.pending() if queue is not None else [])
+        if entry.application_reference == job.batch_task().application_reference
+        and entry.browser_target_id
+    }
+    if pending_target_ids:
+        for page in reversed(context.pages):
+            if _browser_target_id(page) in pending_target_ids:
+                host = (urlsplit(str(page.url)).hostname or "").lower()
+                return page, host == "smartapply.indeed.com"
     for page in reversed(context.pages):
         if (urlsplit(str(page.url)).hostname or "").lower() != "smartapply.indeed.com":
             continue
@@ -239,6 +308,9 @@ def _matching_existing_page(context, job: IndeedUnattendedJob):
             continue
         if company in body and title in body:
             return page, True
+    for page in reversed(context.pages):
+        if str(page.url).rstrip("/") == listing_url:
+            return page, False
     return None, False
 
 
@@ -393,7 +465,7 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
         if not browser.contexts:
             return _outcome(job, BatchApplicationStatus.FAILED, "Chrome has no browser context")
         context = browser.contexts[0]
-        page, is_application_page = _matching_existing_page(context, job)
+        page, is_application_page = _matching_existing_page(context, job, queue)
         if is_application_page:
             return _retire_if_terminal(
                 page,
@@ -417,7 +489,7 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
                 f"access gate remains pending: {access.reason}",
             )
 
-        body_text = _visible_text(page, "body")
+        body_text, description = _wait_for_listing_evidence(page, job)
         normalized_body = " ".join(body_text.casefold().split())
         if (
             " ".join(job.job_title.casefold().split()) not in normalized_body
@@ -428,7 +500,6 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
                 BatchApplicationStatus.HUMAN_HANDOFF,
                 "rendered listing does not prove the exact manifest company/title",
             )
-        description = _visible_text(page, "#jobDescriptionText")
         allowed, reason = description_is_allowed(
             _qualification_evidence(job, description),
             required_any_groups=job.required_any_groups,
