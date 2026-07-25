@@ -71,7 +71,10 @@ def question_set_fingerprint(questions: list[ScreeningQuestion]) -> str:
         {
             "label": question.label,
             "kind": question.kind,
-            "options": question.options,
+            # Indeed virtualizes large select menus, so the mounted option subset
+            # is not stable enough to identify the questionnaire. The executor
+            # still requires one exact live option match before selecting.
+            "options": [] if question.kind == "select" else question.options,
             "required": question.required,
         }
         for question in questions
@@ -110,15 +113,10 @@ def observe_indeed_screening_questions(page: Any) -> list[ScreeningQuestion]:
             kind = "radio"
             selector = group_selector
         elif combo.count():
-            option_selector = (
-                f'[data-testid^="input-{question_id}-select-list-"][role="option"]'
-            )
-            option_nodes = page.locator(option_selector)
+            # Select options are virtualized and may be absent, partial, or stale
+            # until the menu is filtered. Validate the approved value against the
+            # exact rendered option during execution instead.
             options = []
-            for option_index in range(option_nodes.count()):
-                option = option_nodes.nth(option_index).inner_text().strip()
-                if option and option not in options:
-                    options.append(option)
             kind = "select"
             selector = combo_selector
         elif text.count():
@@ -164,6 +162,15 @@ def build_approved_indeed_question_plan(
         return result
     for step, question in enumerate(questions, start=1):
         value = approved.answers.get(question.label, "").strip()
+        if not value and not question.required:
+            result.answers.append(
+                QuestionAnswer(
+                    question_id=question.question_id,
+                    abstain=True,
+                    rationale="optional question has no user-approved answer",
+                )
+            )
+            continue
         if (
             not value
             or not question.selector

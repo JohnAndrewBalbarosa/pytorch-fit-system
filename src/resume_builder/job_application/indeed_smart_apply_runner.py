@@ -231,6 +231,24 @@ def _wait_for_post_apply_confirmation(page: Any, *, timeout_ms: int = 15_000) ->
     return _post_apply_is_confirmed(page)
 
 
+def _wait_for_final_submit_gate(
+    page: Any,
+    selector: str,
+    *,
+    timeout_ms: int = 5_000,
+) -> Any:
+    """Allow the hydrated review control to appear without ever clicking it twice."""
+    interval_ms = 250
+    attempts = max(1, timeout_ms // interval_ms)
+    result = evaluate_final_submit_gate(page, selector)
+    for _ in range(attempts):
+        if result.allowed or result.access.blocked:
+            return result
+        page.wait_for_timeout(interval_ms)
+        result = evaluate_final_submit_gate(page, selector)
+    return result
+
+
 def _wait_for_known_module(page: Any, *, timeout_ms: int = 15_000) -> IndeedSmartApplyModule:
     interval_ms = 250
     attempts = max(1, timeout_ms // interval_ms)
@@ -432,13 +450,13 @@ def run_indeed_smart_apply_until_gate(
             action.action.lower().strip() == "final_submit" for action in ordered_actions
         )
         reservation_id: int | None = None
-        if submitted and submission_history is not None:
+        if submitted:
             submit_selector = next(
                 action.target
                 for action in ordered_actions
                 if action.action.lower().strip() == "final_submit"
             )
-            pre_submit_gate = evaluate_final_submit_gate(page, submit_selector)
+            pre_submit_gate = _wait_for_final_submit_gate(page, submit_selector)
             if not pre_submit_gate.allowed:
                 if verification_queue is not None:
                     if pre_submit_gate.access.blocked:
@@ -455,6 +473,7 @@ def run_indeed_smart_apply_until_gate(
                     stop_reason=f"final submit gate: {pre_submit_gate.reason}",
                     selected_resume=plan.selected_resume,
                 )
+        if submitted and submission_history is not None:
             if not company.strip() or not job_title.strip():
                 return IndeedSmartApplyRunResult(
                     status=IndeedSmartApplyRunStatus.GATE_REACHED,

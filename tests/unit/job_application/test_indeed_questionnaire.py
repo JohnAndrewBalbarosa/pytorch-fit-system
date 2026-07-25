@@ -75,15 +75,46 @@ def test_missing_or_non_option_answer_fails_closed():
     ]
 
 
-def test_question_set_drift_rejects_the_entire_profile():
+def test_virtualized_select_option_mounting_does_not_change_fingerprint():
     approved = _approved()
     changed = _questions()
     changed[0].options.append("Canada")
 
     result = build_approved_indeed_question_plan(changed, approved)
 
-    assert result.steps == []
-    assert result.unresolved == ["country", "sponsorship", "availability"]
+    assert result.unresolved == []
+    assert [step.value for step in result.steps] == [
+        "Philippines",
+        "Yes, sponsorship is required",
+        "6 months — available to start as soon as possible",
+    ]
+
+
+def test_missing_optional_answer_does_not_block_required_answers():
+    questions = _questions()
+    questions.append(
+        ScreeningQuestion(
+            question_id="language-3",
+            label="Language 3",
+            selector='[data-testid="language-3"]',
+            kind="select",
+            required=False,
+        )
+    )
+    approved = ApprovedIndeedQuestionAnswers(
+        question_set_fingerprint=question_set_fingerprint(questions),
+        answers=_approved().answers,
+    )
+
+    result = build_approved_indeed_question_plan(questions, approved)
+
+    assert result.unresolved == []
+    assert [step.value for step in result.steps] == [
+        "Philippines",
+        "Yes, sponsorship is required",
+        "6 months — available to start as soon as possible",
+    ]
+    assert result.answers[-1].abstain is True
 
 
 def test_answer_set_selects_only_the_exact_question_page():

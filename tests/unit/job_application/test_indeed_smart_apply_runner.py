@@ -40,6 +40,11 @@ class _Locator:
     def count(self):
         if self.selector.startswith(("iframe", "[data-testid=challenge")):
             return 0
+        if (
+            self.selector == "[data-testid=submit-application-button]"
+            and not self.page.state.fields.get("submit_ready", True)
+        ):
+            return 0
         if self.selector.startswith(
             ("[aria-invalid", "[role=alert]", "[data-testid*=error]", ".ia-ValidationError")
         ):
@@ -159,6 +164,17 @@ class _HydratingPage(_Page):
 class _StuckPage(_Page):
     def advance(self):
         return None
+
+
+class _DelayedSubmitPage(_Page):
+    def __init__(self, states):
+        super().__init__(states)
+        self.waits = 0
+
+    def wait_for_timeout(self, _milliseconds):
+        self.waits += 1
+        if self.waits == 2:
+            self.state.fields["submit_ready"] = True
 
 
 def _resume():
@@ -334,6 +350,35 @@ def test_runner_waits_for_observable_post_apply_after_approved_submit():
     assert result.module.value == "post_apply"
     assert result.actions_executed == ["review:final_submit"]
     assert page.index == 1
+
+
+def test_runner_waits_for_delayed_final_submit_control_hydration():
+    root = "https://smartapply.indeed.com/beta/indeedapply/form"
+    page = _DelayedSubmitPage(
+        [
+            _State(
+                f"{root}/review-module",
+                "Review your application",
+                {"submit_ready": False},
+            ),
+            _State(f"{root}/post-apply", "Your application has been submitted", {}),
+        ]
+    )
+
+    result = run_indeed_smart_apply_until_gate(
+        page,
+        _resume(),
+        approvals=SmartApplyApprovals(final_submit=True),
+        permission_policy=ApplicationPermissionPolicy(
+            autonomous_submit=True,
+            allowed_domains={"smartapply.indeed.com"},
+        ),
+        submission_history=None,
+    )
+
+    assert result.status == IndeedSmartApplyRunStatus.POST_APPLY
+    assert result.actions_executed == ["review:final_submit"]
+    assert page.waits == 2
 
 
 def test_runner_does_not_accept_post_apply_route_without_visible_confirmation():
