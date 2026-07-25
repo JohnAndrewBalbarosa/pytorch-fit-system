@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -23,8 +24,6 @@ ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pyproject.toml"
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "src"))
 from social_scraping.common.paths import DATA, RESUMES  # noqa: E402
-
-import os
 
 # Personal values come from the environment / .env (gitignored), never hardcoded.
 GH_USER = os.environ.get("RESUME_GH_USER") or "your-github-username"
@@ -53,10 +52,15 @@ def _combined_achievements():
                 continue
             text = (p.get("text") or "").strip()
             title = text.split(".")[0][:120] if text else "Facebook post"
-            items.append(ResumeAchievement(
-                title=title, source="facebook", url=p.get("url", ""),
-                date=None, snippet=text[:400],
-            ))
+            items.append(
+                ResumeAchievement(
+                    title=title,
+                    source="facebook",
+                    url=p.get("url", ""),
+                    date=None,
+                    snippet=text[:400],
+                )
+            )
     if LI.exists():
         d = json.loads(LI.read_text(encoding="utf-8"))
         for h in d.get("honors_awards", []):
@@ -64,10 +68,15 @@ def _combined_achievements():
             cred = h.get("credential_id")
             if cred:
                 snippet = (snippet + f" (Credential ID: {cred})").strip()
-            items.append(ResumeAchievement(
-                title=h.get("title", "")[:120], source="linkedin", url=d.get("url", ""),
-                date=h.get("date"), snippet=snippet[:400] or h.get("issuer", ""),
-            ))
+            items.append(
+                ResumeAchievement(
+                    title=h.get("title", "")[:120],
+                    source="linkedin",
+                    url=d.get("url", ""),
+                    date=h.get("date"),
+                    snippet=snippet[:400] or h.get("issuer", ""),
+                )
+            )
     return items
 
 
@@ -113,12 +122,14 @@ def _education_from_li(li: dict):
     out = []
     for e in li.get("education", []):
         degree = e.get("degree", "") or ""
-        out.append(ResumeEducation(
-            school=e.get("school", ""),
-            degree=degree,
-            start=e.get("start"),
-            end=e.get("end"),
-        ))
+        out.append(
+            ResumeEducation(
+                school=e.get("school", ""),
+                degree=degree,
+                start=e.get("start"),
+                end=e.get("end"),
+            )
+        )
     return out
 
 
@@ -131,8 +142,10 @@ def main() -> int:
     achievements = _combined_achievements()
     li = _linkedin_profile()
     li_education = _education_from_li(li)
-    _say(f"[build] injecting {len(achievements)} achievements + "
-         f"{len(li_education)} LinkedIn education entries into every resume")
+    _say(
+        f"[build] injecting {len(achievements)} achievements + "
+        f"{len(li_education)} LinkedIn education entries into every resume"
+    )
 
     summary = []
     html_pdf_pairs: list[tuple[Path, Path]] = []
@@ -158,9 +171,11 @@ def main() -> int:
                 resume.education = li_education
             resume.achievements = achievements
             paths = pipeline.render_only(resume, FORMATS, out_dir)
-            _say(f"[build] {role}: name={resume.contact.name!r}, "
-                 f"{len(resume.projects)} projects, {len(resume.education)} education, "
-                 f"{len(achievements)} achievements")
+            _say(
+                f"[build] {role}: name={resume.contact.name!r}, "
+                f"{len(resume.projects)} projects, {len(resume.education)} education, "
+                f"{len(achievements)} achievements"
+            )
             for pth in paths:
                 _say(f"[build]    -> {pth}")
             html_pdf_pairs.append((out_dir / "resume.html", out_dir / "resume.pdf"))

@@ -8,9 +8,33 @@ import {
   MicrotaskCoalescer,
   SubmissionStore,
   applyTriggerDecision,
+  cleanListingIdentity,
+  countOpenPageTargets,
   isExactIndeedConfirmation,
   normalizeExactIdentity,
 } from "../../tools/job_finder/indeed_event_watcher_core.mjs";
+
+test("listing identity rejects transient CSS contamination", () => {
+  assert.equal(cleanListingIdentity("  EzzyBills  "), "EzzyBills");
+  assert.equal(
+    cleanListingIdentity(".css-a{font-family:sans-serif;}UpGuard"),
+    "",
+  );
+  assert.equal(cleanListingIdentity("x".repeat(201)), "");
+});
+
+test("tab pressure counts current page targets only", () => {
+  assert.equal(
+    countOpenPageTargets([
+      { type: "page" },
+      { type: "page" },
+      { type: "service_worker" },
+      { type: "background_page" },
+    ]),
+    2,
+  );
+  assert.equal(countOpenPageTargets(undefined), 0);
+});
 
 test("click and focus events route one visible Apply control within the tab limit", () => {
   const snapshot = {

@@ -13,7 +13,6 @@ Writes out/li_profile/*.png + out/li_profile/handle.txt. Scratch tool.
 from __future__ import annotations
 
 import sys
-import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -94,7 +93,7 @@ def main() -> int:
                 for seg in range(3):
                     shot = sec_dir / f"{seg:02d}.png"
                     page.screenshot(path=str(shot))
-                    moved = page.evaluate(
+                    page.evaluate(
                         "(() => { const b=document.body.scrollHeight; window.scrollBy(0, window.innerHeight*0.85); return b; })()"
                     )
                     page.wait_for_timeout(1200)

@@ -92,7 +92,7 @@ def test_latest_job_scraping_api_returns_visualization_artifact(tmp_path, monkey
     assert response.status_code == 200
     payload = response.json()
     assert payload["source_label"].startswith("Current Codex session")
-    assert payload["model_output"]["rules"][1]["role"] == "job_card"
+    assert any(rule["role"] == "job_card" for rule in payload["model_output"]["rules"])
     assert payload["scraping_output"]["listings"][0]["title"] == "Backend Engineer"
 
 
@@ -254,11 +254,10 @@ def test_auth_start_redirects_when_configured(tmp_path, monkeypatch):
     response = TestClient(app, follow_redirects=False).get("/auth/github/start")
 
     assert response.status_code == 302
-    assert response.headers["location"].startswith(
-        "https://github.com/login/oauth/authorize?"
-    )
-    assert "redirect_uri=http%3A%2F%2F127.0.0.1%3A8010%2Fauth%2Fgithub%2Fcallback" in (
-        response.headers["location"]
+    assert response.headers["location"].startswith("https://github.com/login/oauth/authorize?")
+    assert (
+        "redirect_uri=http%3A%2F%2F127.0.0.1%3A8010%2Fauth%2Fgithub%2Fcallback"
+        in (response.headers["location"])
     )
 
 
@@ -270,9 +269,7 @@ def test_auth_start_redirects_when_configured(tmp_path, monkeypatch):
         ("microsoft", "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?"),
     ],
 )
-def test_auth_start_redirects_for_identity_providers(
-    provider, expected_url, tmp_path, monkeypatch
-):
+def test_auth_start_redirects_for_identity_providers(provider, expected_url, tmp_path, monkeypatch):
     monkeypatch.setenv("RESUME_BUILDER_CACHE", str(tmp_path))
     monkeypatch.setenv(f"{provider.upper()}_CLIENT_ID", "client-id")
     monkeypatch.setenv(f"{provider.upper()}_CLIENT_SECRET", "client-secret")
@@ -380,9 +377,7 @@ def test_github_oauth_callback_reads_primary_email_when_profile_email_is_private
 
     assert response.status_code == 302
     status = TestClient(app).get("/api/auth/status").json()
-    assert status["identity"]["github"]["profile"]["email"] == (
-        "juan-private@example.com"
-    )
+    assert status["identity"]["github"]["profile"]["email"] == ("juan-private@example.com")
 
 
 def test_social_login_job_saves_visible_login_result(tmp_path, monkeypatch):

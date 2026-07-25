@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from resume_builder.core.models import ResumeProject, RoleSpec
+from resume_builder.llm.base import LLMProvider
 from resume_builder.orchestration import pipeline as P
 
 
@@ -26,9 +27,6 @@ def test_keyword_fallback_empty_when_nothing_matches():
     role = _role(keywords=["pytorch", "tensorflow"])
     projects = [ResumeProject(name="codespaces-react", description="React", tech=["JavaScript"])]
     assert P._filter_projects_by_role(projects, role, llm=None) == []
-
-
-from resume_builder.llm.base import LLMProvider
 
 
 class _StubLLM(LLMProvider):

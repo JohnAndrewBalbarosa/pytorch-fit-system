@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from typing import Iterable
 
@@ -35,9 +34,7 @@ class LinkedInVendor(SocialVendor):
         self._client = HttpClient(cookies=resolved)
         self._authenticated = bool(resolved.get("li_at"))
         if not self._authenticated:
-            log.info(
-                "LinkedIn vendor has no li_at cookie — public-only mode."
-            )
+            log.info("LinkedIn vendor has no li_at cookie — public-only mode.")
 
     def fetch_own_posts(self, handle: str, limit: int = 50) -> list[SocialPost]:
         try:
@@ -125,7 +122,9 @@ class LinkedInLogin:
             self._solve_challenge(html, prompt)
         cookies = self._extract_li_cookies()
         if "li_at" not in cookies:
-            raise LoginError("linkedin login: li_at cookie not set — likely checkpoint or bad credentials")
+            raise LoginError(
+                "linkedin login: li_at cookie not set — likely checkpoint or bad credentials"
+            )
         return cookies
 
     def _fetch_csrf(self) -> str:

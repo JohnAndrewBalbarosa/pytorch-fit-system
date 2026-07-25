@@ -6,9 +6,9 @@ Covers:
 - run_industry_auto end-to-end with a fake LLM produces resumes with projects
 - Static/NullProvider path through run_industry_auto remains unchanged
 """
+
 from __future__ import annotations
 
-from resume_builder.classification.industry import IndustryClassification, TaggedProject
 from resume_builder.interpretation.normalizer import _AliasMap
 from resume_builder.llm.base import LLMProvider
 from resume_builder.llm.null_provider import NullProvider
@@ -19,6 +19,7 @@ from resume_builder.orchestration.pipeline import BuildIndustryInputs, Pipeline
 # ---------------------------------------------------------------------------
 # Fake LLM — deterministic, no network
 # ---------------------------------------------------------------------------
+
 
 class _FakeLLM(LLMProvider):
     """Branches on schema.__name__ to return deterministic structured outputs."""
@@ -62,6 +63,7 @@ class _FakeLLM(LLMProvider):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_repos() -> list[Repo]:
     return [
         Repo(
@@ -93,6 +95,7 @@ def _make_achievement() -> ResumeAchievement:
 # ---------------------------------------------------------------------------
 # Unit tests for _classify_with_p3
 # ---------------------------------------------------------------------------
+
 
 def test_repo_sources_use_bare_full_name_as_key():
     """TaggedProjects in classification.projects must have repo_full_name == repo.full_name."""
@@ -174,6 +177,7 @@ def test_archived_repos_are_excluded():
 # End-to-end: run_industry_auto with fake LLM
 # ---------------------------------------------------------------------------
 
+
 def test_run_industry_auto_yields_resumes_with_projects(monkeypatch, tmp_path):
     """Bare-key contract end-to-end: repos must produce non-empty projects in resumes."""
     repos = _make_repos()
@@ -246,6 +250,7 @@ def test_run_industry_auto_post_achievement_routed_via_index(monkeypatch, tmp_pa
 # ---------------------------------------------------------------------------
 # Static mode guard: NullProvider must still use IndustryClassifier
 # ---------------------------------------------------------------------------
+
 
 def test_static_mode_uses_industry_classifier_not_p3(monkeypatch, tmp_path):
     """NullProvider path must keep using IndustryClassifier (static fallback)."""

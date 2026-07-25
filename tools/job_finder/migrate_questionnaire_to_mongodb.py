@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from resume_builder.job_application.indeed_questionnaire import (  # noqa: E402
     ApprovedIndeedQuestionAnswerSet,
 )
-from resume_builder.job_application.questionnaire_store import (  # noqa: E402
+from resume_builder.job_application.persistence.questionnaire_store import (  # noqa: E402
     DEFAULT_MONGODB_DATABASE,
     DEFAULT_MONGODB_URI,
     MongoQuestionnaireRepository,
@@ -31,9 +31,7 @@ def migrate(args: argparse.Namespace) -> int:
             source=f"approved JSON migration: {args.source.name}",
         )
         stored = repository.load(domain=answer_set.domain)
-        source_pages = {
-            page.question_set_fingerprint: page.answers for page in answer_set.pages
-        }
+        source_pages = {page.question_set_fingerprint: page.answers for page in answer_set.pages}
         stored_pages = (
             {page.question_set_fingerprint: page.answers for page in stored.pages}
             if stored is not None

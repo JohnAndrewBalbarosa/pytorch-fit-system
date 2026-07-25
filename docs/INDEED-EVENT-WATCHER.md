@@ -6,6 +6,8 @@ click, input, change, and DOM-mutation events enqueue a coalesced microtask.
 
 The daemon learns exact job identity from a visible `au.indeed.com/viewjob` or
 `ca.indeed.com/viewjob` page and carries that identity across same-tab navigation or a popup.
+It reads visible labels (not raw descendant text) and rejects oversized or CSS-contaminated
+company/title snapshots, waiting for a clean rendered identity before binding the task.
 When the user clicks or focuses that exact tab, the watcher inspects only that tab. If it finds one
 visible, enabled `Apply with Indeed`, `Apply now`, or `Apply on company site` control, it clicks the
 control once. Indeed controls route into the active Indeed automation flow; company-site controls
@@ -14,6 +16,8 @@ confirmation state but never trigger Apply by themselves.
 
 Apply triggering is bounded by `--max-tabs` (default `6`). When the attached page count reaches the
 limit, the watcher logs `apply_deferred_resource_limit` and does not open another application tab.
+The decision queries Chrome's current page targets instead of trusting cached attachment events, so
+closed search tabs release capacity immediately.
 The per-target URL/control key prevents repeated clicks during event bursts.
 
 An optional single-job manifest supplies identity once after a watcher restart when the application

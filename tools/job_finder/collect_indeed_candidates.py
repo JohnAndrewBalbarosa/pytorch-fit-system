@@ -41,8 +41,8 @@ _DEFAULT_KEYWORDS = (
     "software engineer intern",
 )
 _TITLE_BLOCKERS = re.compile(
-    r"\b(senior|staff|principal|manager|director|head|lead|sales|"
-    r"business development|account executive|marketing|recruiter)\b",
+    r"\b(senior|staff|principal|architect|manager|director|head|lead|sales|"
+    r"business development|account executive|marketing|recruiter|talent acquisition)\b",
     re.IGNORECASE,
 )
 _ROLE_PROFILES = (
@@ -244,9 +244,7 @@ def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
     selected: list[IndeedUnattendedJob] = []
     identities: set[tuple[str, str]] = set()
     listing_keys: set[tuple[str, str]] = set()
-    country_limit = (args.max_candidates + len(args.target_country) - 1) // len(
-        args.target_country
-    )
+    country_limit = (args.max_candidates + len(args.target_country) - 1) // len(args.target_country)
 
     def add_candidate(candidate: IndeedUnattendedJob | None) -> bool:
         if candidate is None:
@@ -273,9 +271,7 @@ def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
         return True
 
     for seed_path in getattr(args, "seed_manifest", []):
-        seed = IndeedUnattendedManifest.model_validate_json(
-            seed_path.read_text(encoding="utf-8")
-        )
+        seed = IndeedUnattendedManifest.model_validate_json(seed_path.read_text(encoding="utf-8"))
         for candidate in seed.jobs:
             add_candidate(candidate)
             if len(selected) >= args.max_candidates:
@@ -287,9 +283,7 @@ def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
             raise RuntimeError("Chrome has no browser context")
         context = browser.contexts[0]
         if args.open_tabs_only:
-            allowed = {
-                _COUNTRY_HOSTS[country]: country for country in args.target_country
-            }
+            allowed = {_COUNTRY_HOSTS[country]: country for country in args.target_country}
             for page in context.pages:
                 parts = urlsplit(page.url)
                 host = (parts.hostname or "").lower()

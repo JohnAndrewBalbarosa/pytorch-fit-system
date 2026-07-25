@@ -40,6 +40,7 @@ def test_session_store_used_when_env_empty(tmp_path: Path, monkeypatch: pytest.M
     # Resolver's SessionStore is constructed inside the call — it reads from
     # the env-pointed dir, so saving via a parallel store with the same path works.
     from resume_builder.sources.social.auth import _default_session_dir
+
     SessionStore(base_dir=_default_session_dir()).save("twitter", {"auth_token": "AT1"})
     monkeypatch.setenv("RESUME_BUILDER_NO_BROWSER_COOKIES", "1")
     cookies = resolve_session_cookies("twitter")
@@ -48,7 +49,9 @@ def test_session_store_used_when_env_empty(tmp_path: Path, monkeypatch: pytest.M
 
 def test_browser_fallback_used_when_env_and_store_empty(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("RESUME_BUILDER_NO_BROWSER_COOKIES", raising=False)
-    fake = ImportReport(cookies={"sessionid": "FROM_BROWSER"}, attempts=[("chrome", "loaded 1 cookies")])
+    fake = ImportReport(
+        cookies={"sessionid": "FROM_BROWSER"}, attempts=[("chrome", "loaded 1 cookies")]
+    )
     with patch(
         "resume_builder.sources.social.browser_cookies.import_cookies_report",
         return_value=fake,
@@ -59,9 +62,7 @@ def test_browser_fallback_used_when_env_and_store_empty(monkeypatch: pytest.Monk
 
 def test_browser_fallback_disabled_via_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("RESUME_BUILDER_NO_BROWSER_COOKIES", "1")
-    with patch(
-        "resume_builder.sources.social.browser_cookies.import_cookies_report"
-    ) as m:
+    with patch("resume_builder.sources.social.browser_cookies.import_cookies_report") as m:
         cookies = resolve_session_cookies("instagram")
     assert cookies == {}
     m.assert_not_called()
@@ -71,16 +72,29 @@ def test_chrome_is_first_in_default_browser_chain():
     """Browser-agnostic but Chrome-preferred: chrome must appear first."""
     from resume_builder.sources.social.browser_cookies import _DOMAINS  # noqa: F401
     import resume_builder.sources.social.browser_cookies as bcmod
-    from unittest.mock import MagicMock
 
     calls: list[str] = []
 
     class _FakeBC:
-        def chrome(self, domain_name): calls.append("chrome"); return []
-        def edge(self, domain_name): calls.append("edge"); return []
-        def firefox(self, domain_name): calls.append("firefox"); return []
-        def brave(self, domain_name): calls.append("brave"); return []
-        def opera(self, domain_name): calls.append("opera"); return []
+        def chrome(self, domain_name):
+            calls.append("chrome")
+            return []
+
+        def edge(self, domain_name):
+            calls.append("edge")
+            return []
+
+        def firefox(self, domain_name):
+            calls.append("firefox")
+            return []
+
+        def brave(self, domain_name):
+            calls.append("brave")
+            return []
+
+        def opera(self, domain_name):
+            calls.append("opera")
+            return []
 
     fake = _FakeBC()
     with patch.dict("sys.modules", {"browser_cookie3": fake}):

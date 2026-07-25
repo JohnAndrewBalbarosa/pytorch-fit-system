@@ -1,4 +1,8 @@
-"""Resource-aware limits for bounded browser application batches."""
+"""Resource-aware limits for bounded browser application batches.
+
+This module is runtime policy only: it measures capacity and returns limits,
+without knowing about vendor selectors, questionnaire answers, or persistence.
+"""
 
 from __future__ import annotations
 

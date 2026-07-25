@@ -2,9 +2,9 @@
 
 Only the pure function is tested here — live Playwright navigation is not unit-tested.
 """
+
 from __future__ import annotations
 
-import pytest
 
 from resume_builder.sources.social.vendors.facebook import extract_handle_from_url
 
@@ -41,21 +41,15 @@ def test_hash_fragment_stripped():
 
 
 def test_posts_path_returns_none():
-    assert (
-        extract_handle_from_url("https://www.facebook.com/johndoe/posts/987654321") is None
-    )
+    assert extract_handle_from_url("https://www.facebook.com/johndoe/posts/987654321") is None
 
 
 def test_permalink_path_returns_none():
-    assert (
-        extract_handle_from_url("https://www.facebook.com/permalink/1234567890") is None
-    )
+    assert extract_handle_from_url("https://www.facebook.com/permalink/1234567890") is None
 
 
 def test_events_path_returns_none():
-    assert (
-        extract_handle_from_url("https://www.facebook.com/events/1234567890") is None
-    )
+    assert extract_handle_from_url("https://www.facebook.com/events/1234567890") is None
 
 
 def test_numeric_only_path_returns_none():
@@ -76,9 +70,7 @@ def test_none_input_returns_none():
 
 def test_story_php_returns_none():
     assert (
-        extract_handle_from_url(
-            "https://www.facebook.com/story.php?story_fbid=12345&id=67890"
-        )
+        extract_handle_from_url("https://www.facebook.com/story.php?story_fbid=12345&id=67890")
         is None
     )
 

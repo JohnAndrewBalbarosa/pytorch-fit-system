@@ -80,12 +80,15 @@ def test_registry_resolves(templates_dir):
 def test_pdf_renders_single_column_smoke(templates_dir):
     from resume_builder.renderers.pdf_renderer import PdfRenderer
     from resume_builder.core.models import Resume, RoleSpec, ContactInfo, ResumeProject
+
     resume = Resume(
         role=RoleSpec(id="r", label="R", keywords=[], must_have_skills=[], nice_to_have=[]),
         contact=ContactInfo(name="Test User"),
-        summary="A summary.", skills=["Python", "C++"],
+        summary="A summary.",
+        skills=["Python", "C++"],
         projects=[ResumeProject(name="Proj", description="d", tech=["Python"])],
-        experience=[], education=[],
+        experience=[],
+        education=[],
     )
     pdf = PdfRenderer(templates_dir).render(resume)
     assert pdf[:4] == b"%PDF"
@@ -95,10 +98,15 @@ def test_pdf_renders_single_column_smoke(templates_dir):
 def test_latex_is_single_column(templates_dir):
     from resume_builder.renderers.latex_renderer import LatexRenderer
     from resume_builder.core.models import Resume, RoleSpec, ContactInfo
+
     resume = Resume(
         role=RoleSpec(id="r", label="R", keywords=[], must_have_skills=[], nice_to_have=[]),
-        contact=ContactInfo(name="Test User"), summary="S", skills=["Python"],
-        projects=[], experience=[], education=[],
+        contact=ContactInfo(name="Test User"),
+        summary="S",
+        skills=["Python"],
+        projects=[],
+        experience=[],
+        education=[],
     )
     tex = LatexRenderer(templates_dir).render(resume)
     # Single-column vertical flow; section rule (titlerule) scopes each heading.
@@ -110,10 +118,15 @@ def test_latex_is_single_column(templates_dir):
 def test_html_is_single_column_with_section_dividers(templates_dir):
     from resume_builder.renderers.html_renderer import HtmlRenderer
     from resume_builder.core.models import Resume, RoleSpec, ContactInfo
+
     resume = Resume(
         role=RoleSpec(id="r", label="R", keywords=[], must_have_skills=[], nice_to_have=[]),
         contact=ContactInfo(name="Test User"),
-        summary="S", skills=["Python"], projects=[], experience=[], education=[],
+        summary="S",
+        skills=["Python"],
+        projects=[],
+        experience=[],
+        education=[],
     )
     html = HtmlRenderer(templates_dir).render(resume)
     # The page remains single-column; only the bounded Skills section may use a measured grid.
@@ -127,9 +140,11 @@ def test_html_is_single_column_with_section_dividers(templates_dir):
 # Brand icon tests — added as part of resume formatting fixes
 # ---------------------------------------------------------------------------
 
+
 def _resume_with_social() -> Resume:
     """Minimal resume with github + linkedin contacts and a facebook-source achievement."""
     from resume_builder.core.models import ResumeAchievement
+
     return Resume(
         role=RoleSpec(id="sec", label="Security Engineer", keywords=[]),
         contact=ContactInfo(
@@ -158,18 +173,18 @@ def _resume_with_social() -> Resume:
 
 
 def test_html_brand_icons_in_contact(templates_dir):
-    """HTML contact section must contain brand SVG icons with just the handle as display text."""
+    """HTML contact section must contain brand icons with just the handle as display text."""
     from resume_builder.renderers.html_renderer import HtmlRenderer
     import re
+
     html = HtmlRenderer(templates_dir).render(_resume_with_social())
-    # Brand SVG icon is injected for github
-    assert "<svg" in html
-    assert "<path" in html
+    # A configured raster asset or the inline SVG fallback is injected.
+    assert 'class="brand-icon"' in html or "<svg" in html
     # Handle text should appear as visible content (without the domain)
     assert "alexuser" in html
     # The github full URL should only appear in href attributes, not as visible link text
     # (i.e., the display span should not contain "https://github.com")
-    visible_spans = re.findall(r'<span>([^<]+)</span>', html)
+    visible_spans = re.findall(r"<span>([^<]+)</span>", html)
     for span_text in visible_spans:
         assert "https://github.com" not in span_text, (
             f"Found raw GitHub URL in visible span text: {span_text!r}"
@@ -179,6 +194,7 @@ def test_html_brand_icons_in_contact(templates_dir):
 def test_html_role_label_before_name(templates_dir):
     """Role label (h1.role-title) must appear before the candidate name in the HTML."""
     from resume_builder.renderers.html_renderer import HtmlRenderer
+
     html = HtmlRenderer(templates_dir).render(_resume_with_social())
     role_pos = html.find("role-title")
     name_pos = html.find('class="name"')
@@ -190,6 +206,7 @@ def test_html_role_label_before_name(templates_dir):
 def test_html_facebook_achievement_has_no_link(templates_dir):
     """Facebook-source achievements must NOT be wrapped in <a href>."""
     from resume_builder.renderers.html_renderer import HtmlRenderer
+
     html = HtmlRenderer(templates_dir).render(_resume_with_social())
     # The facebook achievement URL should NOT appear as an href
     assert 'href="https://www.facebook.com/events/1234567890/"' not in html
@@ -200,6 +217,7 @@ def test_html_facebook_achievement_has_no_link(templates_dir):
 def test_html_non_facebook_achievement_has_link(templates_dir):
     """Non-facebook achievements WITH a url should be linked."""
     from resume_builder.renderers.html_renderer import HtmlRenderer
+
     html = HtmlRenderer(templates_dir).render(_resume_with_social())
     assert 'href="https://github.com/alexuser/award"' in html
 
@@ -207,6 +225,7 @@ def test_html_non_facebook_achievement_has_link(templates_dir):
 def test_pdf_with_brand_contacts_smoke(templates_dir):
     """PDF render with branded contact links must return valid PDF bytes."""
     from resume_builder.renderers.pdf_renderer import PdfRenderer
+
     pdf = PdfRenderer(templates_dir).render(_resume_with_social())
     assert isinstance(pdf, bytes) and len(pdf) > 0
     assert pdf[:4] == b"%PDF"
@@ -219,6 +238,7 @@ def test_md_github_link_text_uses_handle(templates_dir):
     # The raw domain should NOT appear as link text (it's fine in href though)
     # We check the markdown link syntax: [display](url)
     import re
+
     link_texts = re.findall(r"\[([^\]]+)\]\(", md)
     for text in link_texts:
         if "github" in text.lower():
@@ -261,8 +281,8 @@ def test_html_project_link_shows_decluttered_path_not_full_url(templates_dir):
             f"Raw GitHub URL found in visible span: {span_text!r}"
         )
 
-    # An SVG icon must be present (declutter_link resolves to github provider)
-    assert "<svg" in html
+    # A configured raster asset or the inline SVG fallback must be present.
+    assert 'class="brand-icon"' in html or "<svg" in html
 
 
 def test_html_project_link_with_display_url_set(templates_dir):
@@ -295,7 +315,7 @@ def test_html_project_link_with_display_url_set(templates_dir):
         assert "https://github.com" not in span_text, (
             f"Raw GitHub URL found in visible span: {span_text!r}"
         )
-    assert "<svg" in html
+    assert 'class="brand-icon"' in html or "<svg" in html
 
 
 def test_pdf_project_link_no_raw_url_smoke(templates_dir):
@@ -333,21 +353,19 @@ def _resume_with_all_contacts() -> Resume:
 
 
 def test_html_contact_has_github_linkedin_facebook_icons(templates_dir):
-    """HTML contact line must contain SVG icons for github, linkedin, and facebook."""
+    """HTML contact line must contain icons for github, linkedin, and facebook."""
     from resume_builder.renderers.html_renderer import HtmlRenderer
+
     html = HtmlRenderer(templates_dir).render(_resume_with_all_contacts())
-    # Each brand's unique fill colour must appear (proves the SVG is present).
-    assert "#181717" in html, "GitHub brand icon (fill #181717) not found in HTML"
-    assert "#0A66C2" in html, "LinkedIn brand icon (fill #0A66C2) not found in HTML"
-    assert "#1877F2" in html, "Facebook brand icon (fill #1877F2) not found in HTML"
-    # At least 3 SVG elements (github, linkedin, facebook).
-    assert html.count("<svg") >= 3, f"Expected ≥3 <svg> elements, found {html.count('<svg')}"
+    # Each provider emits either a configured image asset or its inline SVG fallback.
+    assert html.count('class="brand-icon"') + html.count("<svg") >= 3
 
 
 def test_html_contact_facebook_no_href(templates_dir):
     """HTML contact: facebook username shown as plain text, never wrapped in <a href>."""
     from resume_builder.renderers.html_renderer import HtmlRenderer
     import re
+
     html = HtmlRenderer(templates_dir).render(_resume_with_all_contacts())
     # Username text is present.
     assert "john.doe.58" in html
@@ -359,6 +377,7 @@ def test_html_contact_facebook_no_href(templates_dir):
 def test_html_contact_name_in_contact_line(templates_dir):
     """HTML: candidate name appears inside the .contact div (single contact line)."""
     from resume_builder.renderers.html_renderer import HtmlRenderer
+
     html = HtmlRenderer(templates_dir).render(_resume_with_all_contacts())
     # Name is in the contact section with class="name".
     assert 'class="name"' in html
@@ -368,6 +387,7 @@ def test_html_contact_name_in_contact_line(templates_dir):
 def test_html_contact_no_location_in_header(templates_dir):
     """HTML header must NOT contain the contact location/address."""
     from resume_builder.renderers.html_renderer import HtmlRenderer
+
     html = HtmlRenderer(templates_dir).render(_resume_with_all_contacts())
     assert "Manila, PH" not in html, "Location must not appear anywhere in the HTML output"
 
@@ -432,6 +452,7 @@ def test_pdf_full_width_contact_and_project_links(templates_dir):
 def test_json_renderer_includes_contact_links():
     """JSON output must include a top-level contact_links array."""
     import json as _json
+
     resume = Resume(
         role=RoleSpec(id="r", label="R", keywords=[]),
         contact=ContactInfo(

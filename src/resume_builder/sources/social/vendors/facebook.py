@@ -16,7 +16,6 @@ Vendors return ``[]`` cleanly when neither path is usable.
 from __future__ import annotations
 
 import logging
-import os
 import re
 from typing import Iterable
 
@@ -25,7 +24,6 @@ from ..base import SocialVendor
 from ..headless_browser import (
     NoStoredSessionError,
     PlaywrightSession,
-    fetch_rendered_html,
     scroll_collect,
 )
 from ..playwright_step import step_limit_from_env, step_through_articles
@@ -329,8 +327,7 @@ class FacebookVendor(SocialVendor):
         """
         if not self._has_storage_state:
             log.warning(
-                "resolve_own_handle: no stored Facebook session; "
-                "run 'resume-build login' first."
+                "resolve_own_handle: no stored Facebook session; run 'resume-build login' first."
             )
             return None
         try:
@@ -439,9 +436,7 @@ class FacebookVendor(SocialVendor):
                 text=text,
             )
 
-    def _headless_search_mentions(
-        self, full_name: str, limit: int
-    ) -> list[SocialMention]:
+    def _headless_search_mentions(self, full_name: str, limit: int) -> list[SocialMention]:
         from urllib.parse import quote_plus
 
         url = f"https://www.facebook.com/search/posts/?q={quote_plus(full_name)}"
@@ -457,9 +452,7 @@ class FacebookVendor(SocialVendor):
         and snapshot each article into a plain dict so the page can close before parsing.
         """
         records: list[dict] = []
-        with PlaywrightSession(
-            "facebook", headless=False, store=self._store
-        ) as page:
+        with PlaywrightSession("facebook", headless=False, store=self._store) as page:
             page.goto(url, wait_until="domcontentloaded")
             # Wait for real posts to render rather than div[role='main']: FB ships a
             # hidden placeholder main that never becomes visible, so waiting on it
@@ -535,7 +528,9 @@ class FacebookVendor(SocialVendor):
             if not text:
                 continue
             link = href_m.group(1) if href_m else ""
-            post_id = link.rsplit("/", 1)[-1].split("?")[0] if link else f"render-{hash(text) & 0xFFFFFF}"
+            post_id = (
+                link.rsplit("/", 1)[-1].split("?")[0] if link else f"render-{hash(text) & 0xFFFFFF}"
+            )
             yield SocialPost(
                 vendor="facebook",
                 post_id=post_id,
@@ -552,7 +547,7 @@ class FacebookVendor(SocialVendor):
             re.IGNORECASE | re.DOTALL,
         )
         href_re = re.compile(r'href="(/[^"]*?/posts/[^"]+|/permalink/\d+[^"]*)"')
-        author_re = re.compile(r'<strong[^>]*>([^<]{1,80})</strong>')
+        author_re = re.compile(r"<strong[^>]*>([^<]{1,80})</strong>")
         for match in article_re.finditer(html):
             block = match.group(1)
             href_m = href_re.search(block)
@@ -562,9 +557,7 @@ class FacebookVendor(SocialVendor):
                 continue
             link = href_m.group(1) if href_m else ""
             mention_id = (
-                link.rsplit("/", 1)[-1].split("?")[0]
-                if link
-                else f"render-{hash(text) & 0xFFFFFF}"
+                link.rsplit("/", 1)[-1].split("?")[0] if link else f"render-{hash(text) & 0xFFFFFF}"
             )
             yield SocialMention(
                 vendor="facebook",
@@ -628,7 +621,9 @@ class FacebookVendor(SocialVendor):
         return ""
 
 
-_HIDDEN_RE = re.compile(r'<input[^>]+type="hidden"[^>]*name="([^"]+)"[^>]*value="([^"]*)"', re.IGNORECASE)
+_HIDDEN_RE = re.compile(
+    r'<input[^>]+type="hidden"[^>]*name="([^"]+)"[^>]*value="([^"]*)"', re.IGNORECASE
+)
 _CHECKPOINT_URL_RE = re.compile(r"https://[^\"' ]*checkpoint[^\"' ]*")
 
 
@@ -670,7 +665,9 @@ class FacebookLogin:
 
     def _handle_checkpoint(self, html: str, prompt: LoginPrompt) -> None:
         if "approvals_code" not in html and "2fa" not in html.lower():
-            raise LoginError("facebook login: checkpoint requires browser (photo / identity check).")
+            raise LoginError(
+                "facebook login: checkpoint requires browser (photo / identity check)."
+            )
         fields = dict(_HIDDEN_RE.findall(html))
         code = prompt.ask("Facebook: enter the 2FA code (authenticator / SMS)")
         fields["approvals_code"] = code

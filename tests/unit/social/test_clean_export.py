@@ -11,7 +11,6 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-import pytest
 
 from resume_builder.sources.social.clean_export import (
     CLEAN_POST_FIELDS,

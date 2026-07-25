@@ -3,9 +3,10 @@ import logging
 from pathlib import Path
 from datetime import datetime
 
+from .auth import _default_session_dir
+
 log = logging.getLogger(__name__)
 
-from .auth import _default_session_dir
 
 class ScrapeStateStore:
     def __init__(self, base_dir: Path | None = None) -> None:

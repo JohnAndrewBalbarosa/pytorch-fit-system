@@ -11,17 +11,17 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from resume_builder.core.models import Resume
 from resume_builder.llm.base import LLMProvider
 
-from .autonomous_questions import QuestionPlanningResult
-from .deterministic_questions import (
+from ..autonomous_questions import QuestionPlanningResult
+from ..deterministic_questions import (
     DeterministicQuestionResolver,
     VerifiedApplicationProfile,
 )
-from .evidence_context import CareerEvidenceTool
-from .indeed_questionnaire import (
+from ..evidence_context import CareerEvidenceTool
+from ..indeed_questionnaire import (
     ApprovedIndeedQuestionAnswers,
     question_set_fingerprint,
 )
-from .models import DynamicInteractionStep, QuestionAnswer, ScreeningQuestion
+from ..models import DynamicInteractionStep, QuestionAnswer, ScreeningQuestion
 
 
 class NovelQuestionJSON(BaseModel):

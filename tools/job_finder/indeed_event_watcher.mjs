@@ -7,6 +7,8 @@ import {
   MicrotaskCoalescer,
   SubmissionStore,
   applyTriggerDecision,
+  cleanListingIdentity,
+  countOpenPageTargets,
   isExactIndeedConfirmation,
 } from "./indeed_event_watcher_core.mjs";
 
@@ -39,10 +41,17 @@ const SNAPSHOT = `(() => {
   )].some(visible);
   const blocked = activeChallenge ||
     /verify you are human|verification required|access denied|rate limited|too many requests/i.test(text);
-  const title = document.querySelector("h1")?.textContent?.replace(/\\s+/g, " ").trim() || "";
+  const titleElement = document.querySelector("h1");
+  const title = (titleElement?.innerText || titleElement?.getAttribute("aria-label") || "")
+    .replace(/\\s+/g, " ")
+    .trim();
+  const companyElement = (
+    document.querySelector("[data-testid=inlineHeader-companyName]") ||
+    document.querySelector("[data-company-name=true]")
+  );
   const company = (
-    document.querySelector("[data-testid=inlineHeader-companyName]")?.textContent ||
-    document.querySelector("[data-company-name=true]")?.textContent ||
+    companyElement?.innerText ||
+    companyElement?.getAttribute("aria-label") ||
     ""
   ).replace(/\\s+/g, " ").trim();
   const applyCandidates = [...document.querySelectorAll(
@@ -319,6 +328,13 @@ class IndeedEventWatcher {
         }
       } else if (message.method === "Target.detachedFromTarget") {
         this.sessions.delete(message.params.sessionId);
+      } else if (message.method === "Target.targetDestroyed") {
+        for (const [sessionId, session] of this.sessions.entries()) {
+          if (session.targetId === message.params.targetId) {
+            this.sessions.delete(sessionId);
+          }
+        }
+        this.targetTasks.delete(message.params.targetId);
       }
     } catch (error) {
       log("event_error", { error: error.name });
@@ -382,13 +398,15 @@ class IndeedEventWatcher {
     if (
       (snapshot.host === "au.indeed.com" || snapshot.host === "ca.indeed.com") &&
       snapshot.path === "/viewjob" &&
-      snapshot.listingCompany &&
-      snapshot.listingTitle
+      cleanListingIdentity(snapshot.listingCompany) &&
+      cleanListingIdentity(snapshot.listingTitle)
     ) {
+      const listingCompany = cleanListingIdentity(snapshot.listingCompany);
+      const listingTitle = cleanListingIdentity(snapshot.listingTitle);
       await this.bindTask(session.targetId, {
-        task_id: jobKey(snapshot.href) || `${snapshot.listingCompany}-${snapshot.listingTitle}`,
-        company: snapshot.listingCompany,
-        job_title: snapshot.listingTitle,
+        task_id: jobKey(snapshot.href) || `${listingCompany}-${listingTitle}`,
+        company: listingCompany,
+        job_title: listingTitle,
         listing_url: safeListingUrl(snapshot.href),
       });
     }
@@ -408,11 +426,16 @@ class IndeedEventWatcher {
       }
     }
     const applyKey = `${session.targetId}\n${snapshot.href}\n${snapshot.applyControl?.text ?? ""}`;
+    let openPageCount = this.sessions.size;
+    try {
+      const { targetInfos } = await this.cdp.send("Target.getTargets");
+      openPageCount = countOpenPageTargets(targetInfos);
+    } catch {}
     const applyDecision = applyTriggerDecision({
       eventKind: reason,
       snapshot,
       alreadyTriggered: this.triggeredApplyControls.has(applyKey),
-      openPageCount: this.sessions.size,
+      openPageCount,
       maxTabs: this.options.maxTabs,
     });
     if (applyDecision.trigger && this.targetTasks.has(session.targetId)) {
@@ -427,13 +450,13 @@ class IndeedEventWatcher {
         taskId: this.targetTasks.get(session.targetId).task_id,
         route: applyDecision.route,
         clicked: clicked.result?.value === true,
-        openPageCount: this.sessions.size,
+        openPageCount,
         maxTabs: this.options.maxTabs,
       });
     } else if (applyDecision.reason === "tab_limit_reached") {
       log("apply_deferred_resource_limit", {
         targetId: session.targetId,
-        openPageCount: this.sessions.size,
+        openPageCount,
         maxTabs: this.options.maxTabs,
       });
     }

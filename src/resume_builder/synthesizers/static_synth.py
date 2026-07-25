@@ -152,7 +152,7 @@ class StaticSynthesizer(Synthesizer):
     def _parse_experience(cls, body: str) -> list[ResumeExperience]:
         out: list[ResumeExperience] = []
         for block in cls._split_blocks(body):
-            lines = [l.strip(" \t-*•\\") for l in block.splitlines() if l.strip()]
+            lines = [line.strip(" \t-*•\\") for line in block.splitlines() if line.strip()]
             if not lines:
                 continue
             header = lines[0]
@@ -166,7 +166,7 @@ class StaticSynthesizer(Synthesizer):
                 ResumeExperience(
                     role=role.strip(),
                     company=company.strip(),
-                    bullets=[l for l in lines[1:] if l],
+                    bullets=[line for line in lines[1:] if line],
                 )
             )
         return out
@@ -175,7 +175,7 @@ class StaticSynthesizer(Synthesizer):
     def _parse_education(cls, body: str) -> list[ResumeEducation]:
         out: list[ResumeEducation] = []
         for block in cls._split_blocks(body):
-            lines = [l.strip(" \t-*•\\") for l in block.splitlines() if l.strip()]
+            lines = [line.strip(" \t-*•\\") for line in block.splitlines() if line.strip()]
             if not lines:
                 continue
             out.append(ResumeEducation(school=lines[0], notes=lines[1:]))

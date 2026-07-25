@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from resume_builder.extraction.rules import apply_rules
 from resume_builder.classification.industry import ExtractionRule
+from resume_builder.extraction.rules import ExtractionRuleEngine, apply_rules
 
 _HTML = """
 <html><body>
@@ -45,11 +45,8 @@ def test_garbage_html_returns_empty():
 def test_malformed_keep_regex_does_not_raise():
     rule = ExtractionRule(source_id="x", keep_regex=["[unclosed"])
     text = apply_rules(_HTML, rule)  # malformed pattern must not raise
-    assert "C++ compiler" in text   # falls back to unfiltered content
+    assert "C++ compiler" in text  # falls back to unfiltered content
 
-
-# Engine tests
-from resume_builder.extraction.rules import ExtractionRuleEngine
 
 _PAGE = "<html><body><header class='nav'>Menu</header><main><p>Project X does Y.</p></main></body></html>"
 _PAGE_SAME_SHAPE = _PAGE.replace("Project X does Y.", "Project Z does W.")

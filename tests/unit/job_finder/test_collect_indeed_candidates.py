@@ -86,6 +86,20 @@ def test_candidate_rejects_senior_mismatch_and_missing_identity():
     )
     assert (
         collector.candidate_from_listing(
+            _listing("Solutions Architect (AI Native SDLC)"),
+            target_country="Australia",
+        )
+        is None
+    )
+    assert (
+        collector.candidate_from_listing(
+            _listing("AI Talent Acquisition Specialist"),
+            target_country="Canada",
+        )
+        is None
+    )
+    assert (
+        collector.candidate_from_listing(
             _listing("Software Engineer", detail_url="https://au.indeed.com/viewjob"),
             target_country="Australia",
         )

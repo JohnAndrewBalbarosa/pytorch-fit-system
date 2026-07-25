@@ -5,11 +5,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from .indeed_questionnaire import (
+from ..indeed_questionnaire import (
     ApprovedIndeedQuestionAnswerSet,
     ApprovedIndeedQuestionAnswers,
 )
-from .models import ScreeningQuestion
+from ..models import ScreeningQuestion
 
 DEFAULT_MONGODB_URI = "mongodb://127.0.0.1:27017/?directConnection=true"
 DEFAULT_MONGODB_DATABASE = "pytorch_fit"
@@ -162,7 +162,7 @@ class MongoQuestionnaireRepository:
         observed_at: datetime | None = None,
     ) -> None:
         """Upsert every observed question plus only the reusable validated answers."""
-        from .indeed_questionnaire import question_set_fingerprint
+        from ..indeed_questionnaire import question_set_fingerprint
 
         timestamp = (observed_at or datetime.now(timezone.utc)).astimezone(timezone.utc)
         fingerprint = question_set_fingerprint(questions)

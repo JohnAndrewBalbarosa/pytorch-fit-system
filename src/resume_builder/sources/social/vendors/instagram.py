@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Iterable
 
@@ -37,9 +36,7 @@ class InstagramVendor(SocialVendor):
 
     def fetch_own_posts(self, handle: str, limit: int = 50) -> list[SocialPost]:
         try:
-            resp = self._client.get(
-                _PROFILE, params={"username": handle}, headers=self._headers
-            )
+            resp = self._client.get(_PROFILE, params={"username": handle}, headers=self._headers)
             payload = _safe_json(resp)
         except Exception as exc:  # noqa: BLE001
             log.warning("instagram fetch_own_posts failed: %s", exc)
@@ -51,9 +48,7 @@ class InstagramVendor(SocialVendor):
     def search_mentions(self, full_name: str, limit: int = 50) -> list[SocialMention]:
         slug = full_name.lower().replace(" ", "")
         try:
-            resp = self._client.get(
-                _TAG_SEARCH, params={"tag_name": slug}, headers=self._headers
-            )
+            resp = self._client.get(_TAG_SEARCH, params={"tag_name": slug}, headers=self._headers)
             payload = _safe_json(resp)
         except Exception as exc:  # noqa: BLE001
             log.warning("instagram search_mentions failed: %s", exc)

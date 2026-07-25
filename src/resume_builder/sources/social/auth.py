@@ -35,8 +35,7 @@ log = logging.getLogger(__name__)
 
 @runtime_checkable
 class LoginPrompt(Protocol):
-    def ask(self, question: str, *, secret: bool = False) -> str:
-        ...
+    def ask(self, question: str, *, secret: bool = False) -> str: ...
 
 
 def masked_input(prompt: str, *, mask: str = "*") -> str:
@@ -175,9 +174,11 @@ class FilePrompt:
 
         self._counter += 1
         q_path = self._base / f"q{self._counter}.txt"
+        q_temporary = self._base / f".q{self._counter}.txt.tmp"
         a_path = self._base / f"q{self._counter}.answer"
         meta = "[secret]\n" if secret else ""
-        q_path.write_text(f"{meta}{question}\n", encoding="utf-8")
+        q_temporary.write_text(f"{meta}{question}\n", encoding="utf-8")
+        q_temporary.replace(q_path)
         self._set_status(f"awaiting answer #{self._counter}: {question}")
 
         deadline = time.monotonic() + self._timeout
@@ -210,11 +211,11 @@ class FilePrompt:
 
 
 class ChallengeKind(str, Enum):
-    TOTP = "totp"           # 6-digit code from authenticator app
-    SMS = "sms"             # code sent to phone
-    EMAIL = "email"         # code sent to email
+    TOTP = "totp"  # 6-digit code from authenticator app
+    SMS = "sms"  # code sent to phone
+    EMAIL = "email"  # code sent to email
     PUSH_APPROVAL = "push"  # tap on phone app — poll-based, no input
-    CAPTCHA = "captcha"     # visual — unsupported on console
+    CAPTCHA = "captcha"  # visual — unsupported on console
     UNKNOWN = "unknown"
 
 
@@ -239,7 +240,9 @@ class LoginError(RuntimeError):
 
 
 def _default_session_dir() -> Path:
-    base = os.environ.get("RESUME_BUILDER_CACHE") or (Path.home() / ".cache" / "resume-builder" / "social")
+    base = os.environ.get("RESUME_BUILDER_CACHE") or (
+        Path.home() / ".cache" / "resume-builder" / "social"
+    )
     path = Path(base) / "sessions"
     path.mkdir(parents=True, exist_ok=True)
     return path
@@ -412,9 +415,7 @@ _ENV_SINGLE_KEY: dict[str, str] = {
 }
 
 
-def resolve_session_cookies(
-    vendor: str, *, prefer_browser: str = "auto"
-) -> dict[str, str]:
+def resolve_session_cookies(vendor: str, *, prefer_browser: str = "auto") -> dict[str, str]:
     """Return the best available cookie set for ``vendor`` without prompting.
 
     Resolution order:

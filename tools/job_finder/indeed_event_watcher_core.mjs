@@ -8,6 +8,21 @@ export function normalizeExactIdentity(value) {
   return String(value ?? "").normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+export function cleanListingIdentity(value) {
+  const clean = String(value ?? "").normalize("NFKC").trim().replace(/\s+/g, " ");
+  if (!clean || clean.length > 200) return "";
+  if (/[{};]/.test(clean) || /\b(?:font-family|text-decoration|transition):/i.test(clean)) {
+    return "";
+  }
+  return clean;
+}
+
+export function countOpenPageTargets(targetInfos) {
+  return Array.isArray(targetInfos)
+    ? targetInfos.filter((target) => target?.type === "page").length
+    : 0;
+}
+
 export function sanitizeSourceUrl(value) {
   const url = new URL(value);
   return `${url.protocol}//${url.host}${url.pathname}`;

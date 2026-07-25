@@ -95,7 +95,7 @@ from resume_builder.job_application.submission_history import (
     default_submission_history,
     normalize_exact_identity,
 )
-from resume_builder.job_application.resource_governor import (
+from resume_builder.job_application.runtime.resource_governor import (
     BrowserResourceLimits,
     BrowserResourceSnapshot,
     calculate_browser_resource_limits,
@@ -137,12 +137,12 @@ from resume_builder.job_application.indeed_questionnaire import (
     observe_indeed_screening_questions,
     question_set_fingerprint,
 )
-from resume_builder.job_application.questionnaire_store import (
+from resume_builder.job_application.persistence.questionnaire_store import (
     DEFAULT_MONGODB_DATABASE,
     DEFAULT_MONGODB_URI,
     MongoQuestionnaireRepository,
 )
-from resume_builder.job_application.smart_apply_questions import (
+from resume_builder.job_application.intelligence.smart_apply_questions import (
     AdaptiveQuestionPlan,
     NovelQuestionJSON,
     SmartApplyNovelQuestionAnswerer,

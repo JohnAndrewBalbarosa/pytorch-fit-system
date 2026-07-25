@@ -69,7 +69,6 @@ class PdfRenderer(Renderer):
         from .brand_icons import (
             badge_png_path as bi_badge_png_path,
             declutter as bi_declutter,
-            drawing as bi_drawing,
         )
 
         accent = HexColor("#243b6b")
@@ -100,14 +99,6 @@ class PdfRenderer(Renderer):
         body = ParagraphStyle(
             "body", parent=styles["BodyText"], fontSize=9, leading=12, spaceAfter=1
         )
-        name_style = ParagraphStyle(
-            "name_style",
-            parent=styles["BodyText"],
-            fontSize=11,
-            leading=13,
-            spaceAfter=1,
-            textColor=muted,
-        )
         contact_style = ParagraphStyle(
             "contact_style",
             parent=styles["BodyText"],
@@ -125,16 +116,12 @@ class PdfRenderer(Renderer):
                 state["first"] = False
             else:
                 story.append(Spacer(1, 5))
-                story.append(
-                    HRFlowable(width="100%", thickness=0.6, color=rule, spaceAfter=4)
-                )
+                story.append(HRFlowable(width="100%", thickness=0.6, color=rule, spaceAfter=4))
             story.append(Paragraph(title, h2))
 
         # ------------------------------------------------------------------ header
         # Role label → H1 (dominant heading)
-        role_label = (
-            (resume.role.label if resume.role and resume.role.label else "") or "Resume"
-        )
+        role_label = (resume.role.label if resume.role and resume.role.label else "") or "Resume"
         story.append(Paragraph(role_label, h1))
 
         # Single full-width contact Paragraph: no narrow cells → no mid-word wrap.
@@ -174,9 +161,7 @@ class PdfRenderer(Renderer):
                 contact_parts.append(part)
 
         if resume.contact.linkedin:
-            part = _linked_part(
-                "linkedin", resume.contact.linkedin, "https://www.linkedin.com/in/"
-            )
+            part = _linked_part("linkedin", resume.contact.linkedin, "https://www.linkedin.com/in/")
             if part:
                 contact_parts.append(part)
 
@@ -194,9 +179,7 @@ class PdfRenderer(Renderer):
             story.append(Paragraph(contact_markup, contact_style))
 
         story.append(
-            HRFlowable(
-                width="100%", thickness=1.2, color=accent, spaceBefore=3, spaceAfter=4
-            )
+            HRFlowable(width="100%", thickness=1.2, color=accent, spaceBefore=3, spaceAfter=4)
         )
 
         # ------------------------------------------------------------------ sections
@@ -248,19 +231,14 @@ class PdfRenderer(Renderer):
                         if proj_badge:
                             safe_proj = proj_badge.replace("\\", "/")
                             proj_img = (
-                                f'<img src="{safe_proj}" width="8" height="8"'
-                                f' valign="middle"/>'
+                                f'<img src="{safe_proj}" width="8" height="8" valign="middle"/>'
                             )
                         else:
                             proj_img = ""
-                        proj_markup = (
-                            f'{proj_img}<link href="{p.url}">{path}</link>'
-                        )
+                        proj_markup = f'{proj_img}<link href="{p.url}">{path}</link>'
                         story.append(Paragraph(proj_markup, contact_style))
                 if p.tech:
-                    story.append(
-                        Paragraph(f"<i>{' &middot; '.join(p.tech)}</i>", body)
-                    )
+                    story.append(Paragraph(f"<i>{' &middot; '.join(p.tech)}</i>", body))
                 # Bullet order: quantitative_impact first, then description,
                 # then qualitative_impact, then component bullets.
                 for q in p.quantitative_impact:

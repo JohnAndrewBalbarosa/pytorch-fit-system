@@ -18,6 +18,25 @@ these primitives. Site modules retain only verified DOM selectors, routes, and w
 new websites configure the shared library instead of copying CAPTCHA, submit, or resume-selection
 logic.
 
+## Conceptual package map
+
+The directory tree names decision boundaries so it can be read as a compact architecture:
+
+```text
+job_application/
+├── shared/        # website-agnostic access, resume, and final-submit gates
+├── intelligence/  # evidence-grounded answer decisions; no browser or database ownership
+├── persistence/   # durable validated knowledge; no answer or click decisions
+├── runtime/       # machine-capacity limits; no vendor selectors or application data
+├── indeed_*.py    # verified Indeed adapter and workflow semantics
+├── executor.py    # deterministic browser effects under permission gates
+├── permissions.py # domain-scoped authority boundary
+└── models.py      # contracts shared across the layers
+```
+
+Imports from `resume_builder.job_application` remain the stable public API. Callers should use that
+facade unless they are extending one specific conceptual layer.
+
 `ApplicationBatchCoordinator` provides bounded parallel orchestration for isolated application
 workers. Each worker must own its browser page; Playwright pages are never shared across threads.
 Successful no-CAPTCHA flows may continue to observable confirmation, while CAPTCHA results collect
