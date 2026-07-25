@@ -24,6 +24,7 @@ from resume_builder.job_application import (  # noqa: E402
     HumanVerificationQueue,
     AccessGateResult,
     AccessGateState,
+    ApprovedIndeedQuestionAnswers,
     ApprovedIndeedQuestionAnswerSet,
     DEFAULT_MONGODB_DATABASE,
     DEFAULT_MONGODB_URI,
@@ -35,6 +36,7 @@ from resume_builder.job_application import (  # noqa: E402
     build_approved_indeed_question_plan,
     load_resume_artifact,
     observe_indeed_screening_questions,
+    question_set_fingerprint,
     recommend_role_resume,
     run_indeed_smart_apply_until_gate,
 )
@@ -290,6 +292,48 @@ def _qualification_evidence(job: IndeedUnattendedJob, description: str) -> str:
     return "\n".join(part for part in (job.job_title.strip(), description.strip()) if part)
 
 
+def _application_location(page, job: IndeedUnattendedJob) -> str:
+    """Read the location paired with the exact company in the Smart Apply header."""
+    try:
+        header = _visible_text(page, ".ia-JobHeader")
+    except Exception:
+        return ""
+    company = " ".join(job.company.casefold().split())
+    for line in reversed(header.splitlines()):
+        normalized = " ".join(line.casefold().split())
+        if company not in normalized:
+            continue
+        for separator in (" - ", " – ", " — "):
+            prefix, found, location = line.partition(separator)
+            if found and company in " ".join(prefix.casefold().split()):
+                return location.strip()
+    return ""
+
+
+def _runtime_question_profile(
+    page,
+    job: IndeedUnattendedJob,
+    questions,
+    approved_questions: ApprovedIndeedQuestionAnswerSet | None,
+) -> ApprovedIndeedQuestionAnswers | None:
+    approved = approved_questions.matching(questions) if approved_questions else None
+    location = _application_location(page, job)
+    location_labels = {
+        question.label
+        for question in questions
+        if question.label.casefold().strip() == "which location are you applying for?"
+    }
+    if not location or not location_labels:
+        return approved
+    answers = dict(approved.answers) if approved else {}
+    for label in location_labels:
+        answers[label] = location
+    return ApprovedIndeedQuestionAnswers(
+        question_set_fingerprint=question_set_fingerprint(questions),
+        answers=answers,
+    )
+
+
 def _runtime_verified_phone(page, args: argparse.Namespace) -> str:
     """Use an explicit phone or the matching saved contact value visible in Indeed."""
     explicit = getattr(args, "verified_phone", "")
@@ -419,7 +463,12 @@ def _run_application(
             observed_questions = observe_indeed_screening_questions(application_page)
             question_plan = build_approved_indeed_question_plan(
                 observed_questions,
-                approved_questions.matching(observed_questions),
+                _runtime_question_profile(
+                    application_page,
+                    job,
+                    observed_questions,
+                    approved_questions,
+                ),
             )
         result = run_indeed_smart_apply_until_gate(
             application_page,

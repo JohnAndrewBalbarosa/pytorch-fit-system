@@ -11,6 +11,7 @@ from resume_builder.job_application import (
     ApprovedIndeedQuestionAnswers,
     BatchApplicationOutcome,
     BatchApplicationStatus,
+    ScreeningQuestion,
 )
 
 
@@ -414,6 +415,76 @@ def test_qualification_evidence_includes_exact_remote_title():
 
     assert "Fully Remote" in evidence
     assert "Build reliable AI agents." in evidence
+
+
+def test_application_location_comes_from_exact_smart_apply_job_header():
+    job = runner.IndeedUnattendedJob(
+        task_id="job",
+        company="Binance",
+        job_title="AI Engineer",
+        listing_url="https://au.indeed.com/viewjob?jk=job",
+        target_country="Australia",
+    )
+    page = _HydratingListingPage()
+    page.waited_ms = 500
+    page.text_at = lambda selector: (
+        "AI Engineer\nBinance - Australia, Brisbane"
+        if selector == ".ia-JobHeader"
+        else ""
+    )
+
+    assert runner._application_location(page, job) == "Australia, Brisbane"
+
+
+def test_runtime_question_profile_overrides_static_location_with_job_location():
+    job = runner.IndeedUnattendedJob(
+        task_id="job",
+        company="Binance",
+        job_title="AI Engineer",
+        listing_url="https://au.indeed.com/viewjob?jk=job",
+        target_country="Australia",
+    )
+    page = _HydratingListingPage()
+    page.waited_ms = 500
+    page.text_at = lambda selector: (
+        "AI Engineer\nBinance - Australia, Melbourne"
+        if selector == ".ia-JobHeader"
+        else ""
+    )
+    questions = [
+        ScreeningQuestion(
+            question_id="location",
+            label="Which location are you applying for?",
+            selector="[role=combobox]",
+            kind="select",
+        ),
+        ScreeningQuestion(
+            question_id="current",
+            label="Current Location",
+            selector="[name=current]",
+            kind="text",
+        ),
+    ]
+    fingerprint = runner.question_set_fingerprint(questions)
+    approved = ApprovedIndeedQuestionAnswerSet(
+        pages=[
+            ApprovedIndeedQuestionAnswers(
+                question_set_fingerprint=fingerprint,
+                answers={
+                    "Which location are you applying for?": "Australia, Brisbane",
+                    "Current Location": "Philippines",
+                },
+            )
+        ]
+    )
+
+    runtime = runner._runtime_question_profile(page, job, questions, approved)
+
+    assert runtime is not None
+    assert runtime.answers == {
+        "Which location are you applying for?": "Australia, Melbourne",
+        "Current Location": "Philippines",
+    }
 
 
 class _TextLocator:

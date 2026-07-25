@@ -195,6 +195,9 @@ python tools/job_finder/run_indeed_unattended.py \
 Listings whose **Apply on company site** control opens an external application are not automated.
 The external tab stays open and is added to the verification queue with
 `group=human_intervention` and `reason=apply_on_company_site` for manual completion.
+For Indeed's “Which location are you applying for?” question, the runner reads the exact location
+from the current Smart Apply job header and validates that value against the live select options;
+it never reuses a fixed city from another job.
 
 ## Workflow state machine
 

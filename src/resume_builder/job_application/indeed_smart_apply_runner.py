@@ -235,7 +235,7 @@ def _wait_for_final_submit_gate(
     page: Any,
     selector: str,
     *,
-    timeout_ms: int = 5_000,
+    timeout_ms: int = 20_000,
 ) -> Any:
     """Allow the hydrated review control to appear without ever clicking it twice."""
     interval_ms = 250
