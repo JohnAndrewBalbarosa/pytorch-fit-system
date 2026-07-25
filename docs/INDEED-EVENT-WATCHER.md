@@ -20,6 +20,37 @@ The decision queries Chrome's current page targets instead of trusting cached at
 closed search tabs release capacity immediately.
 The per-target URL/control key prevents repeated clicks during event bursts.
 
+## Automatic continuation after human verification
+
+The watcher can bridge a clear Smart Apply page into the deterministic Python form runner. Enable
+the bridge with `--resume-runner`, `--artifact-dir`, and explicit phone-country arguments. The
+mapped manifest job must contain `target_country`, `work_mode`, and `resume_file`; live title text
+alone is intentionally insufficient.
+
+On a clear `smartapply.indeed.com` module, the watcher writes a one-job manifest and starts one
+bounded worker. Other verified targets queue behind the active worker, preserving the global
+resource limit even when several pages clear together. Event bursts cannot start a second worker
+for the same target and route. If a later module becomes blocked, the watcher clears that route
+latch; completing the human verification causes the blocked-to-clear event to resume the worker.
+Post-apply routes never launch a worker.
+
+Final Submit remains a separate domain-scoped permission. Add `--autonomous-submit` only when the
+runtime user has explicitly approved autonomous submission on Indeed. Without it, the bridge fills
+the validated draft and stops at the final gate.
+
+Example:
+
+```bash
+node --no-warnings tools/job_finder/indeed_event_watcher.mjs \
+  --manifest out/indeed-unattended/candidate-manifest-latest.json \
+  --resume-runner .venv/bin/python \
+  --artifact-dir /path/to/reviewed/resume-artifacts \
+  --phone-country-calling-code +63 \
+  --phone-country-iso PH \
+  --saved-phone-original-calling-code +63 \
+  --autonomous-submit
+```
+
 An optional single-job manifest supplies identity once after a watcher restart when the application
 page was already open. That fallback is persisted as consumed so it cannot label a later unrelated
 application. It writes SQLite only when all three conditions hold:

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { spawn } from "node:child_process";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
@@ -7,6 +8,7 @@ import {
   MicrotaskCoalescer,
   SubmissionStore,
   applyTriggerDecision,
+  automationResumeDecision,
   cleanListingIdentity,
   countOpenPageTargets,
   isExactIndeedConfirmation,
@@ -114,6 +116,15 @@ function parseArgs(argv) {
     manifest: [],
     reconnectSeconds: 5,
     maxTabs: 6,
+    resumeRunner: "",
+    artifactDir: "",
+    queue: resolve(".cache/application-verification-queue.json"),
+    runnerOutput: resolve("out/indeed-event-resume"),
+    phoneCountryCallingCode: "",
+    phoneCountryIso: "",
+    savedPhoneOriginalCallingCode: "",
+    autonomousSubmit: false,
+    questionAiProvider: "off",
   };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
@@ -124,10 +135,26 @@ function parseArgs(argv) {
     else if (flag === "--manifest") values.manifest.push(resolve(value));
     else if (flag === "--reconnect-seconds") values.reconnectSeconds = Number(value);
     else if (flag === "--max-tabs") values.maxTabs = Number(value);
+    else if (flag === "--resume-runner") values.resumeRunner = resolve(value);
+    else if (flag === "--artifact-dir") values.artifactDir = resolve(value);
+    else if (flag === "--queue") values.queue = resolve(value);
+    else if (flag === "--runner-output") values.runnerOutput = resolve(value);
+    else if (flag === "--phone-country-calling-code") values.phoneCountryCallingCode = value;
+    else if (flag === "--phone-country-iso") values.phoneCountryIso = value;
+    else if (flag === "--saved-phone-original-calling-code") {
+      values.savedPhoneOriginalCallingCode = value;
+    }
+    else if (flag === "--question-ai-provider") values.questionAiProvider = value;
+    else if (flag === "--autonomous-submit") {
+      values.autonomousSubmit = true;
+      continue;
+    }
     else if (flag === "--help") {
       console.log(
         "Usage: indeed_event_watcher.mjs [--cdp-url URL] [--database PATH] " +
-          "[--state PATH] [--manifest PATH] [--reconnect-seconds N] [--max-tabs N]",
+          "[--state PATH] [--manifest PATH] [--reconnect-seconds N] [--max-tabs N] " +
+          "[--resume-runner PATH --artifact-dir PATH --phone-country-calling-code CODE " +
+          "--phone-country-iso ISO] [--autonomous-submit]",
       );
       process.exit(0);
     } else continue;
@@ -138,6 +165,15 @@ function parseArgs(argv) {
   }
   if (!Number.isInteger(values.maxTabs) || values.maxTabs < 1 || values.maxTabs > 24) {
     throw new Error("--max-tabs must be an integer between 1 and 24");
+  }
+  if (values.resumeRunner) {
+    if (!values.artifactDir) throw new Error("--artifact-dir is required with --resume-runner");
+    if (!values.phoneCountryCallingCode || !values.phoneCountryIso) {
+      throw new Error("phone country calling code and ISO are required with --resume-runner");
+    }
+  }
+  if (!["google", "off"].includes(values.questionAiProvider)) {
+    throw new Error("--question-ai-provider must be google or off");
   }
   return values;
 }
@@ -164,10 +200,14 @@ async function atomicWriteJson(path, value) {
 
 function taskFromJob(job) {
   return {
+    ...job,
     task_id: String(job.task_id ?? ""),
     company: String(job.company ?? "").trim(),
     job_title: String(job.job_title ?? "").trim(),
     listing_url: String(job.listing_url ?? ""),
+    target_country: String(job.target_country ?? ""),
+    work_mode: String(job.work_mode ?? ""),
+    resume_file: String(job.resume_file ?? ""),
   };
 }
 
@@ -254,6 +294,9 @@ class IndeedEventWatcher {
     this.triggeredApplyControls = new Set();
     this.manifestTasks = [];
     this.consumedManifestFallbacks = new Set();
+    this.automationStates = new Map();
+    this.activeAutomationTargetId = "";
+    this.pendingAutomationTargets = new Set();
     this.stateWrite = Promise.resolve();
   }
 
@@ -269,6 +312,17 @@ class IndeedEventWatcher {
       this.consumedManifestFallbacks.add(taskId);
     }
     await this.reloadManifests();
+    let hydratedTasks = 0;
+    for (const [targetId, task] of this.targetTasks.entries()) {
+      const key = jobKey(task.listing_url);
+      const matched = this.manifestTasks.find(
+        (candidate) => key && jobKey(candidate.listing_url) === key,
+      );
+      if (matched) {
+        this.targetTasks.set(targetId, matched);
+        hydratedTasks += 1;
+      }
+    }
     this.cdp.onEvent((message) => this.onEvent(message));
     await this.cdp.send("Target.setDiscoverTargets", { discover: true });
     await this.cdp.send("Target.setAutoAttach", {
@@ -277,7 +331,25 @@ class IndeedEventWatcher {
       flatten: true,
     });
     const { targetInfos } = await this.cdp.send("Target.getTargets");
-    for (const target of targetInfos.filter((item) => item.type === "page")) {
+    const pageTargets = targetInfos.filter((item) => item.type === "page");
+    const activeTargetIds = new Set(pageTargets.map((target) => target.targetId));
+    for (const targetId of this.targetTasks.keys()) {
+      if (!activeTargetIds.has(targetId)) {
+        this.targetTasks.delete(targetId);
+      }
+    }
+    await atomicWriteJson(this.options.state, {
+      target_tasks: Object.fromEntries(this.targetTasks),
+      consumed_manifest_fallbacks: [...this.consumedManifestFallbacks],
+      updated_at: new Date().toISOString(),
+    });
+    if (hydratedTasks) {
+      log("stored_tasks_hydrated", {
+        hydratedTasks,
+        activeTasks: this.targetTasks.size,
+      });
+    }
+    for (const target of pageTargets) {
       try {
         await this.cdp.send("Target.attachToTarget", {
           targetId: target.targetId,
@@ -335,6 +407,8 @@ class IndeedEventWatcher {
           }
         }
         this.targetTasks.delete(message.params.targetId);
+        this.automationStates.delete(message.params.targetId);
+        this.pendingAutomationTargets.delete(message.params.targetId);
       }
     } catch (error) {
       log("event_error", { error: error.name });
@@ -403,12 +477,19 @@ class IndeedEventWatcher {
     ) {
       const listingCompany = cleanListingIdentity(snapshot.listingCompany);
       const listingTitle = cleanListingIdentity(snapshot.listingTitle);
-      await this.bindTask(session.targetId, {
-        task_id: jobKey(snapshot.href) || `${listingCompany}-${listingTitle}`,
-        company: listingCompany,
-        job_title: listingTitle,
-        listing_url: safeListingUrl(snapshot.href),
-      });
+      const key = jobKey(snapshot.href);
+      const matched = this.manifestTasks.find(
+        (task) => key && jobKey(task.listing_url) === key,
+      );
+      await this.bindTask(
+        session.targetId,
+        matched ?? {
+          task_id: key || `${listingCompany}-${listingTitle}`,
+          company: listingCompany,
+          job_title: listingTitle,
+          listing_url: safeListingUrl(snapshot.href),
+        },
+      );
     }
     if (!this.targetTasks.has(session.targetId)) {
       const key = jobKey(snapshot.href);
@@ -424,6 +505,29 @@ class IndeedEventWatcher {
         this.consumedManifestFallbacks.add(this.manifestTasks[0].task_id);
         await this.bindTask(session.targetId, this.manifestTasks[0]);
       }
+    }
+    const mappedTask = this.targetTasks.get(session.targetId);
+    const automationState = this.automationStates.get(session.targetId) ?? {
+      running: false,
+      handledRouteKey: "",
+    };
+    if (snapshot.accessBlocked) {
+      automationState.handledRouteKey = "";
+    }
+    this.automationStates.set(session.targetId, automationState);
+    const resumeDecision = automationResumeDecision({
+      snapshot,
+      task: mappedTask,
+      runnerEnabled: Boolean(this.options.resumeRunner),
+      running: automationState.running,
+      handledRouteKey: automationState.handledRouteKey,
+    });
+    if (resumeDecision.resume) {
+      await this.resumeAutomation(
+        session.targetId,
+        mappedTask,
+        resumeDecision.routeKey,
+      );
     }
     const applyKey = `${session.targetId}\n${snapshot.href}\n${snapshot.applyControl?.text ?? ""}`;
     let openPageCount = this.sessions.size;
@@ -476,6 +580,138 @@ class IndeedEventWatcher {
       databaseResult: result.status,
       applicationId: result.applicationId,
     });
+  }
+
+  async resumeAutomation(targetId, task, routeKey) {
+    const state = this.automationStates.get(targetId) ?? {
+      running: false,
+      handledRouteKey: "",
+    };
+    if (
+      this.activeAutomationTargetId &&
+      this.activeAutomationTargetId !== targetId
+    ) {
+      this.pendingAutomationTargets.add(targetId);
+      log("automation_resume_queued", {
+        targetId,
+        taskId: task.task_id,
+        activeTargetId: this.activeAutomationTargetId,
+      });
+      return;
+    }
+    this.activeAutomationTargetId = targetId;
+    state.running = true;
+    state.handledRouteKey = routeKey;
+    this.automationStates.set(targetId, state);
+    const safeTargetId = targetId.replace(/[^a-zA-Z0-9_-]/g, "");
+    const manifestPath = resolve(
+      dirname(this.options.state),
+      `indeed-event-resume-${safeTargetId}.json`,
+    );
+    await atomicWriteJson(manifestPath, { jobs: [task] });
+    const runnerArgs = [
+      resolve("tools/job_finder/run_indeed_unattended.py"),
+      "--manifest",
+      manifestPath,
+      "--artifact-dir",
+      this.options.artifactDir,
+      "--cdp-url",
+      this.options.cdpUrl,
+      "--database",
+      this.options.database,
+      "--queue",
+      this.options.queue,
+      "--output",
+      this.options.runnerOutput,
+      "--target-submissions",
+      "1",
+      "--max-parallel",
+      "1",
+      "--max-candidates",
+      "1",
+      "--resource-mode",
+      "auto",
+      "--max-tabs",
+      String(this.options.maxTabs),
+      "--verification-wait-minutes",
+      "1",
+      "--use-saved-contact-phone",
+      "--phone-country-calling-code",
+      this.options.phoneCountryCallingCode,
+      "--phone-country-iso",
+      this.options.phoneCountryIso,
+      "--questionnaire-store",
+      "mongodb",
+      "--question-ai-provider",
+      this.options.questionAiProvider,
+    ];
+    if (this.options.savedPhoneOriginalCallingCode) {
+      runnerArgs.push(
+        "--saved-phone-original-calling-code",
+        this.options.savedPhoneOriginalCallingCode,
+      );
+    }
+    if (this.options.autonomousSubmit) {
+      runnerArgs.push("--autonomous-submit");
+    }
+    const child = spawn(this.options.resumeRunner, runnerArgs, {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: "inherit",
+    });
+    log("automation_resume_started", {
+      targetId,
+      taskId: task.task_id,
+      routeKey,
+      autonomousSubmit: this.options.autonomousSubmit,
+      childPid: child.pid,
+    });
+    let settled = false;
+    const finish = () => {
+      if (settled) return false;
+      settled = true;
+      state.running = false;
+      if (this.activeAutomationTargetId === targetId) {
+        this.activeAutomationTargetId = "";
+      }
+      return true;
+    };
+    child.once("error", (error) => {
+      if (!finish()) return;
+      state.handledRouteKey = "";
+      log("automation_resume_error", {
+        targetId,
+        taskId: task.task_id,
+        error: error.name,
+      });
+      this.releaseNextAutomation();
+    });
+    child.once("exit", (code, signal) => {
+      if (!finish()) return;
+      log("automation_resume_finished", {
+        targetId,
+        taskId: task.task_id,
+        exitCode: code,
+        signal: signal ?? "",
+      });
+      this.releaseNextAutomation();
+    });
+  }
+
+  releaseNextAutomation() {
+    const nextTargetId = this.pendingAutomationTargets.values().next().value;
+    if (!nextTargetId) return;
+    this.pendingAutomationTargets.delete(nextTargetId);
+    const state = this.automationStates.get(nextTargetId);
+    if (state) {
+      state.handledRouteKey = "";
+    }
+    const session = [...this.sessions.entries()].find(
+      ([, item]) => item.targetId === nextTargetId,
+    );
+    if (session) {
+      this.schedule(session[0], "automation_queue_released");
+    }
   }
 
   async bindTask(targetId, task) {

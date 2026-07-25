@@ -8,6 +8,7 @@ import {
   MicrotaskCoalescer,
   SubmissionStore,
   applyTriggerDecision,
+  automationResumeDecision,
   cleanListingIdentity,
   countOpenPageTargets,
   isExactIndeedConfirmation,
@@ -34,6 +35,83 @@ test("tab pressure counts current page targets only", () => {
     2,
   );
   assert.equal(countOpenPageTargets(undefined), 0);
+});
+
+test("clear Smart Apply routes resume one fully mapped job exactly once", () => {
+  const snapshot = {
+    host: "smartapply.indeed.com",
+    path: "/beta/indeedapply/form/questions-module",
+    visibleText: "Application questions",
+    accessBlocked: false,
+  };
+  const task = {
+    task_id: "job-1",
+    company: "Example",
+    job_title: "Engineer",
+    target_country: "Australia",
+    work_mode: "remote",
+    resume_file: "software-systems.pdf",
+  };
+  const first = automationResumeDecision({
+    snapshot,
+    task,
+    runnerEnabled: true,
+  });
+  assert.equal(first.resume, true);
+  assert.equal(
+    automationResumeDecision({
+      snapshot,
+      task,
+      runnerEnabled: true,
+      handledRouteKey: first.routeKey,
+    }).reason,
+    "route_already_handled",
+  );
+  assert.equal(
+    automationResumeDecision({
+      snapshot: { ...snapshot, accessBlocked: true },
+      task,
+      runnerEnabled: true,
+    }).reason,
+    "access_blocked",
+  );
+});
+
+test("automation resume fails closed without runner, manifest data, or on post-apply", () => {
+  const clear = {
+    host: "smartapply.indeed.com",
+    path: "/beta/indeedapply/form/contact-info-module",
+    visibleText: "Contact info",
+    accessBlocked: false,
+  };
+  assert.equal(
+    automationResumeDecision({ snapshot: clear, task: {}, runnerEnabled: true }).reason,
+    "incomplete_manifest_task",
+  );
+  assert.equal(
+    automationResumeDecision({
+      snapshot: clear,
+      task: { resume_file: "r.pdf", target_country: "Canada", work_mode: "remote" },
+    }).reason,
+    "runner_disabled",
+  );
+  assert.equal(
+    automationResumeDecision({
+      snapshot: {
+        ...clear,
+        path: "/beta/indeedapply/form/post-apply",
+        visibleText: "Your application has been submitted!",
+      },
+      task: {
+        task_id: "job-1",
+        resume_file: "r.pdf",
+        target_country: "Canada",
+        work_mode: "remote",
+      },
+      runnerEnabled: true,
+    }).reason,
+    "already_submitted",
+  );
 });
 
 test("click and focus events route one visible Apply control within the tab limit", () => {

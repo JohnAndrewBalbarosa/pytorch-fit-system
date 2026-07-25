@@ -77,6 +77,32 @@ export function applyTriggerDecision({
   };
 }
 
+export function automationResumeDecision({
+  snapshot,
+  task,
+  runnerEnabled = false,
+  running = false,
+  handledRouteKey = "",
+}) {
+  if (!runnerEnabled) return { resume: false, reason: "runner_disabled" };
+  if (!task?.resume_file || !task?.target_country || !task?.work_mode) {
+    return { resume: false, reason: "incomplete_manifest_task" };
+  }
+  if (snapshot?.host !== "smartapply.indeed.com") {
+    return { resume: false, reason: "not_smart_apply" };
+  }
+  if (snapshot?.accessBlocked) return { resume: false, reason: "access_blocked" };
+  if (isExactIndeedConfirmation(snapshot) || snapshot?.path?.endsWith("/post-apply")) {
+    return { resume: false, reason: "already_submitted" };
+  }
+  if (running) return { resume: false, reason: "runner_active" };
+  const routeKey = `${task.task_id}\n${snapshot.path}`;
+  if (handledRouteKey === routeKey) {
+    return { resume: false, reason: "route_already_handled", routeKey };
+  }
+  return { resume: true, reason: "clear_smart_apply_route", routeKey };
+}
+
 export class MicrotaskCoalescer {
   #states = new Map();
 
