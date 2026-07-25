@@ -402,6 +402,37 @@ def test_pending_listing_challenge_resumes_listing_flow(monkeypatch):
     assert is_application_page is False
 
 
+def test_access_check_rebinds_stale_target_after_browser_restart(monkeypatch):
+    job = runner.IndeedUnattendedJob(
+        task_id="job",
+        company="Company",
+        job_title="Backend Engineer",
+        listing_url="https://ca.indeed.com/viewjob?jk=job",
+        target_country="Canada",
+    )
+    page = SimpleNamespace(url=job.listing_url)
+    queued = []
+    blocked = runner.AccessGateResult(
+        state=runner.AccessGateState.HUMAN_REQUIRED,
+        reason="verification_required",
+    )
+    queue = SimpleNamespace(
+        pending=lambda: [
+            SimpleNamespace(
+                application_reference=job.batch_task().application_reference,
+                domain="ca.indeed.com",
+                browser_target_id="stale-target",
+            )
+        ],
+        enqueue=lambda **kwargs: queued.append(kwargs),
+    )
+    monkeypatch.setattr(runner, "check_access_gate", lambda _page: blocked)
+    monkeypatch.setattr(runner, "_browser_target_id", lambda _page: "restarted-target")
+
+    assert runner._check_access(page, job, queue) is blocked
+    assert queued[0]["browser_target_id"] == "restarted-target"
+
+
 def test_qualification_evidence_includes_exact_remote_title():
     job = runner.IndeedUnattendedJob(
         task_id="job",

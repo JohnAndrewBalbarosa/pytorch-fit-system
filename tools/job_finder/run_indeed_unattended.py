@@ -103,9 +103,10 @@ def _check_access(page, job, queue):
         if item.application_reference == reference and item.domain == host
     ]
     target_id = _browser_target_id(page)
-    if not matching_pending or (
-        target_id and not any(item.browser_target_id for item in matching_pending)
-    ):
+    pending_target_ids = {
+        item.browser_target_id for item in matching_pending if item.browser_target_id
+    }
+    if not matching_pending or (target_id and target_id not in pending_target_ids):
         queue.enqueue(
             application_reference=reference,
             url=str(page.url),
