@@ -22,10 +22,13 @@ from resume_builder.job_application import (  # noqa: E402
     BatchApplicationOutcome,
     BatchApplicationStatus,
     HumanVerificationQueue,
+    AccessGateResult,
+    AccessGateState,
     ApprovedIndeedQuestionAnswerSet,
     DEFAULT_MONGODB_DATABASE,
     DEFAULT_MONGODB_URI,
     MongoQuestionnaireRepository,
+    VerificationQueueGroup,
     SmartApplyApprovals,
     check_access_gate,
     indeed_batch_outcome,
@@ -45,6 +48,8 @@ from resume_builder.job_application.indeed_unattended import (  # noqa: E402
 _WRITE_LOCK = Lock()
 _APPLY_SELECTORS = (
     "[data-testid=indeedApplyButton]",
+    "button:visible:has-text('Apply on company site')",
+    "a:visible:has-text('Apply on company site')",
     "button:visible:has-text('Apply now')",
     "button:visible:has-text('Apply with Indeed')",
     "a:visible:has-text('Apply now')",
@@ -184,6 +189,7 @@ def _open_smart_apply(
     poll_ms: int = 250,
 ):
     before_pages = tuple(context.pages)
+    initial_host = (urlsplit(str(page.url)).hostname or "").lower()
     apply_control = _visible_apply_control(
         page,
         timeout_ms=control_timeout_ms,
@@ -208,6 +214,13 @@ def _open_smart_apply(
             host = (urlsplit(str(candidate.url)).hostname or "").lower()
             if host == "smartapply.indeed.com":
                 return candidate, ""
+            if (
+                host
+                and host != initial_host
+                and host != "indeed.com"
+                and not host.endswith(".indeed.com")
+            ):
+                return candidate, f"apply on company site: {host}"
         if new_pages:
             application_page = new_pages[-1]
         if waited_ms >= navigation_timeout_ms:
@@ -220,6 +233,44 @@ def _open_smart_apply(
     return (
         application_page,
         f"apply control did not reach Indeed Smart Apply: {host or 'unknown'}",
+    )
+
+
+def _queue_company_site_handoff(
+    page,
+    job: IndeedUnattendedJob,
+    queue: HumanVerificationQueue,
+) -> BatchApplicationOutcome:
+    queue.enqueue(
+        application_reference=job.batch_task().application_reference,
+        url=str(page.url),
+        result=AccessGateResult(
+            state=AccessGateState.HUMAN_REQUIRED,
+            reason="apply_on_company_site",
+            evidence="Indeed Apply opened an external company application site",
+        ),
+        browser_target_id=_browser_target_id(page),
+        group=VerificationQueueGroup.HUMAN_INTERVENTION,
+    )
+    return _outcome(
+        job,
+        BatchApplicationStatus.HUMAN_HANDOFF,
+        "human intervention required: apply on company site",
+    )
+
+
+def _is_pending_company_site_handoff(
+    page,
+    job: IndeedUnattendedJob,
+    queue: HumanVerificationQueue,
+) -> bool:
+    target_id = _browser_target_id(page)
+    reference = job.batch_task().application_reference
+    return any(
+        item.application_reference == reference
+        and item.group == VerificationQueueGroup.HUMAN_INTERVENTION
+        and (not item.browser_target_id or item.browser_target_id == target_id)
+        for item in queue.pending()
     )
 
 
@@ -466,6 +517,12 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
             return _outcome(job, BatchApplicationStatus.FAILED, "Chrome has no browser context")
         context = browser.contexts[0]
         page, is_application_page = _matching_existing_page(context, job, queue)
+        if page is not None and _is_pending_company_site_handoff(page, job, queue):
+            return _outcome(
+                job,
+                BatchApplicationStatus.HUMAN_HANDOFF,
+                "human intervention required: apply on company site",
+            )
         if is_application_page:
             return _retire_if_terminal(
                 page,
@@ -513,6 +570,11 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
 
         application_page, apply_error = _open_smart_apply(page, context)
         if apply_error:
+            if apply_error.startswith("apply on company site:"):
+                return _retire_if_terminal(
+                    application_page,
+                    _queue_company_site_handoff(application_page, job, queue),
+                )
             status = (
                 BatchApplicationStatus.SKIPPED
                 if apply_error == "no verified visible Indeed Apply control"

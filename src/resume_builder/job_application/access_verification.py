@@ -25,6 +25,7 @@ __all__ = [
     "AccessGateState",
     "HumanVerificationQueue",
     "VerificationQueueEntry",
+    "VerificationQueueGroup",
     "VerificationQueueState",
     "check_access_gate",
     "sanitize_application_url",
@@ -38,6 +39,11 @@ class VerificationQueueState(str, Enum):
     RESOLVED = "resolved"
 
 
+class VerificationQueueGroup(str, Enum):
+    ACCESS_VERIFICATION = "access_verification"
+    HUMAN_INTERVENTION = "human_intervention"
+
+
 class VerificationQueueEntry(BaseModel):
     id: str
     application_reference: str
@@ -49,6 +55,7 @@ class VerificationQueueEntry(BaseModel):
     updated_at: str
     occurrences: int = 1
     browser_target_id: str = ""
+    group: VerificationQueueGroup = VerificationQueueGroup.ACCESS_VERIFICATION
 
 
 def _safe_application_reference(application_reference: str, safe_url: str) -> str:
@@ -73,6 +80,7 @@ class HumanVerificationQueue:
         url: str,
         result: AccessGateResult,
         browser_target_id: str = "",
+        group: VerificationQueueGroup = VerificationQueueGroup.ACCESS_VERIFICATION,
     ) -> VerificationQueueEntry:
         if not result.blocked:
             raise ValueError("only human-required access results may be queued")
@@ -97,6 +105,7 @@ class HumanVerificationQueue:
                 browser_target_id=browser_target_id or (
                     str(existing.get("browser_target_id", "")) if existing else ""
                 ),
+                group=group,
             )
             payload[entry_id] = entry.model_dump(mode="json")
             self._save(payload)

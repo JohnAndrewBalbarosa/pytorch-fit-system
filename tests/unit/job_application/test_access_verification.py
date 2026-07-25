@@ -4,6 +4,7 @@ from resume_builder.job_application import (
     AccessGateResult,
     AccessGateState,
     HumanVerificationQueue,
+    VerificationQueueGroup,
     VerificationQueueState,
     sanitize_application_url,
 )
@@ -102,6 +103,25 @@ def test_queue_preserves_browser_target_for_exact_human_resume(tmp_path):
 
     assert queued.browser_target_id == "target-123"
     assert queue.pending()[0].browser_target_id == "target-123"
+    assert "secret" not in queue.path.read_text(encoding="utf-8")
+
+
+def test_queue_groups_company_site_apply_as_human_intervention(tmp_path):
+    queue = HumanVerificationQueue(tmp_path / "verification.json")
+
+    queued = queue.enqueue(
+        application_reference="Company — Backend Engineer",
+        url="https://careers.example.com/apply?token=secret",
+        result=AccessGateResult(
+            state=AccessGateState.HUMAN_REQUIRED,
+            reason="apply_on_company_site",
+        ),
+        browser_target_id="company-site-target",
+        group=VerificationQueueGroup.HUMAN_INTERVENTION,
+    )
+
+    assert queued.group == VerificationQueueGroup.HUMAN_INTERVENTION
+    assert queue.pending()[0].reason == "apply_on_company_site"
     assert "secret" not in queue.path.read_text(encoding="utf-8")
 
 

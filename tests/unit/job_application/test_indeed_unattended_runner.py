@@ -564,6 +564,56 @@ def test_open_smart_apply_waits_for_about_blank_popup_navigation():
     assert listing_page.waited_ms == 500
 
 
+def test_open_smart_apply_returns_external_company_site_for_human_intervention():
+    listing_page = _ApplyPage(url="https://ca.indeed.com/viewjob?jk=job")
+    popup = SimpleNamespace(url="https://careers.example.com/jobs/backend-engineer?token=secret")
+    context = SimpleNamespace(pages=[listing_page])
+    listing_page.on_click = lambda: context.pages.append(popup)
+
+    application_page, error = runner._open_smart_apply(
+        listing_page,
+        context,
+        control_timeout_ms=0,
+        navigation_timeout_ms=1_000,
+        poll_ms=250,
+    )
+
+    assert application_page is popup
+    assert error == "apply on company site: careers.example.com"
+    assert listing_page.clicks == 1
+
+
+def test_company_site_handoff_is_grouped_and_kept_open(monkeypatch):
+    job = runner.IndeedUnattendedJob(
+        task_id="job",
+        company="Company",
+        job_title="Backend Engineer",
+        listing_url="https://ca.indeed.com/viewjob?jk=job",
+        target_country="Canada",
+    )
+    page = _ClosablePage()
+    page.url = "https://careers.example.com/apply?token=secret"
+    captured = {}
+
+    class _Queue:
+        def enqueue(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(runner, "_browser_target_id", lambda _page: "external-target")
+
+    outcome = runner._retire_if_terminal(
+        page,
+        runner._queue_company_site_handoff(page, job, _Queue()),
+    )
+
+    assert outcome.status == BatchApplicationStatus.HUMAN_HANDOFF
+    assert outcome.detail == "human intervention required: apply on company site"
+    assert captured["result"].reason == "apply_on_company_site"
+    assert captured["group"].value == "human_intervention"
+    assert captured["browser_target_id"] == "external-target"
+    assert page.closed is False
+
+
 def test_open_smart_apply_does_not_click_when_control_never_becomes_visible():
     page = _ApplyPage(
         url="https://ca.indeed.com/viewjob?jk=job",

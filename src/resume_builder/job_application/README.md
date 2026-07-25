@@ -192,6 +192,10 @@ python tools/job_finder/run_indeed_unattended.py \
   --autonomous-submit
 ```
 
+Listings whose **Apply on company site** control opens an external application are not automated.
+The external tab stays open and is added to the verification queue with
+`group=human_intervention` and `reason=apply_on_company_site` for manual completion.
+
 ## Workflow state machine
 
 ```mermaid
