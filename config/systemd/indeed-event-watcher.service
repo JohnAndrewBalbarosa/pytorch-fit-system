@@ -6,6 +6,7 @@ After=default.target
 Type=simple
 WorkingDirectory=/home/xy/Desktop/projects/pytorch-fit-system
 Environment=PATH=/home/xy/.nvm/versions/node/v24.10.0/bin:/usr/local/bin:/usr/bin
+EnvironmentFile=-%h/.config/pytorch-fit/indeed-private.env
 ExecStart=/usr/bin/env node --no-warnings tools/job_finder/indeed_event_watcher.mjs --cdp-url http://127.0.0.1:9222 --database .cache/application-submissions.sqlite3 --state .cache/indeed-event-watcher-state.json --manifest .cache/binance-current-manifest.json --manifest out/indeed-unattended/candidate-manifest-latest.json --max-tabs 6 --resume-runner .venv/bin/python --artifact-dir /home/xy/Desktop/resume-industry-run/outputs --queue .cache/application-verification-queue.json --runner-output out/indeed-event-resume --phone-country-calling-code +63 --phone-country-iso PH --saved-phone-original-calling-code +63 --question-ai-provider off --autonomous-submit
 Restart=always
 RestartSec=5

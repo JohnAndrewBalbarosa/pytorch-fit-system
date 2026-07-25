@@ -104,7 +104,7 @@ def test_contact_reconciles_application_locale_with_verified_phone_country():
         field_values={
             "first_name": "John Andrew",
             "last_name": "Balbarosa",
-            "phone": "9669772854",
+            "phone": "9000000000",
             "phone_country_iso": "AU",
         },
         verified_phone="+63 966 977 2854",
@@ -127,7 +127,7 @@ def test_contact_stops_on_country_mismatch_without_verified_iso():
         field_values={
             "first_name": "John Andrew",
             "last_name": "Balbarosa",
-            "phone": "9669772854",
+            "phone": "9000000000",
             "phone_country_iso": "AU",
         },
         verified_phone="+63 966 977 2854",

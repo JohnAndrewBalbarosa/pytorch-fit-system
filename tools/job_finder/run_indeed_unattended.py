@@ -356,7 +356,10 @@ def _runtime_question_profile(
 
 def _runtime_verified_phone(page, args: argparse.Namespace) -> str:
     """Use an explicit phone or the matching saved contact value visible in Indeed."""
-    explicit = getattr(args, "verified_phone", "")
+    explicit = (
+        getattr(args, "verified_phone", "")
+        or os.environ.get("PYTORCH_FIT_VERIFIED_PHONE", "")
+    )
     if explicit:
         return explicit
     if "/contact-info-module" not in urlsplit(str(page.url)).path:

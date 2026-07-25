@@ -40,6 +40,11 @@ Final Submit remains a separate domain-scoped permission. Add `--autonomous-subm
 runtime user has explicitly approved autonomous submission on Indeed. Without it, the bridge fills
 the validated draft and stops at the final gate.
 
+Sensitive contact data stays outside manifests and the reusable question bank. The Python runner
+reads `PYTORCH_FIT_VERIFIED_PHONE` from its private process environment when `--verified-phone` is
+not supplied. The systemd unit loads it from `%h/.config/pytorch-fit/indeed-private.env`; keep that
+file mode `0600` and never commit it.
+
 Example:
 
 ```bash

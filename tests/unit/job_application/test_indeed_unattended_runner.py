@@ -281,6 +281,19 @@ def test_runtime_phone_prefers_explicit_verified_value():
     )
 
 
+def test_runtime_phone_uses_private_environment_value(monkeypatch):
+    monkeypatch.setenv("PYTORCH_FIT_VERIFIED_PHONE", "+63 900 000 0000")
+    args = SimpleNamespace(
+        verified_phone="",
+        phone_country_iso="PH",
+    )
+
+    assert (
+        runner._runtime_verified_phone(_ContactPage("", "PH"), args)
+        == "+63 900 000 0000"
+    )
+
+
 def test_process_all_mode_does_not_stop_at_submission_target(tmp_path):
     args = _args(tmp_path, count=4, target=1)
     args.process_all_candidates = True
