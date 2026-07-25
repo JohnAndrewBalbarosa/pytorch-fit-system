@@ -11,7 +11,9 @@ from resume_builder.job_application import (
     DeterministicQuestionResolver,
     HybridQuestionPipeline,
     ScreeningQuestion,
+    SmartApplyNovelQuestionAnswerer,
     VerifiedApplicationProfile,
+    build_adaptive_indeed_question_plan,
 )
 from resume_builder.job_application.models import QuestionAnswer
 
@@ -185,3 +187,86 @@ def test_missing_employment_is_zero_only_for_explicit_total_experience():
     assert result.answers[0].answer == "0"
     assert result.answers[1].abstain is True
     assert answerer.labels == ["How many years of experience with Python?"]
+
+
+def test_adaptive_plan_prioritizes_mongodb_then_profile_then_ai_and_masks_phone():
+    answerer = _RecordingAnswerer()
+    questions = [
+        _question("saved", "Preferred language"),
+        _question("relocate", "Are you willing to relocate?", kind="radio", options=["Yes", "No"]),
+        _question("phone", "Mobile number"),
+        _question("agents", "Describe your experience with AI agent orchestration"),
+    ]
+
+    adaptive = build_adaptive_indeed_question_plan(
+        questions,
+        resume=_resume(),
+        verified_profile=VerifiedApplicationProfile(
+            phone="+639123456789",
+            country="Philippines",
+        ),
+        reusable_answers={
+            "Preferred language": "English",
+            "Are you willing to relocate?": "Yes",
+        },
+        answerer=answerer,
+    )
+
+    assert [answer.answer for answer in adaptive.plan.answers] == [
+        "English",
+        "Yes",
+        "+639123456789",
+        "I built evidence-grounded agent orchestration projects.",
+    ]
+    assert answerer.labels == ["Describe your experience with AI agent orchestration"]
+    assert adaptive.persistable_answers == {
+        "Preferred language": "English",
+        "Are you willing to relocate?": "Yes",
+        "Describe your experience with AI agent orchestration": (
+            "I built evidence-grounded agent orchestration projects."
+        ),
+    }
+    phone_summary = next(
+        item for item in adaptive.summary.answers if item.label == "Mobile number"
+    )
+    assert phone_summary.value.endswith("(session only)")
+    assert "+639123456789" not in adaptive.summary.model_dump_json()
+
+
+class _PreferenceLLM:
+    def structured(self, prompt, schema, system, max_tokens):
+        assert "willing_to_relocate" in prompt
+        return schema(
+            question_id="relocate",
+            decision="answer",
+            answer="Yes",
+            confidence=1.0,
+            evidence_ids=["profile:willing_to_relocate"],
+            rationale="Explicit reusable application preference",
+            reusable=True,
+            sensitivity="personal",
+        )
+
+
+def test_sensitive_preference_is_data_driven_and_saved_after_first_observation():
+    question = _question(
+        "relocate",
+        "Are you open to relocating?",
+        kind="radio",
+        options=["Yes", "No"],
+    )
+    answerer = SmartApplyNovelQuestionAnswerer(
+        _PreferenceLLM(),
+        _resume(),
+        application_preferences={"willing_to_relocate": True},
+    )
+
+    adaptive = build_adaptive_indeed_question_plan(
+        [question],
+        resume=_resume(),
+        verified_profile=VerifiedApplicationProfile(),
+        answerer=answerer,
+    )
+
+    assert adaptive.plan.answers[0].answer == "Yes"
+    assert adaptive.persistable_answers == {"Are you open to relocating?": "Yes"}

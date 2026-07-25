@@ -31,8 +31,13 @@ class Settings(BaseSettings):
     llm_api_key: str | None = None
     anthropic_model: str = "claude-sonnet-4-6"
     openai_model: str = "gpt-4o-mini"
+    google_model: str = "gemini-3.1-pro-preview"
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    google_api_key: str | None = Field(
+        default=None,
+        validation_alias="GOOGLE_API_KEY",
+    )
     gh_user: str | None = None
     github_source: str = "website"
     config_dir: Path = DEFAULT_CONFIG_DIR

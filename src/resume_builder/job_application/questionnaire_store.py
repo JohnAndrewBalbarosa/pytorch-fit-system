@@ -9,10 +9,12 @@ from .indeed_questionnaire import (
     ApprovedIndeedQuestionAnswerSet,
     ApprovedIndeedQuestionAnswers,
 )
+from .models import ScreeningQuestion
 
 DEFAULT_MONGODB_URI = "mongodb://127.0.0.1:27017/?directConnection=true"
 DEFAULT_MONGODB_DATABASE = "pytorch_fit"
 QUESTIONNAIRE_COLLECTION = "indeed_question_sets"
+PROFILE_COLLECTION = "application_profile"
 SCHEMA_VERSION = 1
 
 
@@ -47,6 +49,7 @@ class MongoQuestionnaireRepository:
         self.client = client
         self.database = client[database]
         self.collection = self.database[QUESTIONNAIRE_COLLECTION]
+        self.profile_collection = self.database[PROFILE_COLLECTION]
         self._ensure_indexes()
 
     def close(self) -> None:
@@ -122,9 +125,130 @@ class MongoQuestionnaireRepository:
             )
         return ApprovedIndeedQuestionAnswerSet(domain=domain, pages=pages)
 
+    def reusable_answers(
+        self,
+        questions: list[ScreeningQuestion],
+        *,
+        domain: str,
+    ) -> dict[str, str]:
+        """Reuse a prior answer by normalized label, with live option validation later."""
+        wanted = {
+            self._normalized_label(question.label): question.label
+            for question in questions
+        }
+        if not wanted:
+            return {}
+        documents = self.collection.find(
+            {"domain": domain, "schema_version": SCHEMA_VERSION},
+            {"_id": 0, "answers": 1, "updated_at": 1},
+        ).sort("updated_at", 1)
+        reusable: dict[str, str] = {}
+        for document in documents:
+            for item in document.get("answers", []):
+                label = str(item.get("label", "")).strip()
+                value = str(item.get("value", "")).strip()
+                requested_label = wanted.get(self._normalized_label(label))
+                if requested_label and value:
+                    reusable[requested_label] = value
+        return reusable
+
+    def save_observed_page(
+        self,
+        questions: list[ScreeningQuestion],
+        answers: dict[str, str],
+        *,
+        domain: str,
+        source: str,
+        observed_at: datetime | None = None,
+    ) -> None:
+        """Upsert every observed question plus only the reusable validated answers."""
+        from .indeed_questionnaire import question_set_fingerprint
+
+        timestamp = (observed_at or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        fingerprint = question_set_fingerprint(questions)
+        document = {
+            "schema_version": SCHEMA_VERSION,
+            "provider": "indeed",
+            "domain": domain,
+            "question_set_fingerprint": fingerprint,
+            "questions": [
+                {
+                    "label": question.label,
+                    "kind": question.kind,
+                    "options": question.options,
+                    "required": question.required,
+                }
+                for question in questions
+            ],
+            "answers": [
+                {"label": label, "value": value}
+                for label, value in answers.items()
+            ],
+            "source": source,
+            "updated_at": timestamp,
+        }
+        self.collection.update_one(
+            {
+                "domain": domain,
+                "question_set_fingerprint": fingerprint,
+            },
+            {
+                "$set": document,
+                "$setOnInsert": {"created_at": timestamp},
+            },
+            upsert=True,
+        )
+
     def count(self, *, domain: str | None = None) -> int:
         query = {"domain": domain} if domain else {}
         return int(self.collection.count_documents(query))
+
+    def set_profile_value(
+        self,
+        key: str,
+        value: bool | str,
+        *,
+        source: str,
+        observed_at: datetime | None = None,
+    ) -> None:
+        """Persist an explicit user fact/preference separately from question code."""
+        clean_key = key.strip()
+        if not clean_key:
+            raise ValueError("profile key is required")
+        timestamp = (observed_at or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        self.profile_collection.update_one(
+            {"key": clean_key},
+            {
+                "$set": {
+                    "schema_version": SCHEMA_VERSION,
+                    "key": clean_key,
+                    "value": value,
+                    "source": source,
+                    "updated_at": timestamp,
+                },
+                "$setOnInsert": {"created_at": timestamp},
+            },
+            upsert=True,
+        )
+
+    def profile_value(self, key: str) -> bool | str | None:
+        document = self.profile_collection.find_one(
+            {"key": key.strip(), "schema_version": SCHEMA_VERSION},
+            {"_id": 0, "value": 1},
+        )
+        return None if document is None else document.get("value")
+
+    def profile_values(self) -> dict[str, bool | str]:
+        """Return all explicit reusable profile facts/preferences without question logic."""
+        documents = self.profile_collection.find(
+            {"schema_version": SCHEMA_VERSION},
+            {"_id": 0, "key": 1, "value": 1},
+        )
+        return {
+            str(document["key"]): document["value"]
+            for document in documents
+            if document.get("key") and isinstance(document.get("value"), (bool, str))
+        }
 
     def _ensure_indexes(self) -> None:
         self.collection.create_index(
@@ -136,3 +260,12 @@ class MongoQuestionnaireRepository:
             [("provider", 1), ("updated_at", -1)],
             name="provider_updated",
         )
+        self.profile_collection.create_index(
+            [("key", 1)],
+            unique=True,
+            name="unique_profile_key",
+        )
+
+    @staticmethod
+    def _normalized_label(label: str) -> str:
+        return " ".join(label.casefold().split()).rstrip(" ?*:,.")

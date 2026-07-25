@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import heapq
 import json
+import os
 import sys
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
@@ -32,9 +33,11 @@ from resume_builder.job_application import (  # noqa: E402
     MongoQuestionnaireRepository,
     VerificationQueueGroup,
     SmartApplyApprovals,
+    SmartApplyNovelQuestionAnswerer,
+    VerifiedApplicationProfile,
+    build_adaptive_indeed_question_plan,
     check_access_gate,
     indeed_batch_outcome,
-    build_approved_indeed_question_plan,
     calculate_browser_resource_limits,
     load_resume_artifact,
     observe_indeed_screening_questions,
@@ -43,6 +46,7 @@ from resume_builder.job_application import (  # noqa: E402
     recommend_role_resume,
     run_indeed_smart_apply_until_gate,
 )
+from resume_builder.llm import GoogleProvider, LLMUnavailableError  # noqa: E402
 from resume_builder.job_application.indeed_unattended import (  # noqa: E402
     IndeedUnattendedJob,
     IndeedUnattendedManifest,
@@ -67,6 +71,13 @@ def _write_json(path: Path, value: object) -> None:
         temporary = path.with_suffix(path.suffix + ".tmp")
         temporary.write_text(json.dumps(value, indent=2), encoding="utf-8")
         temporary.replace(path)
+
+
+def _append_jsonl(path: Path, value: object) -> None:
+    with _WRITE_LOCK:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(value, ensure_ascii=False) + "\n")
 
 
 def _outcome(
@@ -384,6 +395,105 @@ def _runtime_verified_phone(page, args: argparse.Namespace) -> str:
     return ""
 
 
+def _question_ai_answerer(args: argparse.Namespace, resume, application_preferences):
+    if getattr(args, "question_ai_provider", "google") == "off":
+        return None
+    api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return None
+    provider = GoogleProvider(
+        api_key=api_key,
+        model=getattr(args, "question_ai_model", "gemini-3.1-pro-preview"),
+    )
+    return SmartApplyNovelQuestionAnswerer(
+        provider,
+        resume,
+        application_preferences=application_preferences,
+    )
+
+
+def _adaptive_question_page_plan(
+    page,
+    job: IndeedUnattendedJob,
+    args: argparse.Namespace,
+    resume,
+    *,
+    verified_phone: str,
+    approved_questions: ApprovedIndeedQuestionAnswerSet | None,
+):
+    questions = observe_indeed_screening_questions(page)
+    exact = _runtime_question_profile(
+        page,
+        job,
+        questions,
+        approved_questions,
+    )
+    repository = MongoQuestionnaireRepository(
+        getattr(args, "mongodb_uri", DEFAULT_MONGODB_URI),
+        database=getattr(args, "mongodb_database", DEFAULT_MONGODB_DATABASE),
+    )
+    try:
+        repository.ping()
+        reusable = repository.reusable_answers(
+            questions,
+            domain="smartapply.indeed.com",
+        )
+        application_preferences = repository.profile_values()
+        profile = VerifiedApplicationProfile(
+            email=resume.contact.email or "",
+            phone=verified_phone,
+            country=resume.contact.location or "",
+        )
+        try:
+            adaptive = build_adaptive_indeed_question_plan(
+                questions,
+                resume=resume,
+                verified_profile=profile,
+                exact=exact,
+                reusable_answers=reusable,
+                answerer=_question_ai_answerer(
+                    args,
+                    resume,
+                    application_preferences,
+                ),
+            )
+        except (LLMUnavailableError, ValueError) as exc:
+            print(
+                f"Question AI unavailable; deterministic/Mongo answers retained: {exc}",
+                flush=True,
+            )
+            adaptive = build_adaptive_indeed_question_plan(
+                questions,
+                resume=resume,
+                verified_profile=profile,
+                exact=exact,
+                reusable_answers=reusable,
+            )
+        repository.save_observed_page(
+            questions,
+            adaptive.persistable_answers,
+            domain="smartapply.indeed.com",
+            source="validated adaptive Smart Apply question bank",
+        )
+    finally:
+        repository.close()
+    summary_payload = {
+        **adaptive.summary.model_dump(mode="json"),
+        "company": job.company,
+        "job_title": job.job_title,
+    }
+    print(
+        "Smart Apply page context: "
+        + json.dumps(summary_payload, ensure_ascii=False),
+        flush=True,
+    )
+    _append_jsonl(
+        args.output / "questionnaire-pages.jsonl",
+        summary_payload,
+    )
+    return adaptive.plan
+
+
 def _matching_existing_page(
     context,
     job: IndeedUnattendedJob,
@@ -465,19 +575,14 @@ def _run_application(
     approved_questions = _load_approved_questions(args)
     for _ in range(8):
         question_plan = None
-        if (
-            approved_questions is not None
-            and "/questions-module" in urlsplit(str(application_page.url)).path
-        ):
-            observed_questions = observe_indeed_screening_questions(application_page)
-            question_plan = build_approved_indeed_question_plan(
-                observed_questions,
-                _runtime_question_profile(
-                    application_page,
-                    job,
-                    observed_questions,
-                    approved_questions,
-                ),
+        if "/questions-module" in urlsplit(str(application_page.url)).path:
+            question_plan = _adaptive_question_page_plan(
+                application_page,
+                job,
+                args,
+                resume,
+                verified_phone=verified_phone,
+                approved_questions=approved_questions,
             )
         result = run_indeed_smart_apply_until_gate(
             application_page,
@@ -536,7 +641,7 @@ def _load_approved_questions(
     finally:
         repository.close()
     if answer_set is None:
-        raise RuntimeError("MongoDB has no approved smartapply.indeed.com questionnaire profiles")
+        return None
     return answer_set
 
 
@@ -940,6 +1045,20 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--mongodb-uri", default=DEFAULT_MONGODB_URI)
     parser.add_argument("--mongodb-database", default=DEFAULT_MONGODB_DATABASE)
+    parser.add_argument(
+        "--question-ai-provider",
+        choices=("google", "off"),
+        default="google",
+        help=(
+            "Use strict structured Google AI only for novel evidence-grounded questions; "
+            "saved MongoDB and deterministic answers always take priority."
+        ),
+    )
+    parser.add_argument(
+        "--question-ai-model",
+        default="gemini-3.1-pro-preview",
+        help="Google model for novel questions; API key is read only from process environment.",
+    )
     return parser
 
 

@@ -111,11 +111,43 @@ planning if another question page appears.
 `HybridQuestionPipeline` keeps standard questions deterministic. It maps selected-resume facts
 (name, education, graduation state, professional experience, links) and explicitly verified
 runtime profile facts (email, phone, street/city/region/postal/country) without a model call.
-Missing private facts, salary, authorization/visa, relocation, scheduling, consent, and demographic
-questions stop for human input. Only non-standard employer questions such as project- or
-technology-specific experience may call the bounded career-evidence answerer. That answerer now
+Missing private facts, salary, authorization/visa, unset preferences, scheduling, consent, and
+demographic questions stop for human input. Only non-standard employer questions such as project-
+or technology-specific experience may call the bounded career-evidence answerer. That answerer
 receives only resume evidence with a positive token match and must still cite accepted evidence IDs
 or abstain.
+
+The unattended Smart Apply runner adds a MongoDB-first adaptive question bank. It resolves each
+rendered page in this order: exact saved page, reusable normalized-label answer, selected-resume or
+runtime fact, then a structured-output model call only for a new bounded career-evidence question.
+Validated non-private answers are upserted into MongoDB for later pages. Session-only phone, email,
+address, compensation, authorization, legal, and demographic values are never added to the
+reusable bank. Explicit preferences live separately in the `application_profile` MongoDB
+collection, so answer values are data rather than source-code constants.
+
+Novel question responses use this strict JSON contract:
+
+```json
+{
+  "schema_version": 1,
+  "question_id": "observed-field-id",
+  "decision": "answer",
+  "answer": "Concise, truthful, professional answer",
+  "confidence": 0.9,
+  "evidence_ids": ["project:observed-id"],
+  "rationale": "Brief evidence-grounded reason",
+  "reusable": true,
+  "sensitivity": "standard"
+}
+```
+
+`decision` is `answer`, `abstain`, or `human_required`; `sensitivity` is `standard`, `personal`,
+`legal`, `compensation`, or `authorization`. The runner validates IDs, evidence citations, exact
+options, and field length before accepting or saving an answer. Configure the API key only in the
+process environment (`GOOGLE_API_KEY` or `GEMINI_API_KEY`) and select the model with
+`--question-ai-model`; the key is never written to CLI arguments, MongoDB, logs, or run artifacts.
+Each questionnaire page emits a masked `questionnaire-pages.jsonl` record containing the known
+profile context and saved/new answer sources.
 
 For a non-mutating live preview against a user-approved Chrome/CDP session:
 

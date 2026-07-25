@@ -142,6 +142,13 @@ from resume_builder.job_application.questionnaire_store import (
     DEFAULT_MONGODB_URI,
     MongoQuestionnaireRepository,
 )
+from resume_builder.job_application.smart_apply_questions import (
+    AdaptiveQuestionPlan,
+    NovelQuestionJSON,
+    SmartApplyNovelQuestionAnswerer,
+    SmartApplyPageSummary,
+    build_adaptive_indeed_question_plan,
+)
 
 __all__ = [
     "ApplicationPlan",
@@ -249,4 +256,9 @@ __all__ = [
     "DEFAULT_MONGODB_DATABASE",
     "DEFAULT_MONGODB_URI",
     "MongoQuestionnaireRepository",
+    "AdaptiveQuestionPlan",
+    "NovelQuestionJSON",
+    "SmartApplyNovelQuestionAnswerer",
+    "SmartApplyPageSummary",
+    "build_adaptive_indeed_question_plan",
 ]

@@ -4,6 +4,7 @@ from resume_builder.job_application import (
     ApprovedIndeedQuestionAnswerSet,
     ApprovedIndeedQuestionAnswers,
     MongoQuestionnaireRepository,
+    ScreeningQuestion,
 )
 
 
@@ -59,6 +60,10 @@ class _Collection:
                 )
         return _Cursor(documents)
 
+    def find_one(self, query, projection):
+        documents = self.find(query, projection)
+        return documents[0] if documents else None
+
     def count_documents(self, query):
         return sum(
             all(item.get(key) == value for key, value in query.items())
@@ -68,11 +73,14 @@ class _Collection:
 
 class _Database:
     def __init__(self):
-        self.collection = _Collection()
+        self.collections = {
+            "indeed_question_sets": _Collection(),
+            "application_profile": _Collection(),
+        }
+        self.collection = self.collections["indeed_question_sets"]
 
     def __getitem__(self, name):
-        assert name == "indeed_question_sets"
-        return self.collection
+        return self.collections[name]
 
     def command(self, name):
         assert name == "ping"
@@ -132,3 +140,50 @@ def test_mongodb_repository_returns_none_for_unknown_domain():
     repository = MongoQuestionnaireRepository(client=_Client())
 
     assert repository.load(domain="apply.example.com") is None
+
+
+def test_mongodb_repository_persists_explicit_profile_values_separately():
+    client = _Client()
+    repository = MongoQuestionnaireRepository(client=client)
+
+    assert repository.profile_value("willing_to_relocate") is None
+    repository.set_profile_value(
+        "willing_to_relocate",
+        True,
+        source="explicit user instruction",
+    )
+
+    assert repository.profile_value("willing_to_relocate") is True
+    assert repository.profile_values() == {"willing_to_relocate": True}
+    assert repository.count(domain="smartapply.indeed.com") == 0
+
+
+def test_mongodb_repository_saves_observed_questions_without_private_answer():
+    client = _Client()
+    repository = MongoQuestionnaireRepository(client=client)
+    questions = [
+        ScreeningQuestion(
+            question_id="q1",
+            label="Mobile number",
+            selector="#q1",
+            required=True,
+        )
+    ]
+
+    repository.save_observed_page(
+        questions,
+        {},
+        domain="smartapply.indeed.com",
+        source="unit test",
+    )
+
+    document = client.database.collection.documents[0]
+    assert document["questions"] == [
+        {
+            "label": "Mobile number",
+            "kind": "text",
+            "options": [],
+            "required": True,
+        }
+    ]
+    assert document["answers"] == []

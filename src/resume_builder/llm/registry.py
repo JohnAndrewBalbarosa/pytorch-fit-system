@@ -13,6 +13,7 @@ from typing import Callable
 from ..core.config import Settings, get_settings
 from .anthropic_provider import AnthropicProvider
 from .base import LLMProvider
+from .google_provider import GoogleProvider
 from .null_provider import NullProvider
 from .openai_provider import OpenAIProvider
 
@@ -33,10 +34,18 @@ def _build_null(_: Settings) -> LLMProvider:
     return NullProvider()
 
 
+def _build_google(s: Settings) -> LLMProvider:
+    return GoogleProvider(
+        api_key=s.google_api_key,
+        model=s.google_model,
+    )
+
+
 _REGISTRY: dict[str, Callable[[Settings], LLMProvider]] = {
     "anthropic": _build_anthropic,
     "openai": _build_openai,
     "openai-compatible": _build_openai,
+    "google": _build_google,
     "null": _build_null,
 }
 
