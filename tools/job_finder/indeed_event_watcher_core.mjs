@@ -30,6 +30,38 @@ export function isExactIndeedConfirmation(snapshot) {
   );
 }
 
+export function applyTriggerDecision({
+  eventKind,
+  snapshot,
+  alreadyTriggered = false,
+  openPageCount = 0,
+  maxTabs = 6,
+}) {
+  if (!["click", "focus"].includes(eventKind)) {
+    return { trigger: false, reason: "event_not_user_navigation" };
+  }
+  if (snapshot?.accessBlocked) {
+    return { trigger: false, reason: "access_blocked" };
+  }
+  if (!snapshot?.applyControl?.kind) {
+    return { trigger: false, reason: "no_visible_apply_control" };
+  }
+  if (alreadyTriggered) {
+    return { trigger: false, reason: "already_triggered" };
+  }
+  if (openPageCount >= maxTabs) {
+    return { trigger: false, reason: "tab_limit_reached" };
+  }
+  return {
+    trigger: true,
+    reason: "visible_apply_control",
+    route:
+      snapshot.applyControl.kind === "company_site"
+        ? "human_intervention"
+        : "indeed_automation",
+  };
+}
+
 export class MicrotaskCoalescer {
   #states = new Map();
 

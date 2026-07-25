@@ -21,6 +21,7 @@ from resume_builder.job_application import (  # noqa: E402
     ApplicationSubmissionHistory,
     BatchApplicationOutcome,
     BatchApplicationStatus,
+    BrowserResourceLimits,
     HumanVerificationQueue,
     AccessGateResult,
     AccessGateState,
@@ -34,9 +35,11 @@ from resume_builder.job_application import (  # noqa: E402
     check_access_gate,
     indeed_batch_outcome,
     build_approved_indeed_question_plan,
+    calculate_browser_resource_limits,
     load_resume_artifact,
     observe_indeed_screening_questions,
     question_set_fingerprint,
+    read_browser_resource_snapshot,
     recommend_role_resume,
     run_indeed_smart_apply_until_gate,
 )
@@ -132,6 +135,11 @@ def _browser_target_id(page) -> str:
 def _visible_text(page, selector: str) -> str:
     locator = page.locator(selector).first
     return locator.inner_text() if locator.count() and locator.is_visible() else ""
+
+
+def _tab_budget_available(context, args: argparse.Namespace) -> bool:
+    max_tabs = int(getattr(args, "max_tabs", 0) or 0)
+    return not max_tabs or len(context.pages) < max_tabs
 
 
 def _wait_for_listing_evidence(
@@ -585,6 +593,12 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
                 ),
             )
         if page is None:
+            if not _tab_budget_available(context, args):
+                return _outcome(
+                    job,
+                    BatchApplicationStatus.VERIFICATION_PENDING,
+                    f"resource tab limit reached ({len(context.pages)}/{args.max_tabs})",
+                )
             page = context.new_page()
             page.goto(job.listing_url, wait_until="domcontentloaded", timeout=30_000)
         access = _check_access(page, job, queue)
@@ -617,6 +631,12 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
                 _outcome(job, BatchApplicationStatus.SKIPPED, reason),
             )
 
+        if not _tab_budget_available(context, args):
+            return _outcome(
+                job,
+                BatchApplicationStatus.VERIFICATION_PENDING,
+                f"resource tab limit reached ({len(context.pages)}/{args.max_tabs})",
+            )
         application_page, apply_error = _open_smart_apply(page, context)
         if apply_error:
             if apply_error.startswith("apply on company site:"):
@@ -655,6 +675,7 @@ def _run_payload(
     target_submissions: int,
     candidates_started: set[str],
     finished_at: str = "",
+    resource_limits: BrowserResourceLimits | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "status": status,
@@ -672,6 +693,8 @@ def _run_payload(
             if job.task_id in latest
         ],
     }
+    if resource_limits is not None:
+        payload["resource_limits"] = resource_limits.model_dump(mode="json")
     if finished_at:
         payload["finished_at"] = finished_at
     return payload
@@ -702,6 +725,7 @@ def run(args: argparse.Namespace, *, worker=_worker) -> int:
             latest=latest,
             target_submissions=args.target_submissions,
             candidates_started=candidates_started,
+            resource_limits=getattr(args, "resource_limits", None),
         ),
     )
     with ThreadPoolExecutor(max_workers=args.max_parallel) as executor:
@@ -770,6 +794,7 @@ def run(args: argparse.Namespace, *, worker=_worker) -> int:
                     latest=latest,
                     target_submissions=args.target_submissions,
                     candidates_started=candidates_started,
+                    resource_limits=getattr(args, "resource_limits", None),
                 ),
             )
             if not process_all and confirmed >= args.target_submissions:
@@ -804,6 +829,7 @@ def run(args: argparse.Namespace, *, worker=_worker) -> int:
             latest=latest,
             target_submissions=args.target_submissions,
             candidates_started=candidates_started,
+            resource_limits=getattr(args, "resource_limits", None),
         ),
     )
     if getattr(args, "process_all_candidates", False):
@@ -847,6 +873,21 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-submissions", type=int, default=3)
     parser.add_argument("--max-parallel", type=int, default=3)
     parser.add_argument("--max-candidates", type=int, default=12)
+    parser.add_argument(
+        "--resource-mode",
+        choices=("auto", "manual"),
+        default="auto",
+        help=(
+            "Auto clamps workers, tabs, and candidates from live RAM/CPU/swap pressure; "
+            "manual honors the explicit numeric limits."
+        ),
+    )
+    parser.add_argument(
+        "--max-tabs",
+        type=int,
+        default=0,
+        help="Maximum browser tabs for this batch; 0 lets auto mode calculate it.",
+    )
     parser.add_argument(
         "--process-all-candidates",
         action="store_true",
@@ -909,10 +950,39 @@ def main() -> int:
         raise SystemExit("--max-parallel must be between 1 and 5")
     if not 1 <= args.max_candidates <= 24:
         raise SystemExit("--max-candidates must be between 1 and 24")
+    if not 0 <= args.max_tabs <= 24:
+        raise SystemExit("--max-tabs must be between 0 and 24")
     if not 1 <= args.verification_wait_minutes <= 720:
         raise SystemExit("--verification-wait-minutes must be between 1 and 720")
+    snapshot = read_browser_resource_snapshot()
+    requested_tabs = args.max_tabs
+    if args.resource_mode == "auto":
+        args.resource_limits = calculate_browser_resource_limits(
+            snapshot,
+            requested_workers=args.max_parallel,
+            requested_candidates=args.max_candidates,
+            requested_tabs=requested_tabs,
+        )
+        args.max_parallel = args.resource_limits.max_workers
+        args.max_candidates = args.resource_limits.max_candidates
+        args.max_tabs = args.resource_limits.max_tabs
+    else:
+        args.max_tabs = requested_tabs or min(12, args.max_candidates)
+        args.resource_limits = BrowserResourceLimits(
+            max_workers=args.max_parallel,
+            max_tabs=args.max_tabs,
+            max_candidates=args.max_candidates,
+            reason="manual resource limits",
+            snapshot=snapshot,
+        )
     args.output = _unique_run_directory(args.output)
     print(f"Indeed unattended run directory: {args.output}", flush=True)
+    print(
+        "Resource limits: "
+        f"workers={args.max_parallel} tabs={args.max_tabs} "
+        f"candidates={args.max_candidates} ({args.resource_limits.reason})",
+        flush=True,
+    )
     return run(args)
 
 

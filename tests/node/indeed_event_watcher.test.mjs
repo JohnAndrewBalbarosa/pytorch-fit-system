@@ -7,9 +7,73 @@ import { DatabaseSync } from "node:sqlite";
 import {
   MicrotaskCoalescer,
   SubmissionStore,
+  applyTriggerDecision,
   isExactIndeedConfirmation,
   normalizeExactIdentity,
 } from "../../tools/job_finder/indeed_event_watcher_core.mjs";
+
+test("click and focus events route one visible Apply control within the tab limit", () => {
+  const snapshot = {
+    accessBlocked: false,
+    applyControl: { kind: "indeed", text: "Apply with Indeed" },
+  };
+  assert.deepEqual(
+    applyTriggerDecision({
+      eventKind: "click",
+      snapshot,
+      openPageCount: 3,
+      maxTabs: 6,
+    }),
+    {
+      trigger: true,
+      reason: "visible_apply_control",
+      route: "indeed_automation",
+    },
+  );
+  assert.equal(
+    applyTriggerDecision({
+      eventKind: "focus",
+      snapshot: {
+        ...snapshot,
+        applyControl: { kind: "company_site", text: "Apply on company site" },
+      },
+      openPageCount: 3,
+      maxTabs: 6,
+    }).route,
+    "human_intervention",
+  );
+});
+
+test("apply trigger fails closed for blockers, repeats, background events, and tab pressure", () => {
+  const snapshot = {
+    accessBlocked: false,
+    applyControl: { kind: "indeed", text: "Apply with Indeed" },
+  };
+  assert.equal(
+    applyTriggerDecision({ eventKind: "mutation", snapshot }).reason,
+    "event_not_user_navigation",
+  );
+  assert.equal(
+    applyTriggerDecision({
+      eventKind: "click",
+      snapshot: { ...snapshot, accessBlocked: true },
+    }).reason,
+    "access_blocked",
+  );
+  assert.equal(
+    applyTriggerDecision({ eventKind: "click", snapshot, alreadyTriggered: true }).reason,
+    "already_triggered",
+  );
+  assert.equal(
+    applyTriggerDecision({
+      eventKind: "click",
+      snapshot,
+      openPageCount: 6,
+      maxTabs: 6,
+    }).reason,
+    "tab_limit_reached",
+  );
+});
 
 test("confirmation requires exact route, text, and clear access", () => {
   const proof = {

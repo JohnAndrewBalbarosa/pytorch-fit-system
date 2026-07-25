@@ -186,11 +186,20 @@ python tools/job_finder/run_indeed_unattended.py \
   --target-submissions 3 \
   --max-parallel 3 \
   --max-candidates 12 \
+  --resource-mode auto \
+  --max-tabs 0 \
   --verification-wait-minutes 180 \
   --phone-country-calling-code +63 \
   --phone-country-iso PH \
   --autonomous-submit
 ```
+
+`--resource-mode auto` reads live available RAM, swap use, logical CPUs, and physical cores before
+the batch starts. It clamps `--max-parallel`, `--max-candidates`, and the calculated tab budget.
+Swap pressure of 512 MiB or more forces one browser worker. `--max-tabs 0` selects the calculated
+limit; an explicit value is still treated as a ceiling. The chosen limits and resource snapshot are
+written to `run.json`. Before opening a listing or triggering an Apply transition, the runner checks
+the live browser-context page count; work is deferred when the tab ceiling has been reached.
 
 Listings whose **Apply on company site** control opens an external application are not automated.
 The external tab stays open and is added to the verification queue with

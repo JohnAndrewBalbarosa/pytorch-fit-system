@@ -95,6 +95,12 @@ from resume_builder.job_application.submission_history import (
     default_submission_history,
     normalize_exact_identity,
 )
+from resume_builder.job_application.resource_governor import (
+    BrowserResourceLimits,
+    BrowserResourceSnapshot,
+    calculate_browser_resource_limits,
+    read_browser_resource_snapshot,
+)
 from resume_builder.job_application.autonomous_questions import (
     AutonomousQuestionPipeline,
     HybridQuestionPipeline,
@@ -202,6 +208,10 @@ __all__ = [
     "ResumeArtifactProfile",
     "evaluate_final_submit_gate",
     "select_resume_artifact",
+    "BrowserResourceLimits",
+    "BrowserResourceSnapshot",
+    "calculate_browser_resource_limits",
+    "read_browser_resource_snapshot",
     "DEFAULT_SUBMISSION_HISTORY_PATH",
     "ApplicationHistoryEntry",
     "ApplicationSubmissionHistory",

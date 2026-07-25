@@ -6,6 +6,7 @@ import process from "node:process";
 import {
   MicrotaskCoalescer,
   SubmissionStore,
+  applyTriggerDecision,
   isExactIndeedConfirmation,
 } from "./indeed_event_watcher_core.mjs";
 
@@ -19,6 +20,7 @@ const INJECT = `(() => {
   addEventListener("click", () => emit("click"), true);
   addEventListener("change", () => emit("change"), true);
   addEventListener("input", () => emit("input"), true);
+  addEventListener("focus", () => emit("focus"), true);
   new MutationObserver(() => emit("mutation")).observe(document.documentElement, {
     childList: true,
     subtree: true
@@ -43,6 +45,26 @@ const SNAPSHOT = `(() => {
     document.querySelector("[data-company-name=true]")?.textContent ||
     ""
   ).replace(/\\s+/g, " ").trim();
+  const applyCandidates = [...document.querySelectorAll(
+    "[data-testid=indeedApplyButton], button, a"
+  )];
+  const applyElement = applyCandidates.find(element => {
+    if (!visible(element) || element.matches(":disabled, [aria-disabled=true]")) return false;
+    const label = (element.textContent || element.getAttribute("aria-label") || "")
+      .replace(/\\s+/g, " ")
+      .trim();
+    return /^(apply now|apply with indeed|apply on company site)$/i.test(label);
+  });
+  const applyText = (applyElement?.textContent || applyElement?.getAttribute("aria-label") || "")
+    .replace(/\\s+/g, " ")
+    .trim();
+  const applyKind = !applyElement
+    ? ""
+    : /company site/i.test(applyText)
+      ? "company_site"
+      : /indeed/i.test(applyText) || applyElement.matches("[data-testid=indeedApplyButton]")
+        ? "indeed"
+        : "generic";
   return {
     href: location.href,
     host: location.hostname.toLowerCase(),
@@ -50,8 +72,29 @@ const SNAPSHOT = `(() => {
     visibleText: text,
     accessBlocked: blocked,
     listingTitle: title,
-    listingCompany: company
+    listingCompany: company,
+    applyControl: applyElement ? { kind: applyKind, text: applyText } : null
   };
+})()`;
+const CLICK_VISIBLE_APPLY = `(() => {
+  const visible = element => {
+    const style = getComputedStyle(element);
+    const box = element.getBoundingClientRect();
+    return style.visibility !== "hidden" && style.display !== "none" && box.width > 0 && box.height > 0;
+  };
+  const candidates = [...document.querySelectorAll(
+    "[data-testid=indeedApplyButton], button, a"
+  )];
+  const element = candidates.find(candidate => {
+    if (!visible(candidate) || candidate.matches(":disabled, [aria-disabled=true]")) return false;
+    const label = (candidate.textContent || candidate.getAttribute("aria-label") || "")
+      .replace(/\\s+/g, " ")
+      .trim();
+    return /^(apply now|apply with indeed|apply on company site)$/i.test(label);
+  });
+  if (!element) return false;
+  element.click();
+  return true;
 })()`;
 
 function parseArgs(argv) {
@@ -61,6 +104,7 @@ function parseArgs(argv) {
     state: resolve(".cache/indeed-event-watcher-state.json"),
     manifest: [],
     reconnectSeconds: 5,
+    maxTabs: 6,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
@@ -70,10 +114,11 @@ function parseArgs(argv) {
     else if (flag === "--state") values.state = resolve(value);
     else if (flag === "--manifest") values.manifest.push(resolve(value));
     else if (flag === "--reconnect-seconds") values.reconnectSeconds = Number(value);
+    else if (flag === "--max-tabs") values.maxTabs = Number(value);
     else if (flag === "--help") {
       console.log(
         "Usage: indeed_event_watcher.mjs [--cdp-url URL] [--database PATH] " +
-          "[--state PATH] [--manifest PATH] [--reconnect-seconds N]",
+          "[--state PATH] [--manifest PATH] [--reconnect-seconds N] [--max-tabs N]",
       );
       process.exit(0);
     } else continue;
@@ -81,6 +126,9 @@ function parseArgs(argv) {
   }
   if (!Number.isFinite(values.reconnectSeconds) || values.reconnectSeconds < 1) {
     throw new Error("--reconnect-seconds must be at least 1");
+  }
+  if (!Number.isInteger(values.maxTabs) || values.maxTabs < 1 || values.maxTabs > 24) {
+    throw new Error("--max-tabs must be an integer between 1 and 24");
   }
   return values;
 }
@@ -194,6 +242,7 @@ class IndeedEventWatcher {
     this.sessions = new Map();
     this.targetTasks = new Map();
     this.confirmedTargets = new Set();
+    this.triggeredApplyControls = new Set();
     this.manifestTasks = [];
     this.consumedManifestFallbacks = new Set();
     this.stateWrite = Promise.resolve();
@@ -260,7 +309,13 @@ class IndeedEventWatcher {
           message.method !== "Runtime.bindingCalled" ||
           message.params.name === BINDING
         ) {
-          this.schedule(message.sessionId, message.method);
+          let reason = message.method;
+          if (message.method === "Runtime.bindingCalled") {
+            try {
+              reason = JSON.parse(message.params.payload).kind || reason;
+            } catch {}
+          }
+          this.schedule(message.sessionId, reason);
         }
       } else if (message.method === "Target.detachedFromTarget") {
         this.sessions.delete(message.params.sessionId);
@@ -351,6 +406,36 @@ class IndeedEventWatcher {
         this.consumedManifestFallbacks.add(this.manifestTasks[0].task_id);
         await this.bindTask(session.targetId, this.manifestTasks[0]);
       }
+    }
+    const applyKey = `${session.targetId}\n${snapshot.href}\n${snapshot.applyControl?.text ?? ""}`;
+    const applyDecision = applyTriggerDecision({
+      eventKind: reason,
+      snapshot,
+      alreadyTriggered: this.triggeredApplyControls.has(applyKey),
+      openPageCount: this.sessions.size,
+      maxTabs: this.options.maxTabs,
+    });
+    if (applyDecision.trigger && this.targetTasks.has(session.targetId)) {
+      this.triggeredApplyControls.add(applyKey);
+      const clicked = await this.cdp.send(
+        "Runtime.evaluate",
+        { expression: CLICK_VISIBLE_APPLY, returnByValue: true },
+        sessionId,
+      );
+      log("apply_control_triggered", {
+        targetId: session.targetId,
+        taskId: this.targetTasks.get(session.targetId).task_id,
+        route: applyDecision.route,
+        clicked: clicked.result?.value === true,
+        openPageCount: this.sessions.size,
+        maxTabs: this.options.maxTabs,
+      });
+    } else if (applyDecision.reason === "tab_limit_reached") {
+      log("apply_deferred_resource_limit", {
+        targetId: session.targetId,
+        openPageCount: this.sessions.size,
+        maxTabs: this.options.maxTabs,
+      });
     }
     if (!isExactIndeedConfirmation(snapshot)) return;
     if (this.confirmedTargets.has(session.targetId)) return;

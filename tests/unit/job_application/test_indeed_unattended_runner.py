@@ -417,6 +417,14 @@ def test_qualification_evidence_includes_exact_remote_title():
     assert "Build reliable AI agents." in evidence
 
 
+def test_tab_budget_prevents_another_application_transition_at_limit():
+    context = SimpleNamespace(pages=[object(), object(), object()])
+
+    assert runner._tab_budget_available(context, SimpleNamespace(max_tabs=4)) is True
+    assert runner._tab_budget_available(context, SimpleNamespace(max_tabs=3)) is False
+    assert runner._tab_budget_available(context, SimpleNamespace(max_tabs=0)) is True
+
+
 def test_application_location_comes_from_exact_smart_apply_job_header():
     job = runner.IndeedUnattendedJob(
         task_id="job",
