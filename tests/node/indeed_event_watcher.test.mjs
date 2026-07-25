@@ -11,6 +11,7 @@ import {
   automationResumeDecision,
   cleanListingIdentity,
   countOpenPageTargets,
+  humanChangeRetryDecision,
   isExactIndeedConfirmation,
   normalizeExactIdentity,
 } from "../../tools/job_finder/indeed_event_watcher_core.mjs";
@@ -111,6 +112,34 @@ test("automation resume fails closed without runner, manifest data, or on post-a
       runnerEnabled: true,
     }).reason,
     "already_submitted",
+  );
+});
+
+test("a committed human field change retries only after a gated worker exit", () => {
+  const clear = { accessBlocked: false };
+  assert.equal(
+    humanChangeRetryDecision({
+      eventKind: "change",
+      snapshot: clear,
+      awaitingHumanChange: true,
+    }).retry,
+    true,
+  );
+  assert.equal(
+    humanChangeRetryDecision({
+      eventKind: "input",
+      snapshot: clear,
+      awaitingHumanChange: true,
+    }).reason,
+    "not_committed_field_change",
+  );
+  assert.equal(
+    humanChangeRetryDecision({
+      eventKind: "change",
+      snapshot: { accessBlocked: true },
+      awaitingHumanChange: true,
+    }).reason,
+    "access_blocked",
   );
 });
 

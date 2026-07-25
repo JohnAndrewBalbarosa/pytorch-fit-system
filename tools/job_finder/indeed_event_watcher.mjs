@@ -11,6 +11,7 @@ import {
   automationResumeDecision,
   cleanListingIdentity,
   countOpenPageTargets,
+  humanChangeRetryDecision,
   isExactIndeedConfirmation,
 } from "./indeed_event_watcher_core.mjs";
 
@@ -510,9 +511,20 @@ class IndeedEventWatcher {
     const automationState = this.automationStates.get(session.targetId) ?? {
       running: false,
       handledRouteKey: "",
+      awaitingHumanChange: false,
     };
     if (snapshot.accessBlocked) {
       automationState.handledRouteKey = "";
+    }
+    const humanChange = humanChangeRetryDecision({
+      eventKind: reason,
+      snapshot,
+      awaitingHumanChange: automationState.awaitingHumanChange,
+      running: automationState.running,
+    });
+    if (humanChange.retry) {
+      automationState.handledRouteKey = "";
+      automationState.awaitingHumanChange = false;
     }
     this.automationStates.set(session.targetId, automationState);
     const resumeDecision = automationResumeDecision({
@@ -586,6 +598,7 @@ class IndeedEventWatcher {
     const state = this.automationStates.get(targetId) ?? {
       running: false,
       handledRouteKey: "",
+      awaitingHumanChange: false,
     };
     if (
       this.activeAutomationTargetId &&
@@ -602,6 +615,7 @@ class IndeedEventWatcher {
     this.activeAutomationTargetId = targetId;
     state.running = true;
     state.handledRouteKey = routeKey;
+    state.awaitingHumanChange = false;
     this.automationStates.set(targetId, state);
     const safeTargetId = targetId.replace(/[^a-zA-Z0-9_-]/g, "");
     const manifestPath = resolve(
@@ -688,6 +702,7 @@ class IndeedEventWatcher {
     });
     child.once("exit", (code, signal) => {
       if (!finish()) return;
+      state.awaitingHumanChange = code !== 0;
       log("automation_resume_finished", {
         targetId,
         taskId: task.task_id,

@@ -103,6 +103,19 @@ export function automationResumeDecision({
   return { resume: true, reason: "clear_smart_apply_route", routeKey };
 }
 
+export function humanChangeRetryDecision({
+  eventKind,
+  snapshot,
+  awaitingHumanChange = false,
+  running = false,
+}) {
+  if (!awaitingHumanChange) return { retry: false, reason: "not_waiting_for_human_change" };
+  if (running) return { retry: false, reason: "runner_active" };
+  if (snapshot?.accessBlocked) return { retry: false, reason: "access_blocked" };
+  if (eventKind !== "change") return { retry: false, reason: "not_committed_field_change" };
+  return { retry: true, reason: "committed_human_field_change" };
+}
+
 export class MicrotaskCoalescer {
   #states = new Map();
 

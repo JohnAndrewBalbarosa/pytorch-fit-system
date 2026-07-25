@@ -32,7 +32,9 @@ bounded worker. Other verified targets queue behind the active worker, preservin
 resource limit even when several pages clear together. Event bursts cannot start a second worker
 for the same target and route. If a later module becomes blocked, the watcher clears that route
 latch; completing the human verification causes the blocked-to-clear event to resume the worker.
-Post-apply routes never launch a worker.
+When a worker stops for missing human-provided form data, it waits for the browser's committed
+`change` event and retries automatically; individual keystrokes and field values are never sent to
+the watcher or written to its log. Post-apply routes never launch a worker.
 
 Final Submit remains a separate domain-scoped permission. Add `--autonomous-submit` only when the
 runtime user has explicitly approved autonomous submission on Indeed. Without it, the bridge fills
