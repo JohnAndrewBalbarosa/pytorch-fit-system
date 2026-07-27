@@ -48,10 +48,14 @@ export function isExactIndeedConfirmation(snapshot) {
 export function applyTriggerDecision({
   eventKind,
   snapshot,
+  enabled = false,
   alreadyTriggered = false,
   openPageCount = 0,
   maxTabs = 6,
 }) {
+  if (!enabled) {
+    return { trigger: false, reason: "automatic_apply_disabled" };
+  }
   if (!["click", "focus"].includes(eventKind)) {
     return { trigger: false, reason: "event_not_user_navigation" };
   }

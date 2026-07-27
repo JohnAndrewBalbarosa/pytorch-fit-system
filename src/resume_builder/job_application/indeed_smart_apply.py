@@ -6,6 +6,7 @@ from enum import Enum
 import json
 from pathlib import Path
 import re
+from typing import Sequence
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field
@@ -14,52 +15,6 @@ from resume_builder.core.models import Resume
 
 from .models import BrowserAction
 from .shared import ResumeArtifactProfile, select_resume_artifact
-
-
-_RESUME_PROFILES = (
-    ResumeArtifactProfile(
-        filename="ai-ml-research.pdf",
-        terms=(
-            " ai ",
-            "machine learning",
-            " ml ",
-            "llm",
-            "model training",
-            "ai trainer",
-            "research",
-        ),
-    ),
-    ResumeArtifactProfile(
-        filename="automation-data.pdf",
-        terms=(
-            "data engineer",
-            "data analyst",
-            "business intelligence",
-            "automation",
-            "pipeline",
-            "scraping",
-            "sql",
-            "analytics",
-        ),
-    ),
-    ResumeArtifactProfile(
-        filename="software-systems.pdf",
-        terms=(
-            "backend software",
-            "software",
-            "backend",
-            "front end",
-            "frontend",
-            "full stack",
-            "full-stack",
-            "web developer",
-            "react",
-            "next.js",
-            "fastapi",
-            "systems",
-        ),
-    ),
-)
 
 
 class IndeedSmartApplyModule(str, Enum):
@@ -122,14 +77,16 @@ def recommend_role_resume(
     artifact_dir: Path,
     *,
     job_description: str = "",
+    profiles: Sequence[ResumeArtifactProfile] = (),
+    default_filename: str | None = None,
 ) -> Path | None:
-    """Apply Indeed's profile configuration through the shared matcher."""
+    """Apply caller-provided profile configuration through the shared matcher."""
     return select_resume_artifact(
         job_title,
         artifact_dir,
-        _RESUME_PROFILES,
+        profiles,
         job_description=job_description,
-        default_filename="software-systems.pdf",
+        default_filename=default_filename,
     )
 
 

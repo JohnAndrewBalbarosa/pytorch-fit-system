@@ -461,6 +461,37 @@ def test_qualification_evidence_includes_exact_remote_title():
     assert "Build reliable AI agents." in evidence
 
 
+def test_resume_selection_loads_editable_sqlite_routes(tmp_path):
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    selected = artifacts / "custom-platform.pdf"
+    selected.write_bytes(b"%PDF")
+    database = tmp_path / "applications.sqlite3"
+    store = runner.ApplicationProfileStore(database)
+    store.replace_resume_route(
+        filename=selected.name,
+        terms=["event streaming", "distributed systems"],
+        is_default=True,
+    )
+    args = SimpleNamespace(
+        artifact_dir=artifacts,
+        database=database,
+        profile_database=None,
+    )
+    job = runner.IndeedUnattendedJob(
+        task_id="job",
+        company="Company",
+        job_title="Platform Engineer",
+        listing_url="https://ca.indeed.com/viewjob?jk=job",
+        target_country="Canada",
+    )
+
+    assert (
+        runner._select_resume(job, args, "Build event streaming services.")
+        == selected.resolve()
+    )
+
+
 def test_tab_budget_prevents_another_application_transition_at_limit():
     context = SimpleNamespace(pages=[object(), object(), object()])
 

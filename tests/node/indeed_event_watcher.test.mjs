@@ -152,6 +152,7 @@ test("click and focus events route one visible Apply control within the tab limi
     applyTriggerDecision({
       eventKind: "click",
       snapshot,
+      enabled: true,
       openPageCount: 3,
       maxTabs: 6,
     }),
@@ -168,6 +169,7 @@ test("click and focus events route one visible Apply control within the tab limi
         ...snapshot,
         applyControl: { kind: "company_site", text: "Apply on company site" },
       },
+      enabled: true,
       openPageCount: 3,
       maxTabs: 6,
     }).route,
@@ -181,28 +183,48 @@ test("apply trigger fails closed for blockers, repeats, background events, and t
     applyControl: { kind: "indeed", text: "Apply with Indeed" },
   };
   assert.equal(
-    applyTriggerDecision({ eventKind: "mutation", snapshot }).reason,
+    applyTriggerDecision({ eventKind: "mutation", snapshot, enabled: true }).reason,
     "event_not_user_navigation",
   );
   assert.equal(
     applyTriggerDecision({
       eventKind: "click",
       snapshot: { ...snapshot, accessBlocked: true },
+      enabled: true,
     }).reason,
     "access_blocked",
   );
   assert.equal(
-    applyTriggerDecision({ eventKind: "click", snapshot, alreadyTriggered: true }).reason,
+    applyTriggerDecision({
+      eventKind: "click",
+      snapshot,
+      enabled: true,
+      alreadyTriggered: true,
+    }).reason,
     "already_triggered",
   );
   assert.equal(
     applyTriggerDecision({
       eventKind: "click",
       snapshot,
+      enabled: true,
       openPageCount: 6,
       maxTabs: 6,
     }).reason,
     "tab_limit_reached",
+  );
+});
+
+test("automatic Apply is disabled unless explicitly enabled", () => {
+  assert.equal(
+    applyTriggerDecision({
+      eventKind: "click",
+      snapshot: {
+        accessBlocked: false,
+        applyControl: { kind: "indeed", text: "Apply with Indeed" },
+      },
+    }).reason,
+    "automatic_apply_disabled",
   );
 });
 

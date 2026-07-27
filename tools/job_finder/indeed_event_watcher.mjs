@@ -117,6 +117,7 @@ function parseArgs(argv) {
     manifest: [],
     reconnectSeconds: 5,
     maxTabs: 6,
+    autoOpenApply: false,
     resumeRunner: "",
     artifactDir: "",
     queue: resolve(".cache/application-verification-queue.json"),
@@ -136,6 +137,10 @@ function parseArgs(argv) {
     else if (flag === "--manifest") values.manifest.push(resolve(value));
     else if (flag === "--reconnect-seconds") values.reconnectSeconds = Number(value);
     else if (flag === "--max-tabs") values.maxTabs = Number(value);
+    else if (flag === "--auto-open-apply") {
+      values.autoOpenApply = true;
+      continue;
+    }
     else if (flag === "--resume-runner") values.resumeRunner = resolve(value);
     else if (flag === "--artifact-dir") values.artifactDir = resolve(value);
     else if (flag === "--queue") values.queue = resolve(value);
@@ -154,6 +159,7 @@ function parseArgs(argv) {
       console.log(
         "Usage: indeed_event_watcher.mjs [--cdp-url URL] [--database PATH] " +
           "[--state PATH] [--manifest PATH] [--reconnect-seconds N] [--max-tabs N] " +
+          "[--auto-open-apply] " +
           "[--resume-runner PATH --artifact-dir PATH --phone-country-calling-code CODE " +
           "--phone-country-iso ISO] [--autonomous-submit]",
       );
@@ -172,6 +178,11 @@ function parseArgs(argv) {
     if (!values.phoneCountryCallingCode || !values.phoneCountryIso) {
       throw new Error("phone country calling code and ISO are required with --resume-runner");
     }
+  }
+  if (values.autonomousSubmit && (!values.autoOpenApply || !values.resumeRunner)) {
+    throw new Error(
+      "--autonomous-submit requires both --auto-open-apply and --resume-runner",
+    );
   }
   if (!["google", "off"].includes(values.questionAiProvider)) {
     throw new Error("--question-ai-provider must be google or off");
@@ -530,7 +541,7 @@ class IndeedEventWatcher {
     const resumeDecision = automationResumeDecision({
       snapshot,
       task: mappedTask,
-      runnerEnabled: Boolean(this.options.resumeRunner),
+      runnerEnabled: this.options.autoOpenApply && Boolean(this.options.resumeRunner),
       running: automationState.running,
       handledRouteKey: automationState.handledRouteKey,
     });
@@ -550,6 +561,7 @@ class IndeedEventWatcher {
     const applyDecision = applyTriggerDecision({
       eventKind: reason,
       snapshot,
+      enabled: this.options.autoOpenApply,
       alreadyTriggered: this.triggeredApplyControls.has(applyKey),
       openPageCount,
       maxTabs: this.options.maxTabs,

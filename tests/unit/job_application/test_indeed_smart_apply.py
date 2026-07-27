@@ -9,6 +9,7 @@ from resume_builder.core.models import (
 )
 from resume_builder.job_application import (
     IndeedSmartApplyModule,
+    ResumeArtifactProfile,
     SmartApplyApprovals,
     build_indeed_smart_apply_plan,
     classify_indeed_smart_apply_module,
@@ -224,7 +225,11 @@ def test_review_never_submits_without_explicit_approval():
 def test_role_resume_recommendation_returns_only_existing_artifacts(tmp_path: Path):
     software = tmp_path / "software-systems.pdf"
     software.write_bytes(b"%PDF")
-    assert recommend_role_resume("Software Engineer", tmp_path) == software.resolve()
+    profiles = (ResumeArtifactProfile("software-systems.pdf", ("software",)),)
+    assert (
+        recommend_role_resume("Software Engineer", tmp_path, profiles=profiles)
+        == software.resolve()
+    )
     assert recommend_role_resume("Machine Learning Engineer", tmp_path) is None
 
 
@@ -236,6 +241,16 @@ def test_hybrid_title_scores_all_catered_resumes(tmp_path: Path):
         recommend_role_resume(
             "Backend Software Engineer - AI Trainer",
             tmp_path,
+            profiles=(
+                ResumeArtifactProfile(
+                    "software-systems.pdf",
+                    ("backend software", "software", "backend"),
+                ),
+                ResumeArtifactProfile(
+                    "ai-ml-research.pdf",
+                    (" ai ", "machine learning", "ai trainer"),
+                ),
+            ),
         )
         == (tmp_path / "software-systems.pdf").resolve()
     )
@@ -244,6 +259,12 @@ def test_hybrid_title_scores_all_catered_resumes(tmp_path: Path):
             "Business Intelligence Engineer",
             tmp_path,
             job_description="Build SQL analytics pipelines and dashboards",
+            profiles=(
+                ResumeArtifactProfile(
+                    "automation-data.pdf",
+                    ("business intelligence", "sql", "analytics", "pipeline"),
+                ),
+            ),
         )
         == (tmp_path / "automation-data.pdf").resolve()
     )

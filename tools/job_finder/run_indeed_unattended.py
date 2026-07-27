@@ -18,6 +18,7 @@ ROOT = next(path for path in Path(__file__).resolve().parents if (path / "pyproj
 sys.path.insert(0, str(ROOT / "src"))
 
 from resume_builder.job_application import (  # noqa: E402
+    ApplicationProfileStore,
     ApplicationPermissionPolicy,
     ApplicationSubmissionHistory,
     BatchApplicationOutcome,
@@ -31,6 +32,7 @@ from resume_builder.job_application import (  # noqa: E402
     DEFAULT_MONGODB_DATABASE,
     DEFAULT_MONGODB_URI,
     MongoQuestionnaireRepository,
+    ResumeArtifactProfile,
     VerificationQueueGroup,
     SmartApplyApprovals,
     SmartApplyNovelQuestionAnswerer,
@@ -296,14 +298,38 @@ def _is_pending_company_site_handoff(
     )
 
 
-def _select_resume(job: IndeedUnattendedJob, artifact_dir: Path, description: str) -> Path | None:
+def _profile_store(args: argparse.Namespace) -> ApplicationProfileStore:
+    path = getattr(args, "profile_database", None) or getattr(
+        args,
+        "database",
+        ROOT / ".cache" / "application-submissions.sqlite3",
+    )
+    return ApplicationProfileStore(Path(path))
+
+
+def _select_resume(
+    job: IndeedUnattendedJob,
+    args: argparse.Namespace,
+    description: str,
+) -> Path | None:
     if job.resume_file:
-        candidate = artifact_dir / job.resume_file
+        candidate = args.artifact_dir / job.resume_file
         return candidate if candidate.is_file() else None
+    routes = _profile_store(args).resume_routes()
+    profiles = tuple(
+        ResumeArtifactProfile(filename=route.filename, terms=route.terms)
+        for route in routes
+    )
+    default_filename = next(
+        (route.filename for route in routes if route.is_default),
+        None,
+    )
     return recommend_role_resume(
         job.job_title,
-        artifact_dir,
+        args.artifact_dir,
         job_description=description,
+        profiles=profiles,
+        default_filename=default_filename,
     )
 
 
@@ -354,11 +380,12 @@ def _runtime_question_profile(
     )
 
 
-def _runtime_verified_phone(page, args: argparse.Namespace) -> str:
+def _runtime_verified_phone(page, args: argparse.Namespace, identity=None) -> str:
     """Use an explicit phone or the matching saved contact value visible in Indeed."""
     explicit = (
         getattr(args, "verified_phone", "")
         or os.environ.get("PYTORCH_FIT_VERIFIED_PHONE", "")
+        or (identity.verified_phone if identity else "")
     )
     if explicit:
         return explicit
@@ -370,7 +397,10 @@ def _runtime_verified_phone(page, args: argparse.Namespace) -> str:
         return ""
     value = phone.input_value().strip()
     observed_iso = (country.get_attribute("data-value") or "").strip().upper()
-    expected_iso = args.phone_country_iso.strip().upper()
+    expected_iso = (
+        getattr(args, "phone_country_iso", "")
+        or (identity.country_iso if identity else "")
+    ).strip().upper()
     original_calling_code = "".join(
         character
         for character in getattr(args, "saved_phone_original_calling_code", "")
@@ -547,7 +577,9 @@ def _run_application(
             BatchApplicationStatus.VERIFICATION_PENDING,
             f"application access gate remains pending: {application_access.reason}",
         )
-    resume_path = _select_resume(job, args.artifact_dir, description)
+    store = _profile_store(args)
+    identity = store.verified_identity()
+    resume_path = _select_resume(job, args, description)
     if resume_path is None:
         return _outcome(
             job,
@@ -562,7 +594,26 @@ def _run_application(
             f"resume evidence JSON is missing for {resume_path.name}",
         )
     resume = load_resume_artifact(resume_json)
-    verified_phone = _runtime_verified_phone(application_page, args)
+    if identity is not None:
+        resume = resume.model_copy(
+            update={
+                "contact": resume.contact.model_copy(
+                    update={
+                        "name": identity.full_name,
+                        "location": identity.country_name,
+                    }
+                )
+            }
+        )
+    verified_phone = _runtime_verified_phone(application_page, args, identity)
+    phone_country_calling_code = (
+        getattr(args, "phone_country_calling_code", "")
+        or (identity.phone_calling_code if identity else "")
+    )
+    phone_country_iso = (
+        getattr(args, "phone_country_iso", "")
+        or (identity.country_iso if identity else "")
+    )
     policy = ApplicationPermissionPolicy(
         autonomous_draft_writes=True,
         autonomous_sensitive_writes=True,
@@ -594,8 +645,8 @@ def _run_application(
             approvals=approvals,
             permission_policy=policy,
             verified_phone=verified_phone,
-            phone_country_calling_code=args.phone_country_calling_code,
-            phone_country_iso=args.phone_country_iso,
+            phone_country_calling_code=phone_country_calling_code,
+            phone_country_iso=phone_country_iso,
             question_plan=question_plan,
             verification_queue=queue,
             application_reference=job.batch_task().application_reference,
@@ -974,6 +1025,11 @@ def _parser() -> argparse.ArgumentParser:
         default=ROOT / ".cache" / "application-submissions.sqlite3",
     )
     parser.add_argument(
+        "--profile-database",
+        type=Path,
+        help="SQLite verified identity and resume routes; defaults to --database.",
+    )
+    parser.add_argument(
         "--queue",
         type=Path,
         default=ROOT / ".cache" / "application-verification-queue.json",
@@ -1033,8 +1089,16 @@ def _parser() -> argparse.ArgumentParser:
             "It is stripped before reconciling to --phone-country-calling-code."
         ),
     )
-    parser.add_argument("--phone-country-calling-code", required=True)
-    parser.add_argument("--phone-country-iso", required=True)
+    parser.add_argument(
+        "--phone-country-calling-code",
+        default="",
+        help="Runtime override; otherwise load the verified calling code from SQLite.",
+    )
+    parser.add_argument(
+        "--phone-country-iso",
+        default="",
+        help="Runtime override; otherwise load the verified country ISO from SQLite.",
+    )
     parser.add_argument(
         "--approved-answers",
         type=Path,

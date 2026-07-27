@@ -9,9 +9,17 @@ from .questionnaire_store import (
     DEFAULT_MONGODB_URI,
     MongoQuestionnaireRepository,
 )
+from .application_profile_store import (
+    ApplicationProfileStore,
+    StoredResumeRoute,
+    VerifiedApplicationIdentity,
+)
 
 __all__ = [
+    "ApplicationProfileStore",
     "DEFAULT_MONGODB_DATABASE",
     "DEFAULT_MONGODB_URI",
     "MongoQuestionnaireRepository",
+    "StoredResumeRoute",
+    "VerifiedApplicationIdentity",
 ]

@@ -142,6 +142,11 @@ from resume_builder.job_application.persistence.questionnaire_store import (
     DEFAULT_MONGODB_URI,
     MongoQuestionnaireRepository,
 )
+from resume_builder.job_application.persistence.application_profile_store import (
+    ApplicationProfileStore,
+    StoredResumeRoute,
+    VerifiedApplicationIdentity,
+)
 from resume_builder.job_application.intelligence.smart_apply_questions import (
     AdaptiveQuestionPlan,
     NovelQuestionJSON,
@@ -256,6 +261,9 @@ __all__ = [
     "DEFAULT_MONGODB_DATABASE",
     "DEFAULT_MONGODB_URI",
     "MongoQuestionnaireRepository",
+    "ApplicationProfileStore",
+    "StoredResumeRoute",
+    "VerifiedApplicationIdentity",
     "AdaptiveQuestionPlan",
     "NovelQuestionJSON",
     "SmartApplyNovelQuestionAnswerer",

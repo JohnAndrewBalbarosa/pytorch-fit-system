@@ -8,7 +8,9 @@ The daemon learns exact job identity from a visible `au.indeed.com/viewjob` or
 `ca.indeed.com/viewjob` page and carries that identity across same-tab navigation or a popup.
 It reads visible labels (not raw descendant text) and rejects oversized or CSS-contaminated
 company/title snapshots, waiting for a clean rendered identity before binding the task.
-When the user clicks or focuses that exact tab, the watcher inspects only that tab. If it finds one
+By default the watcher is confirmation-only: it never clicks Apply and never starts the Python
+application runner. When explicitly started with `--auto-open-apply`, a user click or focus on an
+exact mapped tab may trigger the behavior below. If it finds one
 visible, enabled `Apply with Indeed`, `Apply now`, or `Apply on company site` control, it clicks the
 control once. Indeed controls route into the active Indeed automation flow; company-site controls
 open the external tab for the `human_intervention` workflow. Mutation/input events still refresh
@@ -22,8 +24,9 @@ The per-target URL/control key prevents repeated clicks during event bursts.
 
 ## Automatic continuation after human verification
 
-The watcher can bridge a clear Smart Apply page into the deterministic Python form runner. Enable
-the bridge with `--resume-runner`, `--artifact-dir`, and explicit phone-country arguments. The
+The watcher can bridge a clear Smart Apply page into the deterministic Python form runner. This is
+an explicit opt-in: pass `--auto-open-apply`, `--resume-runner`, `--artifact-dir`, and phone-country
+arguments. The
 mapped manifest job must contain `target_country`, `work_mode`, and `resume_file`; live title text
 alone is intentionally insufficient.
 
@@ -50,6 +53,7 @@ Example:
 ```bash
 node --no-warnings tools/job_finder/indeed_event_watcher.mjs \
   --manifest out/indeed-unattended/candidate-manifest-latest.json \
+  --auto-open-apply \
   --resume-runner .venv/bin/python \
   --artifact-dir /path/to/reviewed/resume-artifacts \
   --phone-country-calling-code +63 \
@@ -90,8 +94,9 @@ node --no-warnings tools/job_finder/indeed_event_watcher.mjs \
   --max-tabs 6
 ```
 
-The checked-in user-service unit keeps the process alive and reconnects when the visible Chrome
-CDP session becomes available. Install it with:
+The checked-in user-service unit is confirmation-only. It keeps the observer alive and reconnects
+when the visible Chrome CDP session becomes available, but it cannot click Apply, launch a form
+worker, or submit. Installation is still explicit:
 
 ```bash
 mkdir -p ~/.config/systemd/user
@@ -99,6 +104,17 @@ cp config/systemd/indeed-event-watcher.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now indeed-event-watcher.service
 ```
+
+Always make background state visible before and after changing it:
+
+```bash
+systemctl --user status indeed-event-watcher.service --no-pager
+systemctl --user disable --now indeed-event-watcher.service
+```
+
+Do not add `--auto-open-apply`, `--resume-runner`, or `--autonomous-submit` to an enabled service
+without a separate, explicit user decision acknowledging that it will mutate browser state in the
+background. Prefer a foreground command or a bounded transient unit for application runs.
 
 The watcher state contains only task identity, Chrome target IDs, and consumed manifest task IDs:
 `.cache/indeed-event-watcher-state.json`.

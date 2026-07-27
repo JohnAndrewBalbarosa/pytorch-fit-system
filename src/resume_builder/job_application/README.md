@@ -199,6 +199,34 @@ runner may preserve the visible saved Indeed number only when the separate count
 matches the explicitly supplied ISO country. Missing or mismatched contact data stops before
 Continue.
 
+Verified identity and resume routing are structured SQLite configuration, not Python constants.
+By default they share `.cache/application-submissions.sqlite3` with the confirmation ledger; use
+`--profile-database` to separate them. Resume PDFs and evidence JSON remain files under the approved
+artifact directory. Only their basenames and editable matching terms are stored in SQL.
+
+```bash
+python tools/job_finder/configure_application_profile.py profile \
+  --first-name "Verified First" \
+  --last-name "Verified Last" \
+  --country-name Philippines \
+  --country-iso PH \
+  --phone-calling-code +63
+
+python tools/job_finder/configure_application_profile.py resume-route \
+  --filename software-systems.pdf \
+  --term "software engineer" \
+  --term backend \
+  --default
+
+python tools/job_finder/configure_application_profile.py show
+```
+
+The runner overlays the verified SQL name and country onto the selected resume at execution time.
+An explicit manifest `resume_file` still wins; otherwise current title/description terms select a
+configured route. With no matching route and no configured default, execution stops for human
+review. The phone itself remains optional and is not stored unless explicitly passed to the profile
+command; the private environment or runtime flag continues to take precedence.
+
 For a user-approved saved contact number on a foreign-locale form,
 `--use-saved-contact-phone` uses that visible runtime value and reconciles the separate country
 control to the explicit `--phone-country-iso`. `--process-all-candidates` exhausts the bounded
