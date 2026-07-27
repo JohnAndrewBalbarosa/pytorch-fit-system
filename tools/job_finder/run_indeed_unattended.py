@@ -428,6 +428,23 @@ def _runtime_verified_phone(page, args: argparse.Namespace, identity=None) -> st
     return ""
 
 
+def _resume_with_verified_identity(resume, identity):
+    """Overlay one SQLite-verified contact identity onto the runtime resume."""
+    if identity is None:
+        return resume
+    contact_updates = {
+        "name": identity.full_name,
+        "location": identity.country_name,
+    }
+    if identity.verified_phone:
+        contact_updates["phone"] = identity.verified_phone
+    return resume.model_copy(
+        update={
+            "contact": resume.contact.model_copy(update=contact_updates),
+        }
+    )
+
+
 def _question_ai_answerer(args: argparse.Namespace, resume, application_preferences):
     if getattr(args, "question_ai_provider", "google") == "off":
         return None
@@ -594,17 +611,7 @@ def _run_application(
             f"resume evidence JSON is missing for {resume_path.name}",
         )
     resume = load_resume_artifact(resume_json)
-    if identity is not None:
-        resume = resume.model_copy(
-            update={
-                "contact": resume.contact.model_copy(
-                    update={
-                        "name": identity.full_name,
-                        "location": identity.country_name,
-                    }
-                )
-            }
-        )
+    resume = _resume_with_verified_identity(resume, identity)
     verified_phone = _runtime_verified_phone(application_page, args, identity)
     phone_country_calling_code = (
         getattr(args, "phone_country_calling_code", "")

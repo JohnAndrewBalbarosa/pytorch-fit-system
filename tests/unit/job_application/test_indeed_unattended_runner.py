@@ -6,6 +6,7 @@ from threading import Lock
 import time
 from types import SimpleNamespace
 
+from resume_builder.core.models import ContactInfo, Resume, RoleSpec
 from resume_builder.job_application import (
     ApprovedIndeedQuestionAnswerSet,
     ApprovedIndeedQuestionAnswers,
@@ -490,6 +491,45 @@ def test_resume_selection_loads_editable_sqlite_routes(tmp_path):
         runner._select_resume(job, args, "Build event streaming services.")
         == selected.resolve()
     )
+
+
+def test_sqlite_identity_overlays_runtime_resume_contact_consistently():
+    resume = Resume(
+        role=RoleSpec(id="software", label="Software Engineer"),
+        contact=ContactInfo(
+            name="Old Resume Name",
+            location="Old Location",
+            phone="old phone",
+        ),
+    )
+    identity = SimpleNamespace(
+        full_name="John Andrew Balbarosa",
+        country_name="Philippines",
+        verified_phone="+63 9669772854",
+    )
+
+    updated = runner._resume_with_verified_identity(resume, identity)
+
+    assert updated.contact.name == identity.full_name
+    assert updated.contact.location == identity.country_name
+    assert updated.contact.phone == identity.verified_phone
+    assert resume.contact.name == "Old Resume Name"
+
+
+def test_empty_database_phone_preserves_reviewed_resume_phone():
+    resume = Resume(
+        role=RoleSpec(id="software", label="Software Engineer"),
+        contact=ContactInfo(phone="reviewed resume phone"),
+    )
+    identity = SimpleNamespace(
+        full_name="John Andrew Balbarosa",
+        country_name="Philippines",
+        verified_phone="",
+    )
+
+    updated = runner._resume_with_verified_identity(resume, identity)
+
+    assert updated.contact.phone == "reviewed resume phone"
 
 
 def test_tab_budget_prevents_another_application_transition_at_limit():
