@@ -211,7 +211,7 @@ def build_adaptive_indeed_question_plan(
     persistable: dict[str, str] = {}
     summaries: list[SmartApplyAnswerSummary] = []
     for step_number, question in enumerate(questions, start=1):
-        value = saved.get(question.label, "").strip()
+        value = saved.get(question.question_id, saved.get(question.label, "")).strip()
         source = "saved"
         value_source = "mongodb reusable question bank"
         evidence_ids: list[str] = []
@@ -297,7 +297,7 @@ def build_adaptive_indeed_question_plan(
             )
         )
         if not _NON_PERSISTENT.search(question.label):
-            persistable[question.label] = value
+            persistable[question.question_id] = value
     profile = {
         "name": resume.contact.name,
         "country": verified_profile.country or (resume.contact.location or ""),

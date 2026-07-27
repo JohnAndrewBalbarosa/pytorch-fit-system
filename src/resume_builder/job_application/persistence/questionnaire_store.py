@@ -131,12 +131,15 @@ class MongoQuestionnaireRepository:
         *,
         domain: str,
     ) -> dict[str, str]:
-        """Reuse a prior answer by normalized label, with live option validation later."""
-        wanted = {
-            self._normalized_label(question.label): question.label
-            for question in questions
-        }
-        if not wanted:
+        """Reuse prior answers by question ID; use labels only when unambiguous."""
+        wanted_by_id = {question.question_id: question for question in questions}
+        wanted_by_label: dict[str, list[ScreeningQuestion]] = {}
+        for question in questions:
+            wanted_by_label.setdefault(
+                self._normalized_label(question.label),
+                [],
+            ).append(question)
+        if not wanted_by_id:
             return {}
         documents = self.collection.find(
             {"domain": domain, "schema_version": SCHEMA_VERSION},
@@ -145,11 +148,17 @@ class MongoQuestionnaireRepository:
         reusable: dict[str, str] = {}
         for document in documents:
             for item in document.get("answers", []):
+                question_id = str(item.get("question_id", "")).strip()
                 label = str(item.get("label", "")).strip()
                 value = str(item.get("value", "")).strip()
-                requested_label = wanted.get(self._normalized_label(label))
-                if requested_label and value:
-                    reusable[requested_label] = value
+                if not value:
+                    continue
+                if question_id in wanted_by_id:
+                    reusable[question_id] = value
+                    continue
+                matches = wanted_by_label.get(self._normalized_label(label), [])
+                if len(matches) == 1:
+                    reusable[matches[0].question_id] = value
         return reusable
 
     def save_observed_page(
@@ -166,6 +175,23 @@ class MongoQuestionnaireRepository:
 
         timestamp = (observed_at or datetime.now(timezone.utc)).astimezone(timezone.utc)
         fingerprint = question_set_fingerprint(questions)
+        label_counts: dict[str, int] = {}
+        for question in questions:
+            normalized = self._normalized_label(question.label)
+            label_counts[normalized] = label_counts.get(normalized, 0) + 1
+        stored_answers = []
+        for question in questions:
+            value = str(answers.get(question.question_id, "")).strip()
+            if not value and label_counts[self._normalized_label(question.label)] == 1:
+                value = str(answers.get(question.label, "")).strip()
+            if value:
+                stored_answers.append(
+                    {
+                        "question_id": question.question_id,
+                        "label": question.label,
+                        "value": value,
+                    }
+                )
         document = {
             "schema_version": SCHEMA_VERSION,
             "provider": "indeed",
@@ -180,10 +206,7 @@ class MongoQuestionnaireRepository:
                 }
                 for question in questions
             ],
-            "answers": [
-                {"label": label, "value": value}
-                for label, value in answers.items()
-            ],
+            "answers": stored_answers,
             "source": source,
             "updated_at": timestamp,
         }

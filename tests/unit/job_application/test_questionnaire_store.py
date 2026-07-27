@@ -187,3 +187,58 @@ def test_mongodb_repository_saves_observed_questions_without_private_answer():
         }
     ]
     assert document["answers"] == []
+
+
+def test_mongodb_repository_keeps_duplicate_labels_distinct_by_question_id():
+    client = _Client()
+    repository = MongoQuestionnaireRepository(client=client)
+    questions = [
+        ScreeningQuestion(
+            question_id="spoken_language_1",
+            label="Language 1",
+            selector="#spoken",
+            kind="select",
+            required=True,
+        ),
+        ScreeningQuestion(
+            question_id="programming_language_1",
+            label="Language 1",
+            selector="#programming",
+            kind="select",
+            required=True,
+        ),
+    ]
+
+    repository.save_observed_page(
+        questions,
+        {"spoken_language_1": "English", "programming_language_1": "Python"},
+        domain="smartapply.indeed.com",
+        source="unit test",
+    )
+
+    assert repository.reusable_answers(
+        questions,
+        domain="smartapply.indeed.com",
+    ) == {
+        "spoken_language_1": "English",
+        "programming_language_1": "Python",
+    }
+
+
+def test_mongodb_repository_does_not_reuse_legacy_duplicate_label():
+    client = _Client()
+    repository = MongoQuestionnaireRepository(client=client)
+    repository.save(_answer_set(), source="legacy unit test")
+    questions = [
+        ScreeningQuestion(question_id="spoken", label="Language 1", selector="#spoken"),
+        ScreeningQuestion(
+            question_id="programming",
+            label="Language 1",
+            selector="#programming",
+        ),
+    ]
+
+    assert repository.reusable_answers(
+        questions,
+        domain="smartapply.indeed.com",
+    ) == {}

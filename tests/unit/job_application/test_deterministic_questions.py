@@ -220,9 +220,9 @@ def test_adaptive_plan_prioritizes_mongodb_then_profile_then_ai_and_masks_phone(
     ]
     assert answerer.labels == ["Describe your experience with AI agent orchestration"]
     assert adaptive.persistable_answers == {
-        "Preferred language": "English",
-        "Are you willing to relocate?": "Yes",
-        "Describe your experience with AI agent orchestration": (
+        "saved": "English",
+        "relocate": "Yes",
+        "agents": (
             "I built evidence-grounded agent orchestration projects."
         ),
     }
@@ -269,4 +269,4 @@ def test_sensitive_preference_is_data_driven_and_saved_after_first_observation()
     )
 
     assert adaptive.plan.answers[0].answer == "Yes"
-    assert adaptive.persistable_answers == {"Are you open to relocating?": "Yes"}
+    assert adaptive.persistable_answers == {"relocate": "Yes"}
