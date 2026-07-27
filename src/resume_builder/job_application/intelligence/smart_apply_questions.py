@@ -196,11 +196,13 @@ def build_adaptive_indeed_question_plan(
     verified_profile: VerifiedApplicationProfile,
     exact: ApprovedIndeedQuestionAnswers | None = None,
     reusable_answers: dict[str, str] | None = None,
+    application_preferences: dict[str, bool | str] | None = None,
     answerer: SmartApplyNovelQuestionAnswerer | None = None,
 ) -> AdaptiveQuestionPlan:
     """Reuse saved answers, then resume/runtime facts, then AI; fail closed otherwise."""
     fingerprint = question_set_fingerprint(questions)
     saved = dict(reusable_answers or {})
+    preferences = dict(application_preferences or {})
     if exact and exact.question_set_fingerprint == fingerprint:
         saved.update(exact.answers)
     resolver = DeterministicQuestionResolver(
@@ -219,6 +221,11 @@ def build_adaptive_indeed_question_plan(
         rationale = "exact normalized-label answer reused from MongoDB"
         if value and question.options and value not in question.options:
             value = ""
+        if not value:
+            value = _explicit_profile_answer(question, preferences)
+            if value:
+                value_source = "mongodb explicit application profile"
+                rationale = "explicit user-approved application profile answer"
         if not value:
             decision = resolver.resolve(question)
             if decision.answer and decision.answer.answer:
@@ -312,6 +319,34 @@ def build_adaptive_indeed_question_plan(
             answers=summaries,
         ),
     )
+
+
+def _explicit_profile_answer(
+    question: ScreeningQuestion,
+    preferences: dict[str, bool | str],
+) -> str:
+    """Map narrowly scoped profile answers to an observed Indeed question."""
+    label = re.sub(r"\s+", " ", question.label).strip()
+    context = re.sub(r"\s+", " ", question.context).strip()
+    language_match = re.fullmatch(r"language\s+([12])", label, re.IGNORECASE)
+    spoken_context = re.search(
+        r"\b(?:speak|spoken|native|professional|business)\b",
+        context,
+        re.IGNORECASE,
+    )
+    if language_match and spoken_context:
+        key = f"spoken_language_{language_match.group(1)}"
+        value = preferences.get(key)
+        return value.strip() if isinstance(value, str) else ""
+    if (
+        question.kind == "text"
+        and re.search(r"\b(?:AI|artificial intelligence)\b", label, re.IGNORECASE)
+        and re.search(r"\b(?:LLMs?|large language models?)\b", label, re.IGNORECASE)
+        and re.search(r"\bexperience\b", label, re.IGNORECASE)
+    ):
+        value = preferences.get("ai_llm_experience_answer")
+        return value.strip() if isinstance(value, str) else ""
+    return ""
 
 
 def _mask_phone(value: str) -> str:

@@ -270,3 +270,50 @@ def test_sensitive_preference_is_data_driven_and_saved_after_first_observation()
 
     assert adaptive.plan.answers[0].answer == "Yes"
     assert adaptive.persistable_answers == {"relocate": "Yes"}
+
+
+def test_explicit_spoken_languages_do_not_fill_programming_language_fields():
+    questions = [
+        _question("spoken-1", "Language 1", kind="select"),
+        _question("spoken-2", "Language 2", kind="select"),
+        _question("programming-1", "Language 1", kind="select"),
+    ]
+    questions[0].context = (
+        "Which language(s) can you speak at a native or professional business level?"
+    )
+    questions[1].context = questions[0].context
+    questions[2].context = "Select up to 3 programming languages and proficiency."
+
+    adaptive = build_adaptive_indeed_question_plan(
+        questions,
+        resume=_resume(),
+        verified_profile=VerifiedApplicationProfile(),
+        application_preferences={
+            "spoken_language_1": "English",
+            "spoken_language_2": "Filipino",
+        },
+    )
+
+    assert [answer.answer for answer in adaptive.plan.answers[:2]] == [
+        "English",
+        "Filipino",
+    ]
+    assert adaptive.plan.answers[2].abstain is True
+
+
+def test_explicit_ai_llm_answer_integrates_without_runtime_model():
+    question = _question(
+        "ai-llm",
+        "Please describe your experience with AI and large language models (LLMs).",
+    )
+    approved = "Built and evaluated LLM systems and contributed to LoRA fine-tuning."
+
+    adaptive = build_adaptive_indeed_question_plan(
+        [question],
+        resume=_resume(),
+        verified_profile=VerifiedApplicationProfile(),
+        application_preferences={"ai_llm_experience_answer": approved},
+    )
+
+    assert adaptive.plan.answers[0].answer == approved
+    assert adaptive.plan.steps[0].value_source == "mongodb explicit application profile"

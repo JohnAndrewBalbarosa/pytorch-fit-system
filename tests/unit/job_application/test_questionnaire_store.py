@@ -181,6 +181,7 @@ def test_mongodb_repository_saves_observed_questions_without_private_answer():
     assert document["questions"] == [
         {
             "label": "Mobile number",
+            "context": "",
             "kind": "text",
             "options": [],
             "required": True,

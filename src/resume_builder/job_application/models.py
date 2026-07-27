@@ -169,6 +169,7 @@ class ScreeningQuestion(BaseModel):
     question_id: str
     label: str
     selector: str
+    context: str = ""
     kind: str = "text"
     options: list[str] = Field(default_factory=list)
     required: bool = False

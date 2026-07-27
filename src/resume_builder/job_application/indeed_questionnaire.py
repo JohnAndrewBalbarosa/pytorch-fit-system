@@ -70,6 +70,7 @@ def question_set_fingerprint(questions: list[ScreeningQuestion]) -> str:
     payload = [
         {
             "label": question.label,
+            "context": question.context,
             "kind": question.kind,
             # Indeed virtualizes large select menus, so the mounted option subset
             # is not stable enough to identify the questionnaire. The executor
@@ -83,6 +84,29 @@ def question_set_fingerprint(questions: list[ScreeningQuestion]) -> str:
     return hashlib.sha1(canonical.encode("utf-8")).hexdigest()
 
 
+def _question_context(label: Any) -> str:
+    """Return the nearest preceding prompt/header outside another question control."""
+    return str(
+        label.evaluate(
+            """element => {
+                const item = element.closest('.ia-Questions-item');
+                let sibling = item ? item.previousElementSibling : null;
+                while (sibling) {
+                    const containsQuestion = sibling.querySelector(
+                        '[data-testid^="input-q_"]'
+                    );
+                    const text = (sibling.innerText || '')
+                        .replace(/\\s+/g, ' ')
+                        .trim();
+                    if (!containsQuestion && text) return text;
+                    sibling = sibling.previousElementSibling;
+                }
+                return '';
+            }"""
+        )
+    ).strip()
+
+
 def observe_indeed_screening_questions(page: Any) -> list[ScreeningQuestion]:
     """Inventory every rendered question without reading cookies or storage state."""
     questions: list[ScreeningQuestion] = []
@@ -94,6 +118,7 @@ def observe_indeed_screening_questions(page: Any) -> list[ScreeningQuestion]:
         if not question_id:
             continue
         label_text = label.inner_text().strip()
+        context = _question_context(label)
         required = bool(
             page.locator(f'[data-testid="input-{question_id}-label-asterisk"]').count()
         )
@@ -129,6 +154,7 @@ def observe_indeed_screening_questions(page: Any) -> list[ScreeningQuestion]:
                     question_id=question_id,
                     label=label_text,
                     selector="",
+                    context=context,
                     kind="unknown",
                     required=required,
                 )
@@ -139,6 +165,7 @@ def observe_indeed_screening_questions(page: Any) -> list[ScreeningQuestion]:
                 question_id=question_id,
                 label=label_text,
                 selector=selector,
+                context=context,
                 kind=kind,
                 options=options,
                 required=required,

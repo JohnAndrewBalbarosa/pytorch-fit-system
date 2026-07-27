@@ -501,6 +501,7 @@ def _adaptive_question_page_plan(
                 verified_profile=profile,
                 exact=exact,
                 reusable_answers=reusable,
+                application_preferences=application_preferences,
                 answerer=_question_ai_answerer(
                     args,
                     resume,
@@ -518,6 +519,7 @@ def _adaptive_question_page_plan(
                 verified_profile=profile,
                 exact=exact,
                 reusable_answers=reusable,
+                application_preferences=application_preferences,
             )
         repository.save_observed_page(
             questions,

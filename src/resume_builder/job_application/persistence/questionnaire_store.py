@@ -200,6 +200,7 @@ class MongoQuestionnaireRepository:
             "questions": [
                 {
                     "label": question.label,
+                    "context": question.context,
                     "kind": question.kind,
                     "options": question.options,
                     "required": question.required,
