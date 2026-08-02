@@ -16,6 +16,21 @@ def test_access_guard_allows_normal_job_page():
     assert decision.should_continue is True
 
 
+def test_access_guard_allows_verifying_as_ordinary_job_description_text():
+    decision = AccessGuard().classify(
+        url="https://ca.indeed.com/jobs?q=developer&l=remote",
+        html=(
+            "<html><body><article class='job-card'>"
+            "Responsibilities include verifying customer requests and data quality."
+            "</article></body></html>"
+        ),
+        status_code=200,
+    )
+
+    assert decision.state == AccessState.OK
+    assert decision.should_continue is True
+
+
 def test_access_guard_stops_on_indeed_verification_page():
     guard = AccessGuard()
 

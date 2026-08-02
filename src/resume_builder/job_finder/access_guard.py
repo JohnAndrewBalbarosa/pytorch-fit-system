@@ -71,7 +71,8 @@ class AccessGuard:
         re.compile(r"just a moment", re.IGNORECASE),
         re.compile(r"cloudflare", re.IGNORECASE),
         re.compile(r"captcha", re.IGNORECASE),
-        re.compile(r"verify(?:ing| you are human| your request)", re.IGNORECASE),
+        re.compile(r"verify (?:that )?you are (?:a )?human", re.IGNORECASE),
+        re.compile(r"verifying (?:your browser|your request|you are human)", re.IGNORECASE),
         re.compile(r"ray id", re.IGNORECASE),
     )
     _RATE_LIMIT_PATTERNS = (
