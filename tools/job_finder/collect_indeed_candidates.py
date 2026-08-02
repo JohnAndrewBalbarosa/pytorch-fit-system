@@ -217,7 +217,7 @@ def _apply_employment_type_filter(page, *, employment_type: str) -> bool:
     if not button.count() or not button.is_visible():
         raise RuntimeError("Indeed adapter drift: visible Job Type filter is unavailable")
     if button.get_attribute("aria-expanded") != "true":
-        button.click()
+        button.click(no_wait_after=True)
         page.wait_for_timeout(250)
 
     option = page.locator(_INDEED_CONTRACT_OPTION).first
@@ -225,13 +225,13 @@ def _apply_employment_type_filter(page, *, employment_type: str) -> bool:
         page.keyboard.press("Escape")
         return False
     if option.get_attribute("aria-checked") != "true":
-        option.click()
+        option.click(no_wait_after=True)
 
     update = page.get_by_role("button", name="Update", exact=True)
     if not update.count() or not update.is_visible():
         raise RuntimeError("Indeed adapter drift: Job Type Update control is unavailable")
     previous_url = page.url
-    update.click()
+    update.click(no_wait_after=True)
     try:
         page.wait_for_url(lambda url: url != previous_url, timeout=10_000)
     except Exception:
@@ -250,7 +250,7 @@ def _apply_employment_type_filter(page, *, employment_type: str) -> bool:
     applied = page.locator(_INDEED_JOB_TYPE_BUTTON).first
     if not applied.count() or not applied.is_visible():
         raise RuntimeError("Indeed did not retain the visible Job Type filter control")
-    applied.click()
+    applied.click(no_wait_after=True)
     page.wait_for_timeout(250)
     selected = page.locator(_INDEED_CONTRACT_OPTION).first
     is_selected = (
