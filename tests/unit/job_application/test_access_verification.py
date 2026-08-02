@@ -4,6 +4,7 @@ from resume_builder.job_application import (
     AccessGateResult,
     AccessGateState,
     HumanVerificationQueue,
+    InterventionAction,
     VerificationQueueGroup,
     VerificationQueueState,
     sanitize_application_url,
@@ -138,3 +139,96 @@ def test_only_blocked_results_can_be_enqueued(tmp_path):
         assert "human-required" in str(error)
     else:
         raise AssertionError("clear access result was queued")
+
+
+def test_distinct_human_actions_can_coexist_for_one_application(tmp_path):
+    queue = HumanVerificationQueue(tmp_path / "verification.json")
+    common = {
+        "application_reference": "Company — Backend Engineer",
+        "url": "https://smartapply.indeed.com/form?token=secret",
+        "browser_target_id": "target-123",
+    }
+
+    captcha = queue.enqueue(
+        **common,
+        result=AccessGateResult(
+            state=AccessGateState.HUMAN_REQUIRED,
+            reason="captcha",
+        ),
+    )
+    question = queue.enqueue_handoff(
+        **common,
+        reason="unknown_question",
+        action=InterventionAction.UNKNOWN_QUESTION,
+        question_labels=["Describe your Python experience."],
+    )
+
+    assert captcha.id != question.id
+    assert {entry.action for entry in queue.pending()} == {
+        InterventionAction.CAPTCHA,
+        InterventionAction.UNKNOWN_QUESTION,
+    }
+    assert question.question_labels == ["Describe your Python experience."]
+
+
+def test_legacy_queue_entry_is_classified_without_rewrite(tmp_path):
+    path = tmp_path / "verification.json"
+    path.write_text(
+        json.dumps(
+            {
+                "legacy": {
+                    "id": "legacy",
+                    "application_reference": "Company — Role",
+                    "domain": "apply.example.com",
+                    "url": "https://apply.example.com/review",
+                    "reason": "verification_required",
+                    "status": "pending",
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "updated_at": "2026-01-01T00:00:00+00:00",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    entry = HumanVerificationQueue(path).pending()[0]
+
+    assert entry.action == InterventionAction.HUMAN_VERIFICATION
+    assert "action" not in json.loads(path.read_text(encoding="utf-8"))["legacy"]
+
+
+def test_enqueue_reuses_matching_legacy_identity(tmp_path):
+    path = tmp_path / "verification.json"
+    domain = "apply.example.com"
+    reference = "Company — Role"
+    legacy_id = HumanVerificationQueue._legacy_entry_id(domain, reference)
+    path.write_text(
+        json.dumps(
+            {
+                legacy_id: {
+                    "id": legacy_id,
+                    "application_reference": reference,
+                    "domain": domain,
+                    "url": f"https://{domain}/review",
+                    "reason": "captcha",
+                    "status": "pending",
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "updated_at": "2026-01-01T00:00:00+00:00",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    entry = HumanVerificationQueue(path).enqueue(
+        application_reference=reference,
+        url=f"https://{domain}/review?token=secret",
+        result=AccessGateResult(
+            state=AccessGateState.HUMAN_REQUIRED,
+            reason="captcha",
+        ),
+    )
+
+    assert entry.id == legacy_id
+    assert entry.occurrences == 2
+    assert list(json.loads(path.read_text(encoding="utf-8"))) == [legacy_id]

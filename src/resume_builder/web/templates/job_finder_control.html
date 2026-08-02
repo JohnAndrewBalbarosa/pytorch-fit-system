@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Job Finder Control Center</title>
+  <link rel="stylesheet" href="/static/job_finder_control.css">
+  <script defer src="/static/job_finder_control.js"></script>
+</head>
+<body>
+  <main class="control-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Local browser companion</p>
+        <h1>Job Finder Control Center</h1>
+        <p class="lede">Automatic work stays separate from tasks that need your attention.</p>
+      </div>
+      <div class="top-actions">
+        <span class="connection" data-connection><i></i> Connecting</span>
+        <button class="button ghost" type="button" data-open-settings>Settings</button>
+        <button class="button" type="button" data-refresh>Refresh</button>
+      </div>
+    </header>
+
+    <section class="summary" aria-label="Job finder summary">
+      <article><span>Automatic work</span><strong data-count-automatic>0</strong></article>
+      <article><span>Needs you</span><strong class="attention" data-count-interventions>0</strong></article>
+      <article><span>Confirmed</span><strong data-count-confirmed>0</strong></article>
+      <article><span>Run status</span><strong class="status-text" data-run-status>Not started</strong></article>
+    </section>
+
+    <section class="panel sessions-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Accounts and browser sessions</p>
+          <h2>Sign in or disconnect</h2>
+        </div>
+        <p>Credentials stay in the provider's visible login page.</p>
+      </div>
+      <div class="session-grid" data-sessions aria-live="polite"></div>
+    </section>
+
+    <section class="work-area">
+      <div class="tabs" role="tablist" aria-label="Job work queues">
+        <button class="tab active" type="button" role="tab" aria-selected="true" data-tab="automatic">
+          Automatic Work <span data-tab-automatic-count>0</span>
+        </button>
+        <button class="tab" type="button" role="tab" aria-selected="false" data-tab="interventions">
+          Needs Human Intervention <span class="attention-badge" data-tab-intervention-count>0</span>
+        </button>
+      </div>
+
+      <section class="panel tab-panel active" role="tabpanel" data-panel="automatic">
+        <div class="section-heading compact">
+          <div>
+            <p class="eyebrow">No action required</p>
+            <h2>Live work queue</h2>
+          </div>
+          <small data-run-detail>No run artifact yet.</small>
+        </div>
+        <div class="work-list" data-automatic-list></div>
+      </section>
+
+      <section class="panel tab-panel" role="tabpanel" data-panel="interventions" hidden>
+        <div class="section-heading compact">
+          <div>
+            <p class="eyebrow">Grouped by action, then website</p>
+            <h2>What you need to do</h2>
+          </div>
+          <small>Complete work only in the normal browser tab.</small>
+        </div>
+        <div class="intervention-groups" data-intervention-groups></div>
+      </section>
+    </section>
+
+    <p class="toast" role="status" aria-live="polite" data-toast></p>
+  </main>
+
+  <dialog class="modal" data-disconnect-dialog>
+    <form method="dialog" data-disconnect-form>
+      <p class="eyebrow">Session action</p>
+      <h2>Disconnect <span data-disconnect-name></span>?</h2>
+      <p class="modal-copy">Website logout can affect other tabs using the same browser account.</p>
+      <label class="choice">
+        <input type="radio" name="disconnect-mode" value="local" checked>
+        <span><strong>Disconnect locally</strong><small>Remove only CareerLens' reusable session.</small></span>
+      </label>
+      <label class="choice">
+        <input type="radio" name="disconnect-mode" value="website">
+        <span><strong>Also open website logout</strong><small>Use the provider's normal visible logout flow.</small></span>
+      </label>
+      <label class="remember"><input type="checkbox" data-remember-disconnect> Don't show this again</label>
+      <div class="modal-actions">
+        <button class="button ghost" value="cancel">Cancel</button>
+        <button class="button danger" value="confirm" data-confirm-disconnect>Continue</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="modal" data-settings-dialog>
+    <form method="dialog">
+      <p class="eyebrow">Control center</p>
+      <h2>Settings</h2>
+      <label class="settings-field">
+        <span>Default disconnect behavior</span>
+        <select data-disconnect-setting>
+          <option value="ask">Ask every time</option>
+          <option value="local">Disconnect locally</option>
+          <option value="website">Also open website logout</option>
+        </select>
+      </label>
+      <p class="modal-copy">This preference is stored only in this browser. No credentials are stored here.</p>
+      <div class="modal-actions">
+        <button class="button" value="close">Close</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

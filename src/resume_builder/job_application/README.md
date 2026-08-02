@@ -76,6 +76,20 @@ implement `SubmissionConfirmationProvider`. Provider reconciliation runs at the 
 The database keeps the displayed company/title, UTC application time, query-free source URL,
 redacted confirmation and its source, plus an audit row for each safety decision.
 
+## Local Job Finder Control Center
+
+Start the FastAPI prototype and open `/job-finder-control` for the standalone browser companion.
+It keeps automatic batch work separate from grouped human interventions, shows the existing
+identity/social sessions plus Indeed, and can focus the exact Chrome/CDP tab recorded in the
+privacy-safe verification queue. CAPTCHA, human verification, sign-in, unknown questionnaire,
+and external-site work remain normal visible-browser handoffs; the page never solves a challenge
+or expands submission permission.
+
+The control page reads `.cache/application-verification-queue.json` and the newest
+`out/indeed-unattended/**/run.json` by default. Set `JOB_FINDER_VERIFICATION_QUEUE` when the runner
+uses another queue path. Disconnect behavior is chosen by the user and remembered only in browser
+local storage; Settings can restore the default “ask every time” behavior.
+
 ## Dynamic website planning
 
 ```mermaid

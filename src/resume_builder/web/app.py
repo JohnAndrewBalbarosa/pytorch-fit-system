@@ -49,6 +49,13 @@ from .auth import (
 from .cdo_advisor import AdvisorAnalyzeRequest, analyze_for_injection
 from .mock_data import PROTOTYPE_DATA
 from .job_scraping_demo import current_session_artifact
+from .job_finder_control import (
+    control_state as job_finder_control_state,
+    disconnect_provider as disconnect_job_finder_provider,
+    focus_intervention,
+    recheck_intervention,
+    start_session as start_job_site_session,
+)
 from ..job_finder import JobScrapeArtifactStore, render_rule_overlay
 from ..metrics.usage_counter import add_pages_scraped, bump_download, read_counters
 
@@ -113,6 +120,59 @@ def developer_job_scraping(request: Request) -> HTMLResponse:
             "raw_json": json.dumps(artifact.model_dump(mode="json"), indent=2, default=str),
         },
     )
+
+
+@app.get("/job-finder-control", response_class=HTMLResponse)
+def job_finder_control(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "job_finder_control.html", {})
+
+
+@app.get("/api/job-finder/control-state")
+def api_job_finder_control_state() -> dict:
+    return job_finder_control_state()
+
+
+@app.post("/api/job-finder/interventions/{entry_id}/focus")
+def api_focus_job_finder_intervention(entry_id: str):
+    try:
+        focus_intervention(entry_id)
+    except KeyError:
+        return JSONResponse({"error": "Unknown intervention."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except Exception as exc:  # noqa: BLE001 - CDP/browser failures are user-facing state
+        return JSONResponse({"error": f"Could not focus browser tab: {exc}"}, status_code=503)
+    return {"focused": True}
+
+
+@app.post("/api/job-finder/interventions/{entry_id}/recheck")
+def api_recheck_job_finder_intervention(entry_id: str):
+    try:
+        return recheck_intervention(entry_id)
+    except KeyError:
+        return JSONResponse({"error": "Unknown intervention."}, status_code=404)
+    except Exception as exc:  # noqa: BLE001 - browser drift must surface without resolving
+        return JSONResponse({"error": f"Could not recheck browser tab: {exc}"}, status_code=503)
+
+
+@app.post("/api/job-finder/sessions/{provider}/sign-in")
+def api_start_job_site_session(provider: str):
+    try:
+        return start_job_site_session(provider)
+    except KeyError:
+        return JSONResponse({"error": f"Unsupported job-site session: {provider}"}, status_code=404)
+    except Exception as exc:  # noqa: BLE001 - visible Chrome may be unavailable
+        return JSONResponse({"error": f"Could not open sign-in tab: {exc}"}, status_code=503)
+
+
+@app.post("/api/job-finder/sessions/{provider}/disconnect")
+def api_disconnect_job_finder_session(provider: str, website_logout: bool = False):
+    try:
+        return disconnect_job_finder_provider(provider, website_logout=website_logout)
+    except KeyError:
+        return JSONResponse({"error": f"Unknown provider: {provider}"}, status_code=404)
+    except Exception as exc:  # noqa: BLE001 - visible Chrome may be unavailable
+        return JSONResponse({"error": f"Could not disconnect provider: {exc}"}, status_code=503)
 
 
 @app.get("/developer/job-scraping/dom", response_class=HTMLResponse)

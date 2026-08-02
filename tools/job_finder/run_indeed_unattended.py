@@ -25,6 +25,7 @@ from resume_builder.job_application import (  # noqa: E402
     BatchApplicationStatus,
     BrowserResourceLimits,
     HumanVerificationQueue,
+    InterventionAction,
     AccessGateResult,
     AccessGateState,
     ApprovedIndeedQuestionAnswers,
@@ -93,9 +94,12 @@ def _outcome(
 def _should_delay_for_human(outcome: BatchApplicationOutcome) -> bool:
     if outcome.status == BatchApplicationStatus.VERIFICATION_PENDING:
         return True
-    return (
-        outcome.status == BatchApplicationStatus.HUMAN_HANDOFF
-        and "validation remains unresolved" in outcome.detail.casefold()
+    return outcome.status == BatchApplicationStatus.HUMAN_HANDOFF and any(
+        marker in outcome.detail.casefold()
+        for marker in (
+            "validation remains unresolved",
+            "questionnaire requires an accepted evidence-grounded answer plan",
+        )
     )
 
 
@@ -646,6 +650,26 @@ def _run_application(
                 resume,
                 verified_phone=verified_phone,
                 approved_questions=approved_questions,
+            )
+            if question_plan.unresolved:
+                observed_questions = observe_indeed_screening_questions(application_page)
+                unresolved = set(question_plan.unresolved)
+                queue.enqueue_handoff(
+                    application_reference=job.batch_task().application_reference,
+                    url=str(application_page.url),
+                    reason="unknown_question",
+                    browser_target_id=_browser_target_id(application_page),
+                    action=InterventionAction.UNKNOWN_QUESTION,
+                    question_labels=[
+                        question.label
+                        for question in observed_questions
+                        if question.question_id in unresolved
+                    ],
+                )
+        else:
+            queue.resolve_matching(
+                application_reference=job.batch_task().application_reference,
+                action=InterventionAction.UNKNOWN_QUESTION,
             )
         result = run_indeed_smart_apply_until_gate(
             application_page,
