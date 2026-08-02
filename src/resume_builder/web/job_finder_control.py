@@ -223,8 +223,10 @@ def _goal_state() -> tuple[dict[str, Any], list[dict[str, Any]]]:
 def _run_interventions(
     run: dict[str, Any],
     queued: list[dict[str, Any]],
+    suppressed_references: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     queued_references = {str(item.get("application_reference", "")) for item in queued}
+    suppressed = suppressed_references or set()
     items: list[dict[str, Any]] = []
     for outcome in run.get("outcomes", []):
         if not isinstance(outcome, dict) or outcome.get("status") not in {
@@ -236,7 +238,7 @@ def _run_interventions(
         reference = str(task.get("application_reference", "")).strip() or (
             f"{str(task.get('company', '')).strip()} — {str(task.get('job_title', '')).strip()}"
         ).strip(" —")
-        if reference in queued_references:
+        if reference in queued_references or reference in suppressed:
             continue
         detail = str(outcome.get("detail", "human review required"))[:300]
         lowered = detail.casefold()
@@ -316,7 +318,16 @@ def control_state() -> dict[str, Any]:
     pending = [
         _entry_payload(entry, live_target_ids=live_target_ids) for entry in pending_entries
     ]
-    interventions = [*pending, *_run_interventions(run, pending)]
+    goal_payload, goal_items = _goal_state()
+    suppressed_references = {
+        f"{item.get('company', '')} — {item.get('job_title', '')}"
+        for item in goal_items
+        if item.get("state") not in {"human_handoff", "reserved"}
+    }
+    interventions = [
+        *pending,
+        *_run_interventions(run, pending, suppressed_references),
+    ]
     automatic = _automatic_work(run)
     development_requests = DevelopmentQuestionBridge(DEFAULT_DEVELOPMENT_BRIDGE_ROOT).pending()
     automatic.extend(
@@ -332,7 +343,6 @@ def control_state() -> dict[str, Any]:
         }
         for request in development_requests
     )
-    goal_payload, goal_items = _goal_state()
     return {
         "sessions": _session_state(targets),
         "run": {
@@ -502,4 +512,8 @@ def recheck_intervention(entry_id: str) -> dict[str, Any]:
             return {"resolved": False, "reason": "This task requires explicit manual completion."}
     if clear:
         queue.resolve(entry.id)
-    return {"resolved": clear, "reason": reason}
+    return {
+        "resolved": clear,
+        "reason": reason,
+        "application_reference": entry.application_reference,
+    }

@@ -71,6 +71,42 @@ def _interruptible_wait(seconds: float) -> None:
         time.sleep(min(0.25, deadline - time.monotonic()))
 
 
+def _next_cycle_number(goal_root: Path) -> int:
+    numbers = []
+    for path in goal_root.glob("cycle-*"):
+        try:
+            numbers.append(int(path.name.removeprefix("cycle-")))
+        except ValueError:
+            continue
+    return max(numbers, default=0) + 1
+
+
+def _retry_jobs(goal_root: Path, items) -> list[dict[str, object]]:
+    retry_ids = {item.task_id for item in items if item.state.value == "observed"}
+    if not retry_ids:
+        return []
+    found: dict[str, dict[str, object]] = {}
+    manifests = sorted(
+        goal_root.glob("cycle-*/manifest.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for path in manifests:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        for job in payload.get("jobs", []):
+            if not isinstance(job, dict):
+                continue
+            task_id = str(job.get("task_id", ""))
+            if task_id in retry_ids and task_id not in found:
+                found[task_id] = job
+        if retry_ids.issubset(found):
+            break
+    return [found[task_id] for task_id in sorted(found)]
+
+
 def supervise(args: argparse.Namespace) -> int:
     store = ApplicationGoalStore(args.database)
     goal = store.get(args.goal_id)
@@ -90,7 +126,7 @@ def supervise(args: argparse.Namespace) -> int:
         except (OSError, json.JSONDecodeError, TypeError):
             seen = set()
 
-    cycle = 0
+    cycle = _next_cycle_number(goal_root) - 1
     try:
         while not _STOP_REQUESTED:
             goal = store.get(args.goal_id)
@@ -118,14 +154,18 @@ def supervise(args: argparse.Namespace) -> int:
                 candidate_limit=candidate_limit,
                 max_parallel=args.max_parallel,
             )
-            collect_command = adapter.collect_command(request)
-            collect_code = _run_command(collect_command, log_path=log_path)
-            if collect_code != 0 or not manifest_path.is_file():
-                store.set_status(args.goal_id, ApplicationGoalStatus.WAITING_FOR_CANDIDATES)
-                _interruptible_wait(args.search_retry_seconds)
-                if not _STOP_REQUESTED:
-                    store.set_status(args.goal_id, ApplicationGoalStatus.ACTIVE)
-                continue
+            retry_jobs = _retry_jobs(goal_root, store.items(args.goal_id))
+            if retry_jobs:
+                _write_json(manifest_path, {"jobs": retry_jobs})
+            else:
+                collect_command = adapter.collect_command(request)
+                collect_code = _run_command(collect_command, log_path=log_path)
+                if collect_code != 0 or not manifest_path.is_file():
+                    store.set_status(args.goal_id, ApplicationGoalStatus.WAITING_FOR_CANDIDATES)
+                    _interruptible_wait(args.search_retry_seconds)
+                    if not _STOP_REQUESTED:
+                        store.set_status(args.goal_id, ApplicationGoalStatus.ACTIVE)
+                    continue
 
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             task_ids = {

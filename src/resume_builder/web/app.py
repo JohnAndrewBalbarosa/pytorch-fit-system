@@ -63,6 +63,7 @@ from .job_finder_supervisor import (
     confirm_item as confirm_job_finder_item,
     launch_goal as launch_job_finder_goal,
     release_item as release_job_finder_item,
+    retry_resolved_intervention,
     start_goal as create_job_finder_goal,
     stop_goal as stop_job_finder_goal,
 )
@@ -279,6 +280,7 @@ def api_recheck_job_finder_intervention(entry_id: str):
         if result.get("resolved"):
             from .job_finder_supervisor import goal_store, process_status
 
+            retry_resolved_intervention(str(result.get("application_reference", "")))
             goal = goal_store().active()
             if goal is not None and not process_status(goal.id)["running"]:
                 launch_job_finder_goal(goal.id)

@@ -17,6 +17,7 @@ from ..job_application import (
     ApplicationGoalStore,
     ApplicationSubmissionHistory,
     ConfirmationSource,
+    GoalItemState,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -202,3 +203,29 @@ def release_item(goal_id: str, task_id: str) -> ApplicationGoal:
     if goal.available > 0 and not process_status(goal_id)["running"]:
         launch_goal(goal_id)
     return goal
+
+
+def retry_resolved_intervention(application_reference: str) -> str:
+    """Return one cleared human-gated goal item to the deterministic replay queue."""
+    store = goal_store()
+    goal = store.active()
+    if goal is None:
+        return ""
+    normalized_reference = " ".join(application_reference.casefold().split())
+    for item in store.items(goal.id):
+        item_reference = " ".join(
+            f"{item.company} — {item.job_title}".casefold().split()
+        )
+        if item_reference != normalized_reference or item.state != GoalItemState.HUMAN_HANDOFF:
+            continue
+        store.observe(
+            goal.id,
+            task_id=item.task_id,
+            site=item.site,
+            company=item.company,
+            job_title=item.job_title,
+            state=GoalItemState.OBSERVED,
+            detail="human verification resolved; deterministic replay queued",
+        )
+        return item.task_id
+    return ""
