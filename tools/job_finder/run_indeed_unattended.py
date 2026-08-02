@@ -14,6 +14,8 @@ from pathlib import Path
 from threading import Lock
 from urllib.parse import urlsplit
 
+import requests
+
 ROOT = next(path for path in Path(__file__).resolve().parents if (path / "pyproject.toml").exists())
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -194,7 +196,29 @@ def _visible_text(page, selector: str) -> str:
 
 def _tab_budget_available(context, args: argparse.Namespace) -> bool:
     max_tabs = int(getattr(args, "max_tabs", 0) or 0)
-    return not max_tabs or len(context.pages) < max_tabs
+    baseline_tabs = int(getattr(args, "baseline_tabs", 0) or 0)
+    worker_owned_tabs = max(0, len(context.pages) - baseline_tabs)
+    return not max_tabs or worker_owned_tabs < max_tabs
+
+
+def _tab_budget_detail(context, args: argparse.Namespace) -> str:
+    baseline_tabs = int(getattr(args, "baseline_tabs", 0) or 0)
+    worker_owned_tabs = max(0, len(context.pages) - baseline_tabs)
+    return (
+        f"worker tab budget reached ({worker_owned_tabs}/{args.max_tabs}; "
+        f"baseline browser tabs={baseline_tabs})"
+    )
+
+
+def _browser_page_count(cdp_url: str) -> int:
+    response = requests.get(f"{cdp_url.rstrip('/')}/json", timeout=3)
+    response.raise_for_status()
+    payload = response.json()
+    return sum(
+        isinstance(item, dict) and item.get("type") == "page"
+        for item in payload
+        if isinstance(item, dict)
+    )
 
 
 def _wait_for_listing_evidence(
@@ -853,8 +877,8 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
             if not _tab_budget_available(context, args):
                 return _outcome(
                     job,
-                    BatchApplicationStatus.VERIFICATION_PENDING,
-                    f"resource tab limit reached ({len(context.pages)}/{args.max_tabs})",
+                    BatchApplicationStatus.FAILED,
+                    _tab_budget_detail(context, args),
                 )
             page = context.new_page()
             page.goto(job.listing_url, wait_until="domcontentloaded", timeout=30_000)
@@ -891,8 +915,8 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
         if not _tab_budget_available(context, args):
             return _outcome(
                 job,
-                BatchApplicationStatus.VERIFICATION_PENDING,
-                f"resource tab limit reached ({len(context.pages)}/{args.max_tabs})",
+                BatchApplicationStatus.FAILED,
+                _tab_budget_detail(context, args),
             )
         application_page, apply_error = _open_smart_apply(page, context)
         if apply_error:
@@ -1295,11 +1319,16 @@ def main() -> int:
             reason="manual resource limits",
             snapshot=snapshot,
         )
+    try:
+        args.baseline_tabs = _browser_page_count(args.cdp_url)
+    except (requests.RequestException, ValueError):
+        raise SystemExit("could not inventory the approved Chrome/CDP page baseline") from None
     args.output = _unique_run_directory(args.output)
     print(f"Indeed unattended run directory: {args.output}", flush=True)
     print(
         "Resource limits: "
-        f"workers={args.max_parallel} tabs={args.max_tabs} "
+        f"workers={args.max_parallel} worker_tabs={args.max_tabs} "
+        f"baseline_tabs={args.baseline_tabs} "
         f"candidates={args.max_candidates} ({args.resource_limits.reason})",
         flush=True,
     )

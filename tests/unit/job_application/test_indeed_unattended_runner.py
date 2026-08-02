@@ -554,8 +554,13 @@ def test_empty_database_phone_preserves_reviewed_resume_phone():
 def test_tab_budget_prevents_another_application_transition_at_limit():
     context = SimpleNamespace(pages=[object(), object(), object()])
 
-    assert runner._tab_budget_available(context, SimpleNamespace(max_tabs=4)) is True
-    assert runner._tab_budget_available(context, SimpleNamespace(max_tabs=3)) is False
+    assert runner._tab_budget_available(
+        context, SimpleNamespace(max_tabs=1, baseline_tabs=3)
+    ) is True
+    context.pages.append(object())
+    assert runner._tab_budget_available(
+        context, SimpleNamespace(max_tabs=1, baseline_tabs=3)
+    ) is False
     assert runner._tab_budget_available(context, SimpleNamespace(max_tabs=0)) is True
 
 
