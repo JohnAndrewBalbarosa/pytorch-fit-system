@@ -41,6 +41,7 @@ def test_control_state_combines_latest_run_and_groupable_interventions(
                         "company": "Example Co",
                         "job_title": "Backend Engineer",
                         "domain": "au.indeed.com",
+                        "resume_file": "software-systems.pdf",
                     },
                     {
                         "task_id": "job-2",
@@ -73,16 +74,50 @@ def test_control_state_combines_latest_run_and_groupable_interventions(
     monkeypatch.setattr(job_finder_control, "DEFAULT_QUEUE_PATH", queue_path)
     monkeypatch.setattr(job_finder_control, "_targets", lambda: [])
     monkeypatch.setattr(job_finder_control, "_goal_state", lambda: ({}, []))
+    monkeypatch.setattr(job_finder_control, "_resume_catalog", lambda: [])
     monkeypatch.setenv("RESUME_BUILDER_CACHE", str(tmp_path / "auth"))
 
     state = job_finder_control.control_state()
 
     assert state["run"]["status"] == "running"
     assert [item["status"] for item in state["automatic"]] == ["submitted", "queued"]
+    assert state["automatic"][0]["resume_file"] == "software-systems.pdf"
     assert state["interventions"][0]["action"] == "unknown_question"
     assert state["interventions"][0]["site"] == "indeed"
     assert state["interventions"][0]["question_labels"] == ["Are you available to work weekends?"]
     assert "secret" not in json.dumps(state)
+
+
+def test_resume_catalog_inventories_generated_artifacts_and_routes(tmp_path, monkeypatch):
+    artifact_dir = tmp_path / "outputs"
+    artifact_dir.mkdir()
+    (artifact_dir / "automation-data.pdf").write_bytes(b"%PDF")
+    (artifact_dir / "automation-data.resume.json").write_text(
+        json.dumps({"role": {"id": "automation-data", "label": "Automation Engineer"}}),
+        encoding="utf-8",
+    )
+    database = tmp_path / "profile.sqlite3"
+    store = job_finder_control.ApplicationProfileStore(database)
+    store.replace_resume_route(
+        filename="automation-data.pdf",
+        terms=["automation", "data engineer"],
+    )
+    monkeypatch.setattr(job_finder_control, "DEFAULT_ARTIFACT_DIR", artifact_dir)
+    monkeypatch.setattr(job_finder_control, "DEFAULT_DATABASE", database)
+
+    catalog = job_finder_control._resume_catalog()
+
+    assert catalog == [
+        {
+            "filename": "automation-data.pdf",
+            "label": "Automation Engineer",
+            "role_id": "automation-data",
+            "terms": ["automation", "data engineer"],
+            "is_default": False,
+            "artifact_ready": True,
+            "routing_ready": True,
+        }
+    ]
 
 
 def test_focus_target_uses_only_validated_cdp_target(monkeypatch):
@@ -152,6 +187,7 @@ def test_unqueued_human_outcome_remains_visible_as_grouped_fallback():
     interventions = job_finder_control._run_interventions(
         {
             "started_at": "2026-08-02T00:00:00+00:00",
+            "jobs": [{"task_id": "job-3", "resume_file": "ai-ml-research.pdf"}],
             "outcomes": [
                 {
                     "status": "human_handoff",
@@ -172,6 +208,7 @@ def test_unqueued_human_outcome_remains_visible_as_grouped_fallback():
     assert interventions[0]["action"] == "unknown_question"
     assert interventions[0]["site"] == "indeed"
     assert interventions[0]["can_focus"] is False
+    assert interventions[0]["resume_file"] == "ai-ml-research.pdf"
 
 
 def test_disconnect_can_clear_local_social_session_without_website_logout(

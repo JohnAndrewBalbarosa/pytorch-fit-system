@@ -13,6 +13,7 @@ from urllib.parse import quote, urlsplit
 import requests
 
 from ..job_application import (
+    ApplicationProfileStore,
     DevelopmentQuestionBridge,
     HumanVerificationQueue,
     InterventionAction,
@@ -20,6 +21,7 @@ from ..job_application import (
     check_access_gate,
 )
 from .auth import IdentityStore, auth_status, clear_social_session, provider_configuration_status
+from .job_finder_supervisor import DEFAULT_ARTIFACT_DIR, DEFAULT_DATABASE
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_QUEUE_PATH = REPO_ROOT / ".cache" / "application-verification-queue.json"
@@ -76,6 +78,77 @@ def _latest_run() -> dict[str, Any]:
     except ValueError:
         value["artifact"] = path.name
     return value
+
+
+def _resume_catalog() -> list[dict[str, Any]]:
+    """Inventory generated PDFs and their deterministic job-search routes."""
+    routes = {
+        route.filename: route
+        for route in ApplicationProfileStore(DEFAULT_DATABASE).resume_routes()
+    }
+    filenames = set(routes)
+    if DEFAULT_ARTIFACT_DIR.is_dir():
+        filenames.update(path.name for path in DEFAULT_ARTIFACT_DIR.glob("*.pdf"))
+    items: list[dict[str, Any]] = []
+    for filename in sorted(filenames):
+        pdf_path = DEFAULT_ARTIFACT_DIR / filename
+        metadata_path = pdf_path.with_suffix(".resume.json")
+        label = pdf_path.stem.replace("-", " ").title()
+        role_id = ""
+        if metadata_path.is_file():
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                role = metadata.get("role", {}) if isinstance(metadata, dict) else {}
+                if isinstance(role, dict):
+                    label = str(role.get("label") or label)[:160]
+                    role_id = str(role.get("id") or "")[:120]
+            except (OSError, json.JSONDecodeError):
+                pass
+        route = routes.get(filename)
+        items.append(
+            {
+                "filename": filename,
+                "label": label,
+                "role_id": role_id,
+                "terms": list(route.terms) if route else [],
+                "is_default": bool(route and route.is_default),
+                "artifact_ready": pdf_path.is_file() and metadata_path.is_file(),
+                "routing_ready": route is not None,
+            }
+        )
+    return items
+
+
+def _resume_lookup() -> tuple[dict[str, str], dict[str, str]]:
+    """Recover resume labels for current and historical queue microtasks."""
+    by_task: dict[str, str] = {}
+    by_reference: dict[str, str] = {}
+    candidates = sorted(
+        DEFAULT_RUN_ROOT.glob("**/run.json") if DEFAULT_RUN_ROOT.exists() else (),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for path in candidates:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        for job in payload.get("jobs", []) if isinstance(payload, dict) else []:
+            if not isinstance(job, dict):
+                continue
+            resume_file = str(job.get("resume_file", "")).strip()
+            if not resume_file:
+                continue
+            task_id = str(job.get("task_id", "")).strip()
+            reference = (
+                f"{str(job.get('company', '')).strip()} — "
+                f"{str(job.get('job_title', '')).strip()}"
+            ).strip(" —")
+            if task_id:
+                by_task.setdefault(task_id, resume_file)
+            if reference:
+                by_reference.setdefault(reference, resume_file)
+    return by_task, by_reference
 
 
 def _site_for_domain(domain: str) -> str:
@@ -147,6 +220,7 @@ def _automatic_work(run: dict[str, Any]) -> list[dict[str, Any]]:
                 "job_title": str(job.get("job_title", ""))[:200],
                 "site": _site_for_domain(str(job.get("domain", "indeed"))),
                 "status": status,
+                "resume_file": str(job.get("resume_file", ""))[:160],
                 "detail": str(outcome.get("detail", "Waiting for an available worker."))[:300],
             }
         )
@@ -225,6 +299,11 @@ def _run_interventions(
     queued: list[dict[str, Any]],
     suppressed_references: set[str] | None = None,
 ) -> list[dict[str, Any]]:
+    jobs = {
+        str(item.get("task_id", "")): item
+        for item in run.get("jobs", [])
+        if isinstance(item, dict) and item.get("task_id")
+    }
     queued_references = {str(item.get("application_reference", "")) for item in queued}
     suppressed = suppressed_references or set()
     items: list[dict[str, Any]] = []
@@ -235,6 +314,7 @@ def _run_interventions(
         }:
             continue
         task = outcome.get("task") if isinstance(outcome.get("task"), dict) else {}
+        job = jobs.get(str(task.get("task_id", "")), {})
         reference = str(task.get("application_reference", "")).strip() or (
             f"{str(task.get('company', '')).strip()} — {str(task.get('job_title', '')).strip()}"
         ).strip(" —")
@@ -273,6 +353,7 @@ def _run_interventions(
                 "site": _site_for_domain(domain),
                 "instruction": _instruction(action),
                 "can_focus": False,
+                "resume_file": str(job.get("resume_file", ""))[:160],
             }
         )
     return items
@@ -319,6 +400,16 @@ def control_state() -> dict[str, Any]:
         _entry_payload(entry, live_target_ids=live_target_ids) for entry in pending_entries
     ]
     goal_payload, goal_items = _goal_state()
+    resume_by_task, resume_by_reference = _resume_lookup()
+    for item in pending:
+        item["resume_file"] = resume_by_reference.get(
+            str(item.get("application_reference", "")), ""
+        )
+    for item in goal_items:
+        reference = f"{item.get('company', '')} — {item.get('job_title', '')}"
+        item["resume_file"] = resume_by_task.get(
+            str(item.get("task_id", "")), resume_by_reference.get(reference, "")
+        )
     suppressed_references = {
         f"{item.get('company', '')} — {item.get('job_title', '')}"
         for item in goal_items
@@ -358,6 +449,8 @@ def control_state() -> dict[str, Any]:
         "live_pages": _live_pages(pending_entries, targets),
         "goal": goal_payload,
         "goal_items": goal_items,
+        "resume_catalog": _resume_catalog(),
+        "resume_artifact_directory": str(DEFAULT_ARTIFACT_DIR),
         "development_questions": [
             {
                 "request_id": request.request_id,

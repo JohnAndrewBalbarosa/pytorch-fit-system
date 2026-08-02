@@ -23,6 +23,7 @@
   const livePagesNode = document.querySelector("[data-live-pages]");
   const goalItemsNode = document.querySelector("[data-goal-items]");
   const goalInterventionItemsNode = document.querySelector("[data-goal-intervention-items]");
+  const resumeRoutesNode = document.querySelector("[data-resume-routes]");
   const disconnectDialog = document.querySelector("[data-disconnect-dialog]");
   const settingsDialog = document.querySelector("[data-settings-dialog]");
   let pendingDisconnect = "";
@@ -104,6 +105,7 @@
       state.run?.error || state.run?.artifact || "No run artifact yet.",
     );
     renderSessions(state.sessions || {});
+    renderResumeRoutes(state.resume_catalog || [], state.resume_artifact_directory || "");
     renderAutomatic(state.automatic || []);
     renderInterventions(state.interventions || []);
     autoRecheck(state.interventions || []);
@@ -273,10 +275,39 @@
       const title = element("div");
       title.append(element("h3", "", item.job_title || "Untitled job"));
       title.append(element("p", "", `${item.company || "Unknown company"} · ${item.site}`));
+      appendResumeTag(title, item.resume_file);
       card.append(title, element("span", `pill ${item.status}`, item.status.replaceAll("_", " ")));
       card.append(element("p", "detail", item.detail || "Working."));
       return card;
     }));
+  }
+
+  function renderResumeRoutes(items, directory) {
+    setText("[data-resume-directory]", directory || "No artifact directory configured.");
+    if (!items.length) {
+      resumeRoutesNode.replaceChildren(element("div", "empty", "No generated resume artifacts found."));
+      return;
+    }
+    resumeRoutesNode.replaceChildren(...items.map((item) => {
+      const card = element("article", "resume-route-card");
+      const heading = element("div", "resume-route-heading");
+      heading.append(element("h3", "", item.label || item.filename));
+      const state = item.artifact_ready && item.routing_ready ? "ready" : "needs setup";
+      heading.append(element("span", `pill ${state === "ready" ? "submitted" : "failed"}`, state));
+      card.append(heading, element("p", "resume-filename", item.filename));
+      card.append(element(
+        "p",
+        "detail",
+        item.terms?.length ? `Search matches: ${item.terms.join(" · ")}` : "No search terms configured; this resume will not be selected automatically.",
+      ));
+      if (item.is_default) card.append(element("span", "pill queued", "default fallback"));
+      return card;
+    }));
+  }
+
+  function appendResumeTag(node, filename) {
+    if (!filename) return;
+    node.append(element("p", "resume-tag", `Resume to use: ${filename}`));
   }
 
   function renderInterventions(items) {
@@ -365,6 +396,7 @@
       const body = element("div");
       body.append(element("h3", "", item.job_title));
       body.append(element("p", "", `${item.company} · ${item.site}`));
+      appendResumeTag(body, item.resume_file);
       body.append(element("p", "detail", item.detail || "Goal item updated."));
       const badge = element("span", `pill ${item.state}`, item.state.replaceAll("_", " "));
       card.append(body, badge);
@@ -396,6 +428,7 @@
     const body = element("div");
     body.append(element("h3", "", item.application_reference || "Application"));
     body.append(element("p", "", item.instruction || item.reason));
+    appendResumeTag(body, item.resume_file);
     if (item.question_labels?.length) {
       const list = element("ul", "question-list");
       item.question_labels.forEach((label) => list.append(element("li", "", label)));
