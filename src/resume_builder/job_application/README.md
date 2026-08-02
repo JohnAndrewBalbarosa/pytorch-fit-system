@@ -208,9 +208,12 @@ python tools/job_finder/collect_indeed_candidates.py \
   --output out/indeed-unattended/candidate-manifest.json
 ```
 
-`--employment-type contract` adds a fail-closed qualification group to every candidate. The
-application runner must observe an explicit `contract`, `contractor`, or `fixed-term` signal in the
-rendered job title/description before it can open Apply; unspecified or permanent roles are skipped.
+`--employment-type contract` first selects Indeed's visible **Job Type → Contract** search filter.
+If the current rendered search does not offer that option, the query yields no candidates rather
+than broadening to another job type. It also adds a fail-closed qualification group to every
+candidate: the application runner must observe an explicit `contract`, `contractor`, or
+`fixed-term` signal in the rendered job title/description before it can open Apply. Unspecified or
+permanent roles are skipped.
 
 The bounded scheduler then consumes that manifest with three independent CDP pages. Final Submit
 remains disabled unless `--autonomous-submit` is present. If `--verified-phone` is omitted, the

@@ -122,6 +122,8 @@ _CONTRACT_TERMS = (
     "fixed-term",
     "temporary contract",
 )
+_INDEED_JOB_TYPE_BUTTON = 'button[aria-label^="Job Type filter" i]'
+_INDEED_CONTRACT_OPTION = '[role=menuitemcheckbox][aria-label="Contract"]'
 _EARLY_CAREER_TERMS = (
     "intern",
     "internship",
@@ -203,7 +205,70 @@ def _stable_content(page, *, attempts: int = 40) -> str:
     raise RuntimeError("rendered page content did not stabilize")
 
 
-def _execute_search(page, *, keyword: str) -> list[JobListing]:
+def _apply_employment_type_filter(page, *, employment_type: str) -> bool:
+    """Apply an observed Indeed Job Type option; return false when unavailable."""
+    if employment_type == "any":
+        return True
+    if employment_type != "contract":
+        raise ValueError(f"unsupported employment type: {employment_type}")
+
+    button = page.locator(_INDEED_JOB_TYPE_BUTTON).first
+    if not button.count() or not button.is_visible():
+        raise RuntimeError("Indeed adapter drift: visible Job Type filter is unavailable")
+    if button.get_attribute("aria-expanded") != "true":
+        button.click()
+        page.wait_for_timeout(250)
+
+    option = page.locator(_INDEED_CONTRACT_OPTION).first
+    if not option.count() or not option.is_visible():
+        page.keyboard.press("Escape")
+        return False
+    if option.get_attribute("aria-checked") != "true":
+        option.click()
+
+    update = page.get_by_role("button", name="Update", exact=True)
+    if not update.count() or not update.is_visible():
+        raise RuntimeError("Indeed adapter drift: Job Type Update control is unavailable")
+    previous_url = page.url
+    update.click()
+    try:
+        page.wait_for_url(lambda url: url != previous_url, timeout=10_000)
+    except Exception:
+        pass
+    try:
+        page.locator("div.job_seen_beacon").first.wait_for(state="attached", timeout=10_000)
+    except Exception:
+        pass
+    page.wait_for_timeout(1_000)
+
+    decision = AccessGuard().classify(url=page.url, html=_stable_content(page))
+    if not decision.should_continue:
+        raise RuntimeError(
+            f"Job Type filter access gate requires human handoff: {decision.reason}"
+        )
+    applied = page.locator(_INDEED_JOB_TYPE_BUTTON).first
+    if not applied.count() or not applied.is_visible():
+        raise RuntimeError("Indeed did not retain the visible Job Type filter control")
+    applied.click()
+    page.wait_for_timeout(250)
+    selected = page.locator(_INDEED_CONTRACT_OPTION).first
+    is_selected = (
+        selected.count()
+        and selected.is_visible()
+        and selected.get_attribute("aria-checked") == "true"
+    )
+    page.keyboard.press("Escape")
+    if not is_selected:
+        raise RuntimeError("Indeed did not visibly confirm the selected Contract Job Type option")
+    return True
+
+
+def _execute_search(
+    page,
+    *,
+    keyword: str,
+    employment_type: str = "any",
+) -> list[JobListing]:
     html = _stable_content(page)
     decision = AccessGuard().classify(url=page.url, html=html)
     if not decision.should_continue:
@@ -237,6 +302,9 @@ def _execute_search(page, *, keyword: str) -> list[JobListing]:
     decision = AccessGuard().classify(url=page.url, html=html)
     if not decision.should_continue:
         raise RuntimeError(f"search result access gate requires human handoff: {decision.reason}")
+    if not _apply_employment_type_filter(page, employment_type=employment_type):
+        return []
+    html = _stable_content(page)
     layout = INDEED_ADAPTER.build_listing_layout(page.url, html)
     listings, _, _, _ = apply_listing_rules(
         html,
@@ -365,7 +433,11 @@ def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
                             pass
                 page.wait_for_timeout(1_000)
                 for keyword in args.keyword:
-                    for listing in _execute_search(page, keyword=keyword):
+                    for listing in _execute_search(
+                        page,
+                        keyword=keyword,
+                        employment_type=args.employment_type,
+                    ):
                         candidate = candidate_from_listing(
                             listing,
                             target_country=country,
