@@ -27,6 +27,7 @@
   const settingsDialog = document.querySelector("[data-settings-dialog]");
   let pendingDisconnect = "";
   let activeGoalId = "";
+  let livePagesSignature = "";
   let toastTimer;
   const autoRecheckedAt = new Map();
 
@@ -302,6 +303,11 @@
   }
 
   function renderLivePages(items) {
+    const signature = JSON.stringify(items.map((item) => [
+      item.target_id, item.group, item.action, item.status, item.title, item.safe_path,
+    ]));
+    if (signature === livePagesSignature) return;
+    livePagesSignature = signature;
     if (!items.length) {
       livePagesNode.replaceChildren(element("div", "empty", "No registered Indeed pages are open."));
       return;
@@ -324,6 +330,7 @@
     const image = document.createElement("img");
     image.alt = `Live preview: ${item.title || item.site}`;
     image.loading = "lazy";
+    image.dataset.previewUrl = item.preview_url;
     image.src = `${item.preview_url}?revision=${Date.now()}`;
     image.addEventListener("click", () => focusTarget(item.target_id));
     const body = element("div", "preview-body");
@@ -472,4 +479,10 @@
   window.setInterval(() => {
     if (!document.hidden) refresh();
   }, 2000);
+  window.setInterval(() => {
+    if (document.hidden) return;
+    document.querySelectorAll("img[data-preview-url]").forEach((image) => {
+      image.src = `${image.dataset.previewUrl}?revision=${Date.now()}`;
+    });
+  }, 15000);
 })();

@@ -102,15 +102,22 @@ def _instruction(action: InterventionAction) -> str:
     }[action]
 
 
-def _entry_payload(entry: VerificationQueueEntry) -> dict[str, Any]:
+def _entry_payload(
+    entry: VerificationQueueEntry,
+    *,
+    live_target_ids: set[str] | None = None,
+) -> dict[str, Any]:
+    target_is_live = bool(entry.browser_target_id) and (
+        live_target_ids is None or entry.browser_target_id in live_target_ids
+    )
     return {
         **entry.model_dump(mode="json"),
         "site": _site_for_domain(entry.domain),
         "instruction": _instruction(entry.action),
-        "can_focus": bool(entry.browser_target_id),
+        "can_focus": target_is_live,
         "preview_url": (
             f"/api/job-finder/targets/{entry.browser_target_id}/preview"
-            if entry.browser_target_id
+            if target_is_live
             else ""
         ),
     }
@@ -146,10 +153,13 @@ def _automatic_work(run: dict[str, Any]) -> list[dict[str, Any]]:
     return items
 
 
-def _live_pages(pending: list[VerificationQueueEntry]) -> list[dict[str, Any]]:
+def _live_pages(
+    pending: list[VerificationQueueEntry],
+    targets: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     by_target = {entry.browser_target_id: entry for entry in pending if entry.browser_target_id}
     pages: list[dict[str, Any]] = []
-    for target in _targets():
+    for target in targets if targets is not None else _targets():
         target_id = str(target.get("id", ""))
         url = str(target.get("url", ""))
         parts = urlsplit(url)
@@ -266,12 +276,13 @@ def _run_interventions(
     return items
 
 
-def _session_state() -> dict[str, Any]:
+def _session_state(targets: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     state = auth_status()
     state["oauth_setup"] = provider_configuration_status()
+    browser_targets = targets if targets is not None else _targets()
     indeed_targets = [
         target
-        for target in _targets()
+        for target in browser_targets
         if "indeed.com" in (urlsplit(str(target.get("url", ""))).hostname or "").lower()
     ]
     signed_in_target = next(
@@ -299,8 +310,12 @@ def _session_state() -> dict[str, Any]:
 
 def control_state() -> dict[str, Any]:
     run = _latest_run()
+    targets = _targets()
+    live_target_ids = {str(target.get("id", "")) for target in targets}
     pending_entries = _queue().pending()
-    pending = [_entry_payload(entry) for entry in pending_entries]
+    pending = [
+        _entry_payload(entry, live_target_ids=live_target_ids) for entry in pending_entries
+    ]
     interventions = [*pending, *_run_interventions(run, pending)]
     automatic = _automatic_work(run)
     development_requests = DevelopmentQuestionBridge(DEFAULT_DEVELOPMENT_BRIDGE_ROOT).pending()
@@ -319,7 +334,7 @@ def control_state() -> dict[str, Any]:
     )
     goal_payload, goal_items = _goal_state()
     return {
-        "sessions": _session_state(),
+        "sessions": _session_state(targets),
         "run": {
             "status": run.get("status", "not_started"),
             "started_at": run.get("started_at", ""),
@@ -330,7 +345,7 @@ def control_state() -> dict[str, Any]:
         },
         "automatic": automatic,
         "interventions": interventions,
-        "live_pages": _live_pages(pending_entries),
+        "live_pages": _live_pages(pending_entries, targets),
         "goal": goal_payload,
         "goal_items": goal_items,
         "development_questions": [
@@ -383,13 +398,13 @@ def capture_target_preview(target_id: str) -> bytes:
 
     with _PREVIEW_LOCK:
         cached = _PREVIEW_CACHE.get(safe_id)
-        if cached is not None and time.monotonic() - cached[0] < 1.5:
+        if cached is not None and time.monotonic() - cached[0] < 12:
             return cached[1]
 
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as playwright:
-            browser = playwright.chromium.connect_over_cdp(_cdp_url())
+            browser = playwright.chromium.connect_over_cdp(_cdp_url(), timeout=5_000)
             for context in browser.contexts:
                 for page in context.pages:
                     session = context.new_cdp_session(page)
@@ -453,7 +468,7 @@ def recheck_intervention(entry_id: str) -> dict[str, Any]:
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.connect_over_cdp(_cdp_url())
+        browser = playwright.chromium.connect_over_cdp(_cdp_url(), timeout=5_000)
         page = None
         for context in browser.contexts:
             for candidate in context.pages:

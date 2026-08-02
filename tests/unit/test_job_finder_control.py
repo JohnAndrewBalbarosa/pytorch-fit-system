@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -128,6 +129,23 @@ def test_live_pages_expose_safe_path_and_preview_without_query(monkeypatch):
     assert pages[0]["safe_path"] == "/viewjob"
     assert pages[0]["preview_url"].endswith("/TARGET_1/preview")
     assert "secret-token" not in json.dumps(pages)
+
+
+def test_stale_queue_target_is_not_focusable():
+    entry = SimpleNamespace(
+        model_dump=lambda **_kwargs: {
+            "browser_target_id": "CLOSED",
+            "action": "captcha",
+        },
+        browser_target_id="CLOSED",
+        domain="au.indeed.com",
+        action=job_finder_control.InterventionAction.CAPTCHA,
+    )
+
+    payload = job_finder_control._entry_payload(entry, live_target_ids={"LIVE"})
+
+    assert payload["can_focus"] is False
+    assert payload["preview_url"] == ""
 
 
 def test_unqueued_human_outcome_remains_visible_as_grouped_fallback():
