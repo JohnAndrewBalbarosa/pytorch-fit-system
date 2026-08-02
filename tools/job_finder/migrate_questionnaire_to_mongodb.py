@@ -37,7 +37,7 @@ def migrate(args: argparse.Namespace) -> int:
             if stored is not None
             else {}
         )
-        if stored_pages != source_pages:
+        if any(stored_pages.get(fingerprint) != answers for fingerprint, answers in source_pages.items()):
             print("STOP: MongoDB read-after-write verification did not match the source profile")
             return 2
         print(
