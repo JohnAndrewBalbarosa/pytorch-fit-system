@@ -212,20 +212,40 @@ def retry_resolved_intervention(application_reference: str) -> str:
     if goal is None:
         return ""
     normalized_reference = " ".join(application_reference.casefold().split())
+    matches = []
     for item in store.items(goal.id):
         item_reference = " ".join(
             f"{item.company} — {item.job_title}".casefold().split()
         )
-        if item_reference != normalized_reference or item.state != GoalItemState.HUMAN_HANDOFF:
+        if item_reference == normalized_reference and item.state == GoalItemState.HUMAN_HANDOFF:
+            matches.append(item)
+    if not matches:
+        return ""
+
+    verification_terms = ("verification", "captcha", "access gate", "sign-in", "login")
+    selected = max(
+        matches,
+        key=lambda item: any(term in item.detail.casefold() for term in verification_terms),
+    )
+    store.observe(
+        goal.id,
+        task_id=selected.task_id,
+        site=selected.site,
+        company=selected.company,
+        job_title=selected.job_title,
+        state=GoalItemState.OBSERVED,
+        detail="human verification resolved; deterministic replay queued",
+    )
+    for duplicate in matches:
+        if duplicate.task_id == selected.task_id:
             continue
         store.observe(
             goal.id,
-            task_id=item.task_id,
-            site=item.site,
-            company=item.company,
-            job_title=item.job_title,
-            state=GoalItemState.OBSERVED,
-            detail="human verification resolved; deterministic replay queued",
+            task_id=duplicate.task_id,
+            site=duplicate.site,
+            company=duplicate.company,
+            job_title=duplicate.job_title,
+            state=GoalItemState.SKIPPED,
+            detail=f"superseded by replay microtask {selected.task_id}",
         )
-        return item.task_id
-    return ""
+    return selected.task_id

@@ -81,13 +81,18 @@ def _next_cycle_number(goal_root: Path) -> int:
     return max(numbers, default=0) + 1
 
 
-def _retry_jobs(goal_root: Path, items) -> list[dict[str, object]]:
+def _retry_jobs(
+    goal_root: Path, items, *, output_root: Path | None = None
+) -> list[dict[str, object]]:
     retry_ids = {item.task_id for item in items if item.state.value == "observed"}
     if not retry_ids:
         return []
     found: dict[str, dict[str, object]] = {}
+    artifact_paths = list(goal_root.glob("cycle-*/manifest.json"))
+    if output_root is not None:
+        artifact_paths.extend(output_root.glob("*-unattended/*/run.json"))
     manifests = sorted(
-        goal_root.glob("cycle-*/manifest.json"),
+        artifact_paths,
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
@@ -154,7 +159,11 @@ def supervise(args: argparse.Namespace) -> int:
                 candidate_limit=candidate_limit,
                 max_parallel=args.max_parallel,
             )
-            retry_jobs = _retry_jobs(goal_root, store.items(args.goal_id))
+            retry_jobs = _retry_jobs(
+                goal_root,
+                store.items(args.goal_id),
+                output_root=args.output,
+            )
             if retry_jobs:
                 _write_json(manifest_path, {"jobs": retry_jobs})
             else:

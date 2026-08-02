@@ -37,3 +37,35 @@ def test_resolved_intervention_returns_exact_goal_item_to_replay(monkeypatch, tm
 
     assert task_id == "job-1"
     assert store.item(goal.id, task_id).state == GoalItemState.OBSERVED
+
+
+def test_resolved_intervention_prefers_access_gate_and_suppresses_duplicate(
+    monkeypatch, tmp_path
+):
+    store = ApplicationGoalStore(tmp_path / "history.sqlite3")
+    goal = store.create(target=1)
+    store.observe(
+        goal.id,
+        task_id="verification-task",
+        site="indeed",
+        company="Acme",
+        job_title="Engineer",
+        state=GoalItemState.HUMAN_HANDOFF,
+        detail="access gate remains pending: verification_required",
+    )
+    store.observe(
+        goal.id,
+        task_id="stale-artifact",
+        site="indeed",
+        company="Acme",
+        job_title="Engineer",
+        state=GoalItemState.HUMAN_HANDOFF,
+        detail="rendered listing does not prove the exact manifest company/title",
+    )
+    monkeypatch.setattr(job_finder_supervisor, "goal_store", lambda: store)
+
+    task_id = job_finder_supervisor.retry_resolved_intervention("Acme — Engineer")
+
+    assert task_id == "verification-task"
+    assert store.item(goal.id, "verification-task").state == GoalItemState.OBSERVED
+    assert store.item(goal.id, "stale-artifact").state == GoalItemState.SKIPPED
