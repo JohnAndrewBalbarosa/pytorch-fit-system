@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
+from threading import RLock
 from typing import Any
 from urllib.parse import quote, urlsplit
 
 import requests
 
 from ..job_application import (
+    DevelopmentQuestionBridge,
     HumanVerificationQueue,
     InterventionAction,
     VerificationQueueEntry,
@@ -21,6 +24,7 @@ from .auth import IdentityStore, auth_status, clear_social_session, provider_con
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_QUEUE_PATH = REPO_ROOT / ".cache" / "application-verification-queue.json"
 DEFAULT_RUN_ROOT = REPO_ROOT / "out" / "indeed-unattended"
+DEFAULT_DEVELOPMENT_BRIDGE_ROOT = REPO_ROOT / "out" / "development-question-bridge"
 
 _PROVIDERS = {"github", "google", "microsoft", "facebook", "linkedin", "indeed"}
 _SOCIAL_PROVIDERS = {"facebook", "linkedin"}
@@ -33,6 +37,8 @@ _WEBSITE_LOGOUT_URLS = {
     "indeed": "https://secure.indeed.com/account/logout",
 }
 _SIGN_IN_URLS = {"indeed": "https://secure.indeed.com/auth"}
+_PREVIEW_LOCK = RLock()
+_PREVIEW_CACHE: dict[str, tuple[float, bytes]] = {}
 
 
 def _cdp_url() -> str:
@@ -102,6 +108,11 @@ def _entry_payload(entry: VerificationQueueEntry) -> dict[str, Any]:
         "site": _site_for_domain(entry.domain),
         "instruction": _instruction(entry.action),
         "can_focus": bool(entry.browser_target_id),
+        "preview_url": (
+            f"/api/job-finder/targets/{entry.browser_target_id}/preview"
+            if entry.browser_target_id
+            else ""
+        ),
     }
 
 
@@ -133,6 +144,70 @@ def _automatic_work(run: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
     return items
+
+
+def _live_pages(pending: list[VerificationQueueEntry]) -> list[dict[str, Any]]:
+    by_target = {entry.browser_target_id: entry for entry in pending if entry.browser_target_id}
+    pages: list[dict[str, Any]] = []
+    for target in _targets():
+        target_id = str(target.get("id", ""))
+        url = str(target.get("url", ""))
+        parts = urlsplit(url)
+        site = _site_for_domain(parts.hostname or "")
+        if site != "indeed":
+            continue
+        entry = by_target.get(target_id)
+        pages.append(
+            {
+                "target_id": target_id,
+                "site": site,
+                "title": str(target.get("title", "Indeed"))[:200],
+                "safe_path": parts.path or "/",
+                "group": "human_intervention" if entry else "automatic",
+                "action": entry.action.value if entry else "working",
+                "status": entry.status.value if entry else "browser_open",
+                "application_reference": entry.application_reference if entry else "",
+                "question_labels": entry.question_labels if entry else [],
+                "preview_url": f"/api/job-finder/targets/{target_id}/preview",
+                "can_focus": True,
+            }
+        )
+    return pages
+
+
+def _goal_state() -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    from .job_finder_supervisor import goal_store, process_status
+
+    store = goal_store()
+    goal = store.active() or store.latest()
+    if goal is None:
+        return {}, []
+    items = store.items(goal.id)
+    site_counts: dict[str, dict[str, int]] = {}
+    for item in items:
+        counts = site_counts.setdefault(
+            item.site,
+            {"total": 0, "confirmed": 0, "reserved": 0, "human": 0, "skipped": 0},
+        )
+        counts["total"] += 1
+        if item.state.value == "confirmed":
+            counts["confirmed"] += 1
+        elif item.state.value == "reserved":
+            counts["reserved"] += 1
+        elif item.state.value == "human_handoff":
+            counts["human"] += 1
+        elif item.state.value in {"skipped", "failed", "released"}:
+            counts["skipped"] += 1
+    return (
+        {
+            **goal.model_dump(mode="json"),
+            "remaining": goal.remaining,
+            "available": goal.available,
+            "process": process_status(goal.id),
+            "site_counts": site_counts,
+        },
+        [item.model_dump(mode="json") for item in items],
+    )
 
 
 def _run_interventions(
@@ -224,9 +299,25 @@ def _session_state() -> dict[str, Any]:
 
 def control_state() -> dict[str, Any]:
     run = _latest_run()
-    pending = [_entry_payload(entry) for entry in _queue().pending()]
+    pending_entries = _queue().pending()
+    pending = [_entry_payload(entry) for entry in pending_entries]
     interventions = [*pending, *_run_interventions(run, pending)]
     automatic = _automatic_work(run)
+    development_requests = DevelopmentQuestionBridge(DEFAULT_DEVELOPMENT_BRIDGE_ROOT).pending()
+    automatic.extend(
+        {
+            "task_id": f"ai-{request.request_id}",
+            "company": request.company,
+            "job_title": request.job_title,
+            "site": _site_for_domain(request.domain),
+            "status": "ai_answering",
+            "detail": "Current-session development answer requested: "
+            + " · ".join(question.label for question in request.questions),
+            "request_id": request.request_id,
+        }
+        for request in development_requests
+    )
+    goal_payload, goal_items = _goal_state()
     return {
         "sessions": _session_state(),
         "run": {
@@ -239,6 +330,29 @@ def control_state() -> dict[str, Any]:
         },
         "automatic": automatic,
         "interventions": interventions,
+        "live_pages": _live_pages(pending_entries),
+        "goal": goal_payload,
+        "goal_items": goal_items,
+        "development_questions": [
+            {
+                "request_id": request.request_id,
+                "site": _site_for_domain(request.domain),
+                "company": request.company,
+                "job_title": request.job_title,
+                "questions": [
+                    {
+                        "question_id": question.question_id,
+                        "label": question.label,
+                        "kind": question.kind,
+                        "options": question.options,
+                        "max_length": question.max_length,
+                        "evidence": request.evidence.get(question.question_id, []),
+                    }
+                    for question in request.questions
+                ],
+            }
+            for request in development_requests
+        ],
         "counts": {
             "automatic": len(automatic),
             "interventions": len(interventions),
@@ -254,6 +368,42 @@ def focus_target(target_id: str) -> None:
         raise ValueError("invalid browser target")
     response = requests.post(f"{_cdp_url()}/json/activate/{quote(safe_id)}", timeout=3)
     response.raise_for_status()
+
+
+def capture_target_preview(target_id: str) -> bytes:
+    safe_id = "".join(
+        character for character in target_id if character.isalnum() or character in "-_"
+    )
+    targets = {str(target.get("id", "")): target for target in _targets()}
+    target = targets.get(safe_id)
+    if not safe_id or target is None:
+        raise KeyError(target_id)
+    if _site_for_domain(urlsplit(str(target.get("url", ""))).hostname or "") != "indeed":
+        raise ValueError("preview is limited to registered job-site targets")
+
+    with _PREVIEW_LOCK:
+        cached = _PREVIEW_CACHE.get(safe_id)
+        if cached is not None and time.monotonic() - cached[0] < 1.5:
+            return cached[1]
+
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.connect_over_cdp(_cdp_url())
+            for context in browser.contexts:
+                for page in context.pages:
+                    session = context.new_cdp_session(page)
+                    try:
+                        info = session.send("Target.getTargetInfo")
+                        if str(info.get("targetInfo", {}).get("targetId", "")) == safe_id:
+                            image = page.screenshot(
+                                type="jpeg", quality=45, animations="disabled"
+                            )
+                            _PREVIEW_CACHE[safe_id] = (time.monotonic(), image)
+                            return image
+                    finally:
+                        session.detach()
+    raise KeyError(target_id)
 
 
 def focus_intervention(entry_id: str) -> None:

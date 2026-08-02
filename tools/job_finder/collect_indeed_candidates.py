@@ -8,6 +8,7 @@ by ``run_indeed_unattended.py``.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -322,10 +323,21 @@ def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
     selected: list[IndeedUnattendedJob] = []
     identities: set[tuple[str, str]] = set()
     listing_keys: set[tuple[str, str]] = set()
+    excluded_task_ids: set[str] = set()
+    excluded_path = getattr(args, "exclude_task_ids", None)
+    if excluded_path and excluded_path.is_file():
+        try:
+            loaded = json.loads(excluded_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, list):
+                excluded_task_ids = {str(item) for item in loaded}
+        except (OSError, json.JSONDecodeError):
+            raise ValueError("exclude-task-ids must contain a JSON array") from None
     country_limit = (args.max_candidates + len(args.target_country) - 1) // len(args.target_country)
 
     def add_candidate(candidate: IndeedUnattendedJob | None) -> bool:
         if candidate is None:
+            return False
+        if candidate.task_id in excluded_task_ids:
             return False
         if args.employment_type == "contract" and not any(
             set(map(str.casefold, group)) & set(_CONTRACT_TERMS)
@@ -497,6 +509,11 @@ def _parser() -> argparse.ArgumentParser:
         help="Merge reviewed candidates before live collection, preserving exact deduplication.",
     )
     parser.add_argument("--max-candidates", type=int, default=12)
+    parser.add_argument(
+        "--exclude-task-ids",
+        type=Path,
+        help="JSON array of listing task IDs already attempted by the active goal.",
+    )
     parser.add_argument(
         "--open-tabs-only",
         action="store_true",

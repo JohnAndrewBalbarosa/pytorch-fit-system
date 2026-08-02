@@ -71,6 +71,7 @@ def test_control_state_combines_latest_run_and_groupable_interventions(
     monkeypatch.setattr(job_finder_control, "DEFAULT_RUN_ROOT", run_root)
     monkeypatch.setattr(job_finder_control, "DEFAULT_QUEUE_PATH", queue_path)
     monkeypatch.setattr(job_finder_control, "_targets", lambda: [])
+    monkeypatch.setattr(job_finder_control, "_goal_state", lambda: ({}, []))
     monkeypatch.setenv("RESUME_BUILDER_CACHE", str(tmp_path / "auth"))
 
     state = job_finder_control.control_state()
@@ -99,6 +100,34 @@ def test_focus_target_uses_only_validated_cdp_target(monkeypatch):
     job_finder_control.focus_target("ABC_123")
 
     assert captured["url"].endswith("/json/activate/ABC_123")
+
+
+def test_live_pages_expose_safe_path_and_preview_without_query(monkeypatch):
+    monkeypatch.setattr(
+        job_finder_control,
+        "_targets",
+        lambda: [
+            {
+                "id": "TARGET_1",
+                "type": "page",
+                "title": "Backend Engineer",
+                "url": "https://au.indeed.com/viewjob?jk=secret-token",
+            },
+            {
+                "id": "OTHER",
+                "type": "page",
+                "title": "Unrelated",
+                "url": "https://example.com/private?token=hidden",
+            },
+        ],
+    )
+
+    pages = job_finder_control._live_pages([])
+
+    assert len(pages) == 1
+    assert pages[0]["safe_path"] == "/viewjob"
+    assert pages[0]["preview_url"].endswith("/TARGET_1/preview")
+    assert "secret-token" not in json.dumps(pages)
 
 
 def test_unqueued_human_outcome_remains_visible_as_grouped_fallback():

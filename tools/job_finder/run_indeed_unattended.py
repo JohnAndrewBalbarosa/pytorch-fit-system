@@ -19,12 +19,15 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from resume_builder.job_application import (  # noqa: E402
     ApplicationProfileStore,
+    ApplicationGoalStatus,
+    ApplicationGoalStore,
     ApplicationPermissionPolicy,
     ApplicationSubmissionHistory,
     BatchApplicationOutcome,
     BatchApplicationStatus,
     BrowserResourceLimits,
     HumanVerificationQueue,
+    GoalItemState,
     InterventionAction,
     AccessGateResult,
     AccessGateState,
@@ -32,6 +35,7 @@ from resume_builder.job_application import (  # noqa: E402
     ApprovedIndeedQuestionAnswerSet,
     DEFAULT_MONGODB_DATABASE,
     DEFAULT_MONGODB_URI,
+    DevelopmentQuestionBridge,
     MongoQuestionnaireRepository,
     ResumeArtifactProfile,
     VerificationQueueGroup,
@@ -101,6 +105,39 @@ def _should_delay_for_human(outcome: BatchApplicationOutcome) -> bool:
             "questionnaire requires an accepted evidence-grounded answer plan",
         )
     )
+
+
+def _record_goal_outcome(args: argparse.Namespace, outcome: BatchApplicationOutcome) -> None:
+    goal_id = str(getattr(args, "goal_id", "") or "").strip()
+    if not goal_id:
+        return
+    store = ApplicationGoalStore(Path(args.database))
+    task = outcome.task
+    state = {
+        BatchApplicationStatus.SUBMITTED: GoalItemState.OBSERVED,
+        BatchApplicationStatus.SKIPPED: GoalItemState.SKIPPED,
+        BatchApplicationStatus.FAILED: GoalItemState.FAILED,
+        BatchApplicationStatus.VERIFICATION_PENDING: GoalItemState.HUMAN_HANDOFF,
+        BatchApplicationStatus.HUMAN_HANDOFF: GoalItemState.HUMAN_HANDOFF,
+    }[outcome.status]
+    store.observe(
+        goal_id,
+        task_id=task.task_id,
+        site="indeed",
+        company=task.company,
+        job_title=task.job_title,
+        state=state,
+        detail=outcome.detail,
+    )
+    if outcome.status == BatchApplicationStatus.SUBMITTED:
+        store.confirm(goal_id, task.task_id, detail=outcome.detail)
+    elif outcome.status == BatchApplicationStatus.HUMAN_HANDOFF and any(
+        marker in outcome.detail.casefold()
+        for marker in ("review", "final submit", "submit permission")
+    ):
+        store.reserve(goal_id, task.task_id)
+    elif outcome.status in {BatchApplicationStatus.SKIPPED, BatchApplicationStatus.FAILED}:
+        store.release(goal_id, task.task_id, state=state, detail=outcome.detail)
 
 
 def _check_access(page, job, queue):
@@ -547,6 +584,33 @@ def _adaptive_question_page_plan(
         args.output / "questionnaire-pages.jsonl",
         summary_payload,
     )
+    if adaptive.plan.unresolved:
+        unresolved = set(adaptive.plan.unresolved)
+        unresolved_questions = [
+            question for question in questions if question.question_id in unresolved
+        ]
+        DevelopmentQuestionBridge(
+            ROOT / "out" / "development-question-bridge"
+        ).create_request(
+            domain="smartapply.indeed.com",
+            company=job.company,
+            job_title=job.job_title,
+            questions=unresolved_questions,
+            resume=resume,
+        )
+        _append_jsonl(
+            args.output / "development-question-requests.jsonl",
+            {
+                "schema_version": 1,
+                "development_only": True,
+                "company": job.company,
+                "job_title": job.job_title,
+                "questions": [
+                    question.model_dump(mode="json")
+                    for question in unresolved_questions
+                ],
+            },
+        )
     return adaptive.plan
 
 
@@ -902,6 +966,12 @@ def run(args: argparse.Namespace, *, worker=_worker) -> int:
     outcomes: dict[str, BatchApplicationOutcome] = {}
     latest: dict[str, BatchApplicationOutcome] = {}
     candidates_started: set[str] = set()
+    goal_store = None
+    goal = None
+    if str(getattr(args, "goal_id", "") or "").strip():
+        goal_store = ApplicationGoalStore(Path(args.database))
+        goal = goal_store.get(args.goal_id)
+        args.target_submissions = goal.available
     confirmed = 0
     deadline = time.monotonic() + args.verification_wait_minutes * 60
     scheduled: list[tuple[float, int, IndeedUnattendedJob]] = []
@@ -959,6 +1029,7 @@ def run(args: argparse.Namespace, *, worker=_worker) -> int:
                         f"worker failed closed: {type(exc).__name__}",
                     )
                 latest[job.task_id] = outcome
+                _record_goal_outcome(args, outcome)
                 if (
                     outcome.status == BatchApplicationStatus.SUBMITTED
                     and job.task_id not in outcomes
@@ -968,7 +1039,11 @@ def run(args: argparse.Namespace, *, worker=_worker) -> int:
                     args.output / f"{job.task_id}.json",
                     outcome.model_dump(mode="json"),
                 )
-                if _should_delay_for_human(outcome) and time.monotonic() < deadline:
+                if (
+                    _should_delay_for_human(outcome)
+                    and not getattr(args, "checkpoint_human", False)
+                    and time.monotonic() < deadline
+                ):
                     # Human gates are delayed tasks, never worker-blocking busy loops.
                     retry_seconds = getattr(args, "verification_retry_seconds", 5.0)
                     heapq.heappush(
@@ -1004,7 +1079,22 @@ def run(args: argparse.Namespace, *, worker=_worker) -> int:
                             ),
                         )
                 scheduled.clear()
-    if getattr(args, "process_all_candidates", False):
+    if goal_store is not None:
+        goal = goal_store.get(args.goal_id)
+        if goal.status == ApplicationGoalStatus.TARGET_REACHED:
+            terminal_status = "target_reached"
+        elif any(
+            item.status in {
+                BatchApplicationStatus.HUMAN_HANDOFF,
+                BatchApplicationStatus.VERIFICATION_PENDING,
+            }
+            for item in latest.values()
+        ):
+            terminal_status = "waiting_for_human"
+            goal_store.set_status(args.goal_id, ApplicationGoalStatus.WAITING_FOR_HUMAN)
+        else:
+            terminal_status = "cycle_complete"
+    elif getattr(args, "process_all_candidates", False):
         terminal_status = "all_candidates_processed"
     else:
         terminal_status = (
@@ -1069,6 +1159,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output", type=Path, default=ROOT / "out" / "indeed-unattended")
     parser.add_argument("--target-submissions", type=int, default=3)
+    parser.add_argument(
+        "--goal-id",
+        default="",
+        help="Durable application-goal ID whose confirmation quota this run contributes to.",
+    )
     parser.add_argument("--max-parallel", type=int, default=3)
     parser.add_argument("--max-candidates", type=int, default=12)
     parser.add_argument(
@@ -1092,6 +1187,11 @@ def _parser() -> argparse.ArgumentParser:
         help="Process every bounded manifest candidate instead of stopping at the target count.",
     )
     parser.add_argument("--verification-wait-minutes", type=int, default=180)
+    parser.add_argument(
+        "--checkpoint-human",
+        action="store_true",
+        help="Checkpoint human gates and exit instead of keeping idle workers alive.",
+    )
     parser.add_argument("--duplicate-days", type=int, default=30)
     parser.add_argument(
         "--autonomous-submit",

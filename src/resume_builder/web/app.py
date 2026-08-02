@@ -21,9 +21,10 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
 
 from ..core.config import get_settings
 from ..llm import LLMUnavailableError, get_provider
@@ -50,13 +51,29 @@ from .cdo_advisor import AdvisorAnalyzeRequest, analyze_for_injection
 from .mock_data import PROTOTYPE_DATA
 from .job_scraping_demo import current_session_artifact
 from .job_finder_control import (
+    capture_target_preview,
     control_state as job_finder_control_state,
     disconnect_provider as disconnect_job_finder_provider,
     focus_intervention,
+    focus_target as focus_job_finder_target,
     recheck_intervention,
     start_session as start_job_site_session,
 )
+from .job_finder_supervisor import (
+    confirm_item as confirm_job_finder_item,
+    launch_goal as launch_job_finder_goal,
+    release_item as release_job_finder_item,
+    start_goal as create_job_finder_goal,
+    stop_goal as stop_job_finder_goal,
+)
 from ..job_finder import JobScrapeArtifactStore, render_rule_overlay
+from ..job_application import (
+    DEFAULT_MONGODB_DATABASE,
+    DEFAULT_MONGODB_URI,
+    DevelopmentQuestionBridge,
+    DevelopmentQuestionResponse,
+    MongoQuestionnaireRepository,
+)
 from ..metrics.usage_counter import add_pages_scraped, bump_download, read_counters
 
 if sys.platform == "win32":
@@ -132,6 +149,116 @@ def api_job_finder_control_state() -> dict:
     return job_finder_control_state()
 
 
+class JobFinderGoalRequest(BaseModel):
+    target: int = Field(ge=1)
+    target_countries: list[str] = Field(default_factory=lambda: ["Australia", "Canada"])
+    work_mode: str = "remote"
+    employment_type: str = "contract"
+
+
+@app.post("/api/job-finder/goals")
+def api_create_job_finder_goal(request: JobFinderGoalRequest):
+    try:
+        goal = create_job_finder_goal(**request.model_dump())
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception as exc:  # noqa: BLE001 - local process/CDP failures are user-facing
+        return JSONResponse({"error": f"Could not start goal: {exc}"}, status_code=503)
+    return {**goal.model_dump(mode="json"), "remaining": goal.remaining}
+
+
+@app.post("/api/job-finder/goals/{goal_id}/resume")
+def api_resume_job_finder_goal(goal_id: str):
+    try:
+        return launch_job_finder_goal(goal_id)
+    except KeyError:
+        return JSONResponse({"error": "Unknown application goal."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+@app.post("/api/job-finder/goals/{goal_id}/cancel")
+def api_cancel_job_finder_goal(goal_id: str):
+    try:
+        return stop_job_finder_goal(goal_id)
+    except KeyError:
+        return JSONResponse({"error": "Unknown application goal."}, status_code=404)
+    except Exception as exc:  # noqa: BLE001 - owned process cleanup must surface
+        return JSONResponse({"error": f"Could not stop owned process tree: {exc}"}, status_code=503)
+
+
+@app.post("/api/job-finder/goals/{goal_id}/items/{task_id}/confirm")
+def api_confirm_job_finder_item(goal_id: str, task_id: str):
+    try:
+        goal = confirm_job_finder_item(goal_id, task_id)
+    except KeyError:
+        return JSONResponse({"error": "Unknown application goal item."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    return {**goal.model_dump(mode="json"), "remaining": goal.remaining}
+
+
+@app.post("/api/job-finder/goals/{goal_id}/items/{task_id}/release")
+def api_release_job_finder_item(goal_id: str, task_id: str):
+    try:
+        goal = release_job_finder_item(goal_id, task_id)
+    except KeyError:
+        return JSONResponse({"error": "Unknown application goal item."}, status_code=404)
+    return {**goal.model_dump(mode="json"), "remaining": goal.remaining}
+
+
+@app.post("/api/job-finder/development-questions/answers")
+def api_accept_development_question_answer(response: DevelopmentQuestionResponse):
+    bridge = DevelopmentQuestionBridge(_ARTIFACT_ROOT / "development-question-bridge")
+    repository = None
+    try:
+        repository = MongoQuestionnaireRepository(
+            DEFAULT_MONGODB_URI,
+            database=DEFAULT_MONGODB_DATABASE,
+        )
+        repository.ping()
+        accepted = bridge.accept(response, repository=repository)
+    except KeyError:
+        return JSONResponse({"error": "Unknown development question request."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except Exception as exc:  # noqa: BLE001 - local development dependency failures are visible
+        return JSONResponse({"error": f"Could not accept development answer: {exc}"}, status_code=503)
+    finally:
+        if repository is not None:
+            repository.close()
+    from .job_finder_supervisor import goal_store, process_status
+
+    goal = goal_store().active()
+    if goal is not None and not process_status(goal.id)["running"]:
+        launch_job_finder_goal(goal.id)
+    return {"accepted": accepted, "request_id": response.request_id}
+
+
+@app.get("/api/job-finder/targets/{target_id}/preview")
+def api_job_finder_target_preview(target_id: str):
+    try:
+        image = capture_target_preview(target_id)
+    except KeyError:
+        return JSONResponse({"error": "Unknown or closed browser target."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except Exception as exc:  # noqa: BLE001 - live CDP failures are user-facing
+        return JSONResponse({"error": f"Could not capture preview: {exc}"}, status_code=503)
+    return Response(image, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/job-finder/targets/{target_id}/focus")
+def api_focus_job_finder_target(target_id: str):
+    try:
+        focus_job_finder_target(target_id)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except Exception as exc:  # noqa: BLE001 - live CDP failures are user-facing
+        return JSONResponse({"error": f"Could not focus browser target: {exc}"}, status_code=503)
+    return {"focused": True}
+
+
 @app.post("/api/job-finder/interventions/{entry_id}/focus")
 def api_focus_job_finder_intervention(entry_id: str):
     try:
@@ -148,7 +275,14 @@ def api_focus_job_finder_intervention(entry_id: str):
 @app.post("/api/job-finder/interventions/{entry_id}/recheck")
 def api_recheck_job_finder_intervention(entry_id: str):
     try:
-        return recheck_intervention(entry_id)
+        result = recheck_intervention(entry_id)
+        if result.get("resolved"):
+            from .job_finder_supervisor import goal_store, process_status
+
+            goal = goal_store().active()
+            if goal is not None and not process_status(goal.id)["running"]:
+                launch_job_finder_goal(goal.id)
+        return result
     except KeyError:
         return JSONResponse({"error": "Unknown intervention."}, status_code=404)
     except Exception as exc:  # noqa: BLE001 - browser drift must surface without resolving

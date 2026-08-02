@@ -13,7 +13,7 @@
       <div>
         <p class="eyebrow">Local browser companion</p>
         <h1>Job Finder Control Center</h1>
-        <p class="lede">Automatic work stays separate from tasks that need your attention.</p>
+        <p class="lede">Set one confirmed-application goal and watch every Indeed page move through the live queues.</p>
       </div>
       <div class="top-actions">
         <span class="connection" data-connection><i></i> Connecting</span>
@@ -23,10 +23,37 @@
     </header>
 
     <section class="summary" aria-label="Job finder summary">
+      <article><span>Requested</span><strong data-goal-target>0</strong></article>
+      <article><span>Confirmed</span><strong data-count-confirmed>0</strong></article>
+      <article><span>Remaining</span><strong data-goal-remaining>0</strong></article>
+      <article><span>Reserved at Review</span><strong data-goal-reserved>0</strong></article>
       <article><span>Automatic work</span><strong data-count-automatic>0</strong></article>
       <article><span>Needs you</span><strong class="attention" data-count-interventions>0</strong></article>
-      <article><span>Confirmed</span><strong data-count-confirmed>0</strong></article>
       <article><span>Run status</span><strong class="status-text" data-run-status>Not started</strong></article>
+      <article><span>Process</span><strong class="status-text" data-process-status>Stopped</strong></article>
+    </section>
+
+    <section class="panel goal-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Confirmed-application quota</p>
+          <h2>Start an Indeed goal</h2>
+        </div>
+        <p>Skipped or blocked jobs do not reduce the target.</p>
+      </div>
+      <form class="goal-form" data-goal-form>
+        <label><span>Applications needed</span><input type="number" min="1" value="10" required data-goal-input></label>
+        <fieldset><legend>Countries</legend><label><input type="checkbox" value="Australia" checked data-country> Australia</label><label><input type="checkbox" value="Canada" checked data-country> Canada</label></fieldset>
+        <label><span>Work mode</span><select disabled><option>Remote</option></select></label>
+        <label><span>Job type</span><select disabled><option>Contract</option></select></label>
+        <div class="goal-actions">
+          <button class="button" type="submit">Start goal</button>
+          <button class="button ghost" type="button" data-resume-goal>Resume</button>
+          <button class="button danger" type="button" data-cancel-goal>Cancel</button>
+        </div>
+      </form>
+      <p class="goal-id" data-goal-id>No active goal.</p>
+      <p class="goal-id" data-site-counts></p>
     </section>
 
     <section class="panel sessions-panel">
@@ -38,6 +65,14 @@
         <p>Credentials stay in the provider's visible login page.</p>
       </div>
       <div class="session-grid" data-sessions aria-live="polite"></div>
+    </section>
+
+    <section class="panel live-panel">
+      <div class="section-heading compact">
+        <div><p class="eyebrow">Chrome CDP · live previews</p><h2>Website pages</h2></div>
+        <small>Click a preview to focus its real browser tab.</small>
+      </div>
+      <div class="live-groups" data-live-pages></div>
     </section>
 
     <section class="work-area">
@@ -59,6 +94,7 @@
           <small data-run-detail>No run artifact yet.</small>
         </div>
         <div class="work-list" data-automatic-list></div>
+        <div class="work-list goal-items" data-goal-items></div>
       </section>
 
       <section class="panel tab-panel" role="tabpanel" data-panel="interventions" hidden>
@@ -70,6 +106,7 @@
           <small>Complete work only in the normal browser tab.</small>
         </div>
         <div class="intervention-groups" data-intervention-groups></div>
+        <div class="work-list goal-items" data-goal-intervention-items></div>
       </section>
     </section>
 

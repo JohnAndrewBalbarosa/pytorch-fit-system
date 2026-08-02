@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 from resume_builder.core.models import ContactInfo, Resume, RoleSpec
 from resume_builder.job_application import (
+    ApplicationGoalStore,
     ApprovedIndeedQuestionAnswerSet,
     ApprovedIndeedQuestionAnswers,
     BatchApplicationOutcome,
@@ -54,6 +55,24 @@ def _args(tmp_path: Path, *, count: int, target: int = 3) -> argparse.Namespace:
 
 def _outcome(job, status):
     return BatchApplicationOutcome(task=job.batch_task(), status=status)
+
+
+def test_submitted_goal_outcome_consumes_one_token(tmp_path):
+    database = tmp_path / "history.sqlite3"
+    store = ApplicationGoalStore(database)
+    goal = store.create(target=2)
+    manifest = tmp_path / "manifest.json"
+    _manifest(manifest, 1)
+    job = runner.IndeedUnattendedManifest.model_validate_json(manifest.read_text()).jobs[0]
+
+    runner._record_goal_outcome(
+        SimpleNamespace(goal_id=goal.id, database=database),
+        _outcome(job, BatchApplicationStatus.SUBMITTED),
+    )
+
+    updated = store.get(goal.id)
+    assert updated.confirmed == 1
+    assert updated.remaining == 1
 
 
 def test_runner_loads_approved_questions_from_mongodb_by_default(monkeypatch):

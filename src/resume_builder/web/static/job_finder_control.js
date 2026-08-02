@@ -20,15 +20,23 @@
   const automaticNode = document.querySelector("[data-automatic-list]");
   const interventionsNode = document.querySelector("[data-intervention-groups]");
   const toastNode = document.querySelector("[data-toast]");
+  const livePagesNode = document.querySelector("[data-live-pages]");
+  const goalItemsNode = document.querySelector("[data-goal-items]");
+  const goalInterventionItemsNode = document.querySelector("[data-goal-intervention-items]");
   const disconnectDialog = document.querySelector("[data-disconnect-dialog]");
   const settingsDialog = document.querySelector("[data-settings-dialog]");
   let pendingDisconnect = "";
+  let activeGoalId = "";
   let toastTimer;
+  const autoRecheckedAt = new Map();
 
   document.querySelectorAll("[data-tab]").forEach((button) => {
     button.addEventListener("click", () => selectTab(button.dataset.tab));
   });
   document.querySelector("[data-refresh]").addEventListener("click", refresh);
+  document.querySelector("[data-goal-form]").addEventListener("submit", startGoal);
+  document.querySelector("[data-resume-goal]").addEventListener("click", resumeGoal);
+  document.querySelector("[data-cancel-goal]").addEventListener("click", cancelGoal);
   document.querySelector("[data-open-settings]").addEventListener("click", openSettings);
   document.querySelector("[data-disconnect-form]").addEventListener("submit", confirmDisconnect);
   document.querySelector("[data-disconnect-setting]").addEventListener("change", (event) => {
@@ -77,8 +85,19 @@
     setText("[data-count-interventions]", counts.interventions || 0);
     setText("[data-tab-automatic-count]", counts.automatic || 0);
     setText("[data-tab-intervention-count]", counts.interventions || 0);
-    setText("[data-count-confirmed]", state.run?.confirmed_submissions || 0);
-    setText("[data-run-status]", String(state.run?.status || "not started").replaceAll("_", " "));
+    const goal = state.goal || {};
+    activeGoalId = goal.id || "";
+    setText("[data-goal-target]", goal.target || 0);
+    setText("[data-count-confirmed]", goal.confirmed || 0);
+    setText("[data-goal-remaining]", goal.remaining || 0);
+    setText("[data-goal-reserved]", goal.reserved || 0);
+    setText("[data-run-status]", String(goal.status || state.run?.status || "not started").replaceAll("_", " "));
+    setText("[data-process-status]", goal.process?.running ? "Running" : "Stopped");
+    setText("[data-goal-id]", goal.id ? `Goal ${goal.id} · ${goal.sites.join(", ")}` : "No active goal.");
+    const siteSummary = Object.entries(goal.site_counts || {}).map(([site, counts]) =>
+      `${site}: ${counts.confirmed} confirmed · ${counts.reserved} reserved · ${counts.human} human · ${counts.skipped} skipped`,
+    ).join(" | ");
+    setText("[data-site-counts]", siteSummary);
     setText(
       "[data-run-detail]",
       state.run?.error || state.run?.artifact || "No run artifact yet.",
@@ -86,6 +105,65 @@
     renderSessions(state.sessions || {});
     renderAutomatic(state.automatic || []);
     renderInterventions(state.interventions || []);
+    autoRecheck(state.interventions || []);
+    renderLivePages(state.live_pages || []);
+    const goalItems = state.goal_items || [];
+    renderGoalItems(
+      goalItemsNode,
+      goalItems.filter((item) => !["reserved", "human_handoff"].includes(item.state)),
+      goal,
+    );
+    renderGoalItems(
+      goalInterventionItemsNode,
+      goalItems.filter((item) => ["reserved", "human_handoff"].includes(item.state)),
+      goal,
+    );
+  }
+
+  async function startGoal(event) {
+    event.preventDefault();
+    const target = Number(document.querySelector("[data-goal-input]").value);
+    const targetCountries = [...document.querySelectorAll("[data-country]:checked")].map((node) => node.value);
+    if (!targetCountries.length) {
+      showToast("Select at least one target country.");
+      return;
+    }
+    try {
+      await postJSON("/api/job-finder/goals", {
+        target,
+        target_countries: targetCountries,
+        work_mode: "remote",
+        employment_type: "contract",
+      });
+      showToast(`Started a goal for ${target} confirmed applications.`);
+      refresh();
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
+
+  async function resumeGoal() {
+    const id = currentGoalId();
+    if (!id) return showToast("No goal is available to resume.");
+    try {
+      await post(`/api/job-finder/goals/${encodeURIComponent(id)}/resume`);
+      showToast("Goal runner resumed.");
+      refresh();
+    } catch (error) { showToast(error.message); }
+  }
+
+  async function cancelGoal() {
+    const id = currentGoalId();
+    if (!id) return showToast("No goal is available to cancel.");
+    try {
+      await post(`/api/job-finder/goals/${encodeURIComponent(id)}/cancel`);
+      showToast("Owned automation process tree stopped.");
+      refresh();
+    } catch (error) { showToast(error.message); }
+  }
+
+  function currentGoalId() {
+    return activeGoalId;
   }
 
   function providerState(provider, sessions) {
@@ -223,6 +301,89 @@
     interventionsNode.replaceChildren(...groups);
   }
 
+  function renderLivePages(items) {
+    if (!items.length) {
+      livePagesNode.replaceChildren(element("div", "empty", "No registered Indeed pages are open."));
+      return;
+    }
+    const groups = ["automatic", "human_intervention"].map((group) => {
+      const matching = items.filter((item) => item.group === group);
+      if (!matching.length) return null;
+      const section = element("section", "live-group");
+      section.append(element("h3", "live-group-title", group === "automatic" ? "Automatic work" : "Human intervention"));
+      const grid = element("div", "preview-grid");
+      matching.forEach((item) => grid.append(liveCard(item)));
+      section.append(grid);
+      return section;
+    }).filter(Boolean);
+    livePagesNode.replaceChildren(...groups);
+  }
+
+  function liveCard(item) {
+    const card = element("article", "preview-card");
+    const image = document.createElement("img");
+    image.alt = `Live preview: ${item.title || item.site}`;
+    image.loading = "lazy";
+    image.src = `${item.preview_url}?revision=${Date.now()}`;
+    image.addEventListener("click", () => focusTarget(item.target_id));
+    const body = element("div", "preview-body");
+    body.append(element("h3", "", item.application_reference || item.title || "Indeed page"));
+    body.append(element("p", "", `${item.site} · ${item.safe_path}`));
+    body.append(element("span", `pill ${item.status}`, String(item.action || item.status).replaceAll("_", " ")));
+    if (item.question_labels?.length) {
+      body.append(element("p", "detail", item.question_labels.join(" · ")));
+    }
+    const focus = element("button", "button ghost", "Open / Focus tab");
+    focus.type = "button";
+    focus.addEventListener("click", () => focusTarget(item.target_id));
+    body.append(focus);
+    card.append(image, body);
+    return card;
+  }
+
+  async function focusTarget(targetId) {
+    try {
+      await post(`/api/job-finder/targets/${encodeURIComponent(targetId)}/focus`);
+      showToast("Browser tab focused.");
+    } catch (error) { showToast(error.message); }
+  }
+
+  function renderGoalItems(node, items, goal) {
+    if (!items.length) {
+      node.replaceChildren();
+      return;
+    }
+    node.replaceChildren(...items.map((item) => {
+      const card = element("article", "work-card goal-item");
+      const body = element("div");
+      body.append(element("h3", "", item.job_title));
+      body.append(element("p", "", `${item.company} · ${item.site}`));
+      body.append(element("p", "detail", item.detail || "Goal item updated."));
+      const badge = element("span", `pill ${item.state}`, item.state.replaceAll("_", " "));
+      card.append(body, badge);
+      if (item.state === "reserved") {
+        const actions = element("div", "work-actions");
+        const confirm = element("button", "button", "Confirm submitted");
+        confirm.type = "button";
+        confirm.addEventListener("click", () => goalItemAction(goal.id, item.task_id, "confirm"));
+        const release = element("button", "button ghost", "Abandon / Release token");
+        release.type = "button";
+        release.addEventListener("click", () => goalItemAction(goal.id, item.task_id, "release"));
+        actions.append(confirm, release);
+        card.append(actions);
+      }
+      return card;
+    }));
+  }
+
+  async function goalItemAction(goalId, taskId, action) {
+    try {
+      await post(`/api/job-finder/goals/${encodeURIComponent(goalId)}/items/${encodeURIComponent(taskId)}/${action}`);
+      showToast(action === "confirm" ? "Submission confirmed; quota decremented." : "Token released.");
+      refresh();
+    } catch (error) { showToast(error.message); }
+  }
+
   function interventionCard(item) {
     const card = element("article", "work-card");
     const body = element("div");
@@ -247,6 +408,19 @@
     return card;
   }
 
+  function autoRecheck(items) {
+    const now = Date.now();
+    items.filter((item) => item.can_focus && ["captcha", "human_verification", "sign_in", "unknown_question"].includes(item.action))
+      .forEach((item) => {
+        const previous = autoRecheckedAt.get(item.id) || 0;
+        if (now - previous < 10000) return;
+        autoRecheckedAt.set(item.id, now);
+        post(`/api/job-finder/interventions/${encodeURIComponent(item.id)}/recheck`)
+          .then((result) => { if (result.resolved) refresh(); })
+          .catch(() => {});
+      });
+  }
+
   async function interventionAction(id, action) {
     try {
       const result = await post(`/api/job-finder/interventions/${encodeURIComponent(id)}/${action}`);
@@ -259,6 +433,17 @@
 
   async function post(url) {
     const response = await fetch(url, { method: "POST" });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Request failed.");
+    return payload;
+  }
+
+  async function postJSON(url, value) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(value),
+    });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Request failed.");
     return payload;
@@ -286,5 +471,5 @@
   refresh();
   window.setInterval(() => {
     if (!document.hidden) refresh();
-  }, 5000);
+  }, 2000);
 })();

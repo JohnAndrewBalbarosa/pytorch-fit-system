@@ -79,16 +79,30 @@ redacted confirmation and its source, plus an audit row for each safety decision
 ## Local Job Finder Control Center
 
 Start the FastAPI prototype and open `/job-finder-control` for the standalone browser companion.
-It keeps automatic batch work separate from grouped human interventions, shows the existing
-identity/social sessions plus Indeed, and can focus the exact Chrome/CDP tab recorded in the
-privacy-safe verification queue. CAPTCHA, human verification, sign-in, unknown questionnaire,
-and external-site work remain normal visible-browser handoffs; the page never solves a challenge
-or expands submission permission.
+The page first asks for the exact number of confirmed applications required. A durable SQLite goal
+ledger keeps separate `available`, `reserved at Review`, and `confirmed` counts. Confirmation is
+the only event that permanently reduces the remaining target; skips, failures, and human gates
+release worker capacity and let the site adapter collect replacements. The resource-aware worker
+semaphore independently limits active pages, so a target of ten does not imply ten simultaneous
+Chrome tabs.
+
+The wrapper keeps automatic batch work separate from grouped human interventions, shows live
+low-bandwidth previews of registered Indeed CDP tabs, and focuses the exact normal browser page.
+CAPTCHA, human verification, sign-in, unsupported questions, Review, and final Submit remain
+visible-browser handoffs. When only a human gate remains, the child runner checkpoints and exits;
+clearing the gate re-launches a bounded owned process group. Reaching the target stops that process
+tree while leaving Chrome, the wrapper, and human-review tabs open.
 
 The control page reads `.cache/application-verification-queue.json` and the newest
 `out/indeed-unattended/**/run.json` by default. Set `JOB_FINDER_VERIFICATION_QUEUE` when the runner
 uses another queue path. Disconnect behavior is chosen by the user and remembered only in browser
 local storage; Settings can restore the default “ask every time” behavior.
+
+Novel non-sensitive questions emit sanitized development requests under
+`out/development-question-bridge/`. A current interactive development session may return strict
+`NovelQuestionJSON` through the local control API; validated answers enter the MongoDB question
+bank and the resumed runner reuses them. This artifact bridge is not a production chat-session
+provider. Production model calls still use the provider-neutral HTTP boundary.
 
 ## Dynamic website planning
 

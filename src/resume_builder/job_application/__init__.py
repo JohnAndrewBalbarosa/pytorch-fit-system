@@ -155,8 +155,40 @@ from resume_builder.job_application.intelligence.smart_apply_questions import (
     SmartApplyPageSummary,
     build_adaptive_indeed_question_plan,
 )
+from resume_builder.job_application.goal_store import (
+    ApplicationGoal,
+    ApplicationGoalStatus,
+    ApplicationGoalStore,
+    GoalItem,
+    GoalItemState,
+)
+from resume_builder.job_application.site_runtime import (
+    ApplicationSiteRuntimeAdapter,
+    DEFAULT_SITE_RUNTIME_REGISTRY,
+    IndeedRuntimeAdapter,
+    SiteCycleRequest,
+    SiteRuntimeRegistry,
+)
+from resume_builder.job_application.development_question_bridge import (
+    DevelopmentQuestionBridge,
+    DevelopmentQuestionRequest,
+    DevelopmentQuestionResponse,
+)
 
 __all__ = [
+    "ApplicationGoal",
+    "ApplicationGoalStatus",
+    "ApplicationGoalStore",
+    "GoalItem",
+    "GoalItemState",
+    "ApplicationSiteRuntimeAdapter",
+    "DEFAULT_SITE_RUNTIME_REGISTRY",
+    "IndeedRuntimeAdapter",
+    "SiteCycleRequest",
+    "SiteRuntimeRegistry",
+    "DevelopmentQuestionBridge",
+    "DevelopmentQuestionRequest",
+    "DevelopmentQuestionResponse",
     "ApplicationPlan",
     "BrowserAction",
     "DetectedField",
