@@ -62,6 +62,22 @@ def test_candidate_routes_ai_and_data_resumes():
     assert ml is not None and ml.resume_file == "ai-ml-research.pdf"
 
 
+def test_candidate_adds_contractual_requirement_without_weakening_remote():
+    candidate = collector.candidate_from_listing(
+        _listing("Backend Software Engineer"),
+        target_country="Australia",
+        employment_type="contract",
+    )
+
+    assert candidate is not None
+    assert ["remote", "work from home", "work from anywhere", "fully remote"] in (
+        candidate.required_any_groups
+    )
+    assert ["contract", "contractor", "fixed term", "fixed-term", "temporary contract"] in (
+        candidate.required_any_groups
+    )
+
+
 def test_candidate_rejects_senior_mismatch_and_missing_identity():
     assert (
         collector.candidate_from_listing(

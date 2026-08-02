@@ -203,9 +203,14 @@ reviewable manifest:
 python tools/job_finder/collect_indeed_candidates.py \
   --target-country Australia \
   --target-country Canada \
+  --employment-type contract \
   --max-candidates 12 \
   --output out/indeed-unattended/candidate-manifest.json
 ```
+
+`--employment-type contract` adds a fail-closed qualification group to every candidate. The
+application runner must observe an explicit `contract`, `contractor`, or `fixed-term` signal in the
+rendered job title/description before it can open Apply; unspecified or permanent roles are skipped.
 
 The bounded scheduler then consumes that manifest with three independent CDP pages. Final Submit
 remains disabled unless `--autonomous-submit` is present. If `--verified-phone` is omitted, the

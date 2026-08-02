@@ -115,6 +115,13 @@ _DESCRIPTION_BLOCKERS = (
     "mandarin required",
 )
 _REMOTE_TERMS = ("remote", "work from home", "work from anywhere", "fully remote")
+_CONTRACT_TERMS = (
+    "contract",
+    "contractor",
+    "fixed term",
+    "fixed-term",
+    "temporary contract",
+)
 _EARLY_CAREER_TERMS = (
     "intern",
     "internship",
@@ -142,6 +149,7 @@ def candidate_from_listing(
     listing: JobListing,
     *,
     target_country: str,
+    employment_type: str = "any",
 ) -> IndeedUnattendedJob | None:
     """Map one rendered card to a conservative, auditable application candidate."""
     host = _COUNTRY_HOSTS[target_country]
@@ -165,6 +173,8 @@ def candidate_from_listing(
     resume_file, role_terms = matched_profile
     key = parse_qs(urlsplit(listing_url).query)["jk"][0]
     required_groups = [list(role_terms), list(_REMOTE_TERMS)]
+    if employment_type == "contract":
+        required_groups.append(list(_CONTRACT_TERMS))
     if re.search(r"\b(intern|internship|graduate|entry.level|student)\b", title, re.I):
         required_groups.append(list(_EARLY_CAREER_TERMS))
     slug = re.sub(r"[^a-z0-9]+", "-", f"{company}-{title}".casefold()).strip("-")[:72]
@@ -249,6 +259,11 @@ def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
     def add_candidate(candidate: IndeedUnattendedJob | None) -> bool:
         if candidate is None:
             return False
+        if args.employment_type == "contract" and not any(
+            set(map(str.casefold, group)) & set(_CONTRACT_TERMS)
+            for group in candidate.required_any_groups
+        ):
+            return False
         host = (urlsplit(candidate.listing_url).hostname or "").lower()
         identity = (
             " ".join(candidate.company.casefold().split()),
@@ -309,6 +324,7 @@ def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
                     candidate_from_listing(
                         listing,
                         target_country=allowed[host],
+                        employment_type=args.employment_type,
                     )
                 )
                 if len(selected) >= args.max_candidates:
@@ -353,6 +369,7 @@ def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
                         candidate = candidate_from_listing(
                             listing,
                             target_country=country,
+                            employment_type=args.employment_type,
                         )
                         if not add_candidate(candidate):
                             continue
@@ -391,6 +408,15 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
     )
     parser.add_argument("--keyword", action="append", default=[])
+    parser.add_argument(
+        "--employment-type",
+        choices=("any", "contract"),
+        default="any",
+        help=(
+            "Require explicit employment-type evidence in the rendered title/description; "
+            "contract never falls back to permanent or unspecified work."
+        ),
+    )
     parser.add_argument(
         "--seed-manifest",
         action="append",
