@@ -67,6 +67,15 @@ from .job_finder_supervisor import (
     start_goal as create_job_finder_goal,
     stop_goal as stop_job_finder_goal,
 )
+from .market_fit_control import (
+    approve_demands as approve_market_fit_demands,
+    assess_opportunity as assess_market_fit_opportunity,
+    draft_demands as draft_market_fit_demands,
+    prepare_interview as prepare_market_fit_interview,
+    state as market_fit_state,
+    store as market_fit_store,
+    update_campaign as update_market_fit_campaign,
+)
 from ..job_finder import JobScrapeArtifactStore, render_rule_overlay
 from ..job_application import (
     DEFAULT_MONGODB_DATABASE,
@@ -74,6 +83,11 @@ from ..job_application import (
     DevelopmentQuestionBridge,
     DevelopmentQuestionResponse,
     MongoQuestionnaireRepository,
+    FunnelEventCreate,
+    JobDemandDraft,
+    MarketFitCampaign,
+    MarketOpportunityCreate,
+    MarketOpportunityUpdate,
 )
 from ..metrics.usage_counter import add_pages_scraped, bump_download, read_counters
 
@@ -148,6 +162,105 @@ def job_finder_control(request: Request) -> HTMLResponse:
 @app.get("/api/job-finder/control-state")
 def api_job_finder_control_state() -> dict:
     return job_finder_control_state()
+
+
+@app.get("/api/job-finder/market-fit")
+def api_market_fit_state():
+    return market_fit_state()
+
+
+@app.put("/api/job-finder/market-fit/campaign")
+def api_update_market_fit_campaign(request: MarketFitCampaign):
+    return update_market_fit_campaign(request).model_dump(mode="json")
+
+
+@app.post("/api/job-finder/market-fit/opportunities")
+def api_create_market_fit_opportunity(request: MarketOpportunityCreate):
+    return market_fit_store().create_opportunity(request).model_dump(mode="json")
+
+
+@app.get("/api/job-finder/market-fit/opportunities/{opportunity_id}")
+def api_market_fit_opportunity(opportunity_id: str):
+    try:
+        return market_fit_store().detail(opportunity_id)
+    except KeyError:
+        return JSONResponse({"error": "Unknown market-fit opportunity."}, status_code=404)
+
+
+@app.put("/api/job-finder/market-fit/opportunities/{opportunity_id}")
+def api_update_market_fit_opportunity(opportunity_id: str, request: MarketOpportunityUpdate):
+    try:
+        return market_fit_store().update_opportunity(opportunity_id, request).model_dump(mode="json")
+    except KeyError:
+        return JSONResponse({"error": "Unknown market-fit opportunity."}, status_code=404)
+
+
+@app.post("/api/job-finder/market-fit/sync-submissions")
+def api_sync_market_fit_submissions():
+    created = market_fit_store().sync_confirmed_submissions()
+    return {"created": created}
+
+
+@app.post("/api/job-finder/market-fit/refresh")
+def api_refresh_market_fit():
+    repository = market_fit_store()
+    return {"ghosted": repository.apply_ghosting()}
+
+
+@app.post("/api/job-finder/market-fit/opportunities/{opportunity_id}/demands/draft")
+def api_draft_market_fit_demands(opportunity_id: str):
+    try:
+        return draft_market_fit_demands(opportunity_id, get_provider()).model_dump(mode="json")
+    except KeyError:
+        return JSONResponse({"error": "Unknown market-fit opportunity."}, status_code=404)
+    except (ValueError, LLMUnavailableError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+@app.put("/api/job-finder/market-fit/opportunities/{opportunity_id}/demands")
+def api_approve_market_fit_demands(opportunity_id: str, request: JobDemandDraft):
+    try:
+        return approve_market_fit_demands(opportunity_id, request).model_dump(mode="json")
+    except KeyError:
+        return JSONResponse({"error": "Unknown market-fit opportunity."}, status_code=404)
+
+
+@app.post("/api/job-finder/market-fit/opportunities/{opportunity_id}/assessment")
+def api_assess_market_fit_opportunity(opportunity_id: str):
+    try:
+        return assess_market_fit_opportunity(opportunity_id).model_dump(mode="json")
+    except KeyError:
+        return JSONResponse({"error": "Unknown market-fit opportunity."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+@app.post("/api/job-finder/market-fit/opportunities/{opportunity_id}/events")
+def api_add_market_fit_event(opportunity_id: str, request: FunnelEventCreate):
+    try:
+        return market_fit_store().add_event(opportunity_id, request).model_dump(mode="json")
+    except KeyError:
+        return JSONResponse({"error": "Unknown market-fit opportunity."}, status_code=404)
+
+
+@app.post("/api/job-finder/market-fit/opportunities/{opportunity_id}/interview-prep")
+def api_prepare_market_fit_interview(opportunity_id: str):
+    try:
+        return prepare_market_fit_interview(opportunity_id, get_provider()).model_dump(mode="json")
+    except KeyError:
+        return JSONResponse({"error": "Unknown market-fit opportunity."}, status_code=404)
+    except (ValueError, LLMUnavailableError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+@app.put("/api/job-finder/market-fit/opportunities/{opportunity_id}/interview-prep/approve")
+def api_approve_market_fit_interview(opportunity_id: str):
+    try:
+        return market_fit_store().approve_prep(opportunity_id).model_dump(mode="json")
+    except KeyError:
+        return JSONResponse({"error": "Unknown market-fit opportunity."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
 
 
 class JobFinderGoalRequest(BaseModel):

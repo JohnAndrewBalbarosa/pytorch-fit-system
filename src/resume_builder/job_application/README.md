@@ -5,6 +5,12 @@ schema for an `ApplicationPlan`, the canonical field taxonomy ATS forms map to,
 the state machine that governs the application workflow, and helper utilities that
 translate NCD (Normalized Candidate Data) values into detected form fields.
 
+The research-grounded market-fit and interview workspace is documented in
+[`docs/MARKET-FIT-INTERVIEW-METHODOLOGY.md`](../../../docs/MARKET-FIT-INTERVIEW-METHODOLOGY.md).
+It imports confirmed submissions into a separate personal funnel, keeps demands-abilities,
+needs-supplies, and eligibility results distinct, and validates AI-drafted interview preparation
+against cited Resume/NCD evidence.
+
 The package includes the structure-learning boundary and browser execution:
 bounded subdomain/layout sampling, rendered DOM inventories with explicit non-link
 `click_candidate` tags, and an AI-generated ordered interaction plan. The deterministic

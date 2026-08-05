@@ -24,12 +24,19 @@
   const goalItemsNode = document.querySelector("[data-goal-items]");
   const goalInterventionItemsNode = document.querySelector("[data-goal-intervention-items]");
   const resumeRoutesNode = document.querySelector("[data-resume-routes]");
+  const marketCampaignForm = document.querySelector("[data-market-campaign-form]");
+  const marketOpportunityForm = document.querySelector("[data-market-opportunity-form]");
+  const marketOpportunitiesNode = document.querySelector("[data-market-opportunities]");
+  const marketDetailNode = document.querySelector("[data-market-detail]");
   const disconnectDialog = document.querySelector("[data-disconnect-dialog]");
   const settingsDialog = document.querySelector("[data-settings-dialog]");
   let pendingDisconnect = "";
   let activeGoalId = "";
   let livePagesSignature = "";
   let toastTimer;
+  let marketCampaign = null;
+  let selectedMarketOpportunity = "";
+  let marketSignature = "";
   const autoRecheckedAt = new Map();
 
   document.querySelectorAll("[data-tab]").forEach((button) => {
@@ -47,6 +54,10 @@
     else localStorage.setItem(preferenceKey, value);
     showToast("Disconnect preference updated.");
   });
+  marketCampaignForm.addEventListener("submit", saveMarketCampaign);
+  marketOpportunityForm.addEventListener("submit", addMarketOpportunity);
+  document.querySelector("[data-market-sync]").addEventListener("click", syncMarketSubmissions);
+  document.querySelector("[data-market-refresh]").addEventListener("click", refreshMarketOutcomes);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) refresh();
   });
@@ -70,6 +81,7 @@
       const state = await response.json();
       if (!response.ok) throw new Error(state.error || "Control state is unavailable.");
       render(state);
+      await refreshMarketFit();
       const connection = document.querySelector("[data-connection]");
       connection.classList.add("online");
       connection.lastChild.textContent = " Connected";
@@ -79,6 +91,289 @@
       connection.lastChild.textContent = " Offline";
       showToast(error.message);
     }
+  }
+
+  async function refreshMarketFit() {
+    const response = await fetch("/api/job-finder/market-fit", { cache: "no-store" });
+    const state = await response.json();
+    if (!response.ok) throw new Error(state.error || "Market-fit state is unavailable.");
+    renderMarketFit(state);
+  }
+
+  function renderMarketFit(state) {
+    const campaign = state.campaign || {};
+    marketCampaign = campaign;
+    if (!marketCampaignForm.contains(document.activeElement)) {
+      setFormValue(marketCampaignForm, "name", campaign.name);
+      setFormValue(marketCampaignForm, "start_date", campaign.start_date);
+      setFormValue(marketCampaignForm, "end_date", campaign.end_date);
+      setFormValue(marketCampaignForm, "ghost_after_days", campaign.ghost_after_days);
+      setFormValue(marketCampaignForm, "full_time_mix", campaign.track_mix?.full_time);
+      setFormValue(marketCampaignForm, "contract_mix", campaign.track_mix?.contract_project);
+      setFormValue(marketCampaignForm, "freelance_mix", campaign.track_mix?.freelance);
+      setFormValue(marketCampaignForm, "automated_mix", campaign.application_mode_mix?.automated);
+      setFormValue(marketCampaignForm, "manual_mix", campaign.application_mode_mix?.manual_tailored);
+    }
+    const analytics = state.analytics || {};
+    const goals = document.querySelector("[data-market-goals]");
+    goals.replaceChildren(
+      marketGoal("HR interviews", `${analytics.stage_counts?.hr_interview || 0} / ${campaign.hr_interview_min || 0}–${campaign.hr_interview_max || 0}`),
+      marketGoal("Technical interviews", `${analytics.stage_counts?.technical_interview || 0} / ${campaign.technical_interview_min || 0}–${campaign.technical_interview_max || 0}`),
+      marketGoal("Offers", `${analytics.stage_counts?.offer || 0} / ${campaign.offer_target || 0}`),
+      marketGoal("Ghosted", analytics.stale_count || 0),
+      marketGoal("Actual A / B / C", mixText(analytics.track_counts, ["full_time", "contract_project", "freelance"])),
+      marketGoal("Actual automated / manual", mixText(analytics.application_mode_counts, ["automated", "manual_tailored"])),
+    );
+    const conversions = document.querySelector("[data-market-conversions]");
+    conversions.replaceChildren(...(analytics.conversions || []).map(conversionCard));
+    const segments = document.querySelector("[data-market-segments]");
+    segments.replaceChildren(...Object.entries(analytics.conversion_segments || {}).map(([key, metrics]) => {
+      const first = metrics[0] || {};
+      return conversionCard({
+        ...first,
+        name: `${key.replaceAll("_", " ")} · application → response`,
+      });
+    }));
+    setText("[data-market-recommendation]", (analytics.recommendations || []).join(" "));
+    const signature = JSON.stringify((state.opportunities || []).map((item) => [
+      item.id, item.updated_at, item.current_stage, item.demand_verified, item.fit_assessment?.assessed_at,
+    ]));
+    if (signature !== marketSignature) {
+      marketSignature = signature;
+      renderMarketOpportunities(state.opportunities || []);
+      if (selectedMarketOpportunity) openMarketOpportunity(selectedMarketOpportunity, false);
+    }
+  }
+
+  function mixText(counts = {}, keys = []) {
+    const total = keys.reduce((sum, key) => sum + (counts[key] || 0), 0);
+    return keys.map((key) => {
+      const count = counts[key] || 0;
+      return `${count}${total ? ` (${Math.round(count / total * 100)}%)` : ""}`;
+    }).join(" / ");
+  }
+
+  function marketGoal(label, value) {
+    const card = element("article");
+    card.append(element("span", "", label), element("strong", "", String(value)));
+    return card;
+  }
+
+  function conversionCard(metric) {
+    const card = element("article", "conversion-card");
+    const percent = metric.rate == null ? "Insufficient data" : `${Math.round(metric.rate * 100)}%`;
+    const interval = metric.interval_low == null
+      ? `${metric.pending || 0} pending`
+      : `95% interval ${Math.round(metric.interval_low * 100)}–${Math.round(metric.interval_high * 100)}% · n=${metric.resolved}`;
+    card.append(
+      element("span", "", metric.name),
+      element("strong", "", percent),
+      element("small", "", `${metric.successes}/${metric.resolved} resolved · ${interval}`),
+    );
+    return card;
+  }
+
+  function renderMarketOpportunities(items) {
+    if (!items.length) {
+      marketOpportunitiesNode.replaceChildren(element("div", "empty", "No tracked opportunities yet."));
+      return;
+    }
+    marketOpportunitiesNode.replaceChildren(...items.map((item) => {
+      const card = element("article", `market-opportunity${item.id === selectedMarketOpportunity ? " active" : ""}`);
+      card.append(element("h3", "", item.job_title), element("p", "", item.company));
+      const tags = element("div", "market-opportunity-tags");
+      tags.append(
+        element("span", "pill", item.track.replaceAll("_", " ")),
+        element("span", "pill", item.application_mode.replaceAll("_", " ")),
+        element("span", "pill", item.current_stage?.replaceAll("_", " ") || "not applied"),
+        element("span", `pill ${item.demand_verified ? "submitted" : ""}`, item.demand_verified ? "demands verified" : "demands unverified"),
+      );
+      if (item.fit_assessment) tags.append(element("span", "pill", item.fit_assessment.demands_abilities));
+      card.append(tags);
+      card.addEventListener("click", () => openMarketOpportunity(item.id));
+      return card;
+    }));
+  }
+
+  async function saveMarketCampaign(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const payload = structuredClone(marketCampaign);
+    payload.name = form.get("name");
+    payload.start_date = form.get("start_date");
+    payload.end_date = form.get("end_date");
+    payload.ghost_after_days = Number(form.get("ghost_after_days"));
+    payload.track_mix = {
+      full_time: Number(form.get("full_time_mix")),
+      contract_project: Number(form.get("contract_mix")),
+      freelance: Number(form.get("freelance_mix")),
+    };
+    payload.application_mode_mix = {
+      automated: Number(form.get("automated_mix")),
+      manual_tailored: Number(form.get("manual_mix")),
+    };
+    try {
+      await putJSON("/api/job-finder/market-fit/campaign", payload);
+      showToast("Market-fit campaign saved.");
+      refreshMarketFit();
+    } catch (error) { showToast(error.message); }
+  }
+
+  async function addMarketOpportunity(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const payload = Object.fromEntries(form.entries());
+    try {
+      const item = await postJSON("/api/job-finder/market-fit/opportunities", payload);
+      event.currentTarget.reset();
+      selectedMarketOpportunity = item.id;
+      showToast("Opportunity added. Verify its job demands before assessing fit.");
+      await refreshMarketFit();
+    } catch (error) { showToast(error.message); }
+  }
+
+  async function syncMarketSubmissions() {
+    try {
+      const result = await post("/api/job-finder/market-fit/sync-submissions");
+      showToast(`${result.created} confirmed application(s) imported.`);
+      refreshMarketFit();
+    } catch (error) { showToast(error.message); }
+  }
+
+  async function refreshMarketOutcomes() {
+    try {
+      const result = await post("/api/job-finder/market-fit/refresh");
+      showToast(`${result.ghosted} application(s) crossed the configured ghosting window.`);
+      refreshMarketFit();
+    } catch (error) { showToast(error.message); }
+  }
+
+  async function openMarketOpportunity(id, showErrors = true) {
+    selectedMarketOpportunity = id;
+    try {
+      const response = await fetch(`/api/job-finder/market-fit/opportunities/${encodeURIComponent(id)}`, { cache: "no-store" });
+      const detail = await response.json();
+      if (!response.ok) throw new Error(detail.error || "Opportunity is unavailable.");
+      renderMarketDetail(detail);
+    } catch (error) {
+      if (showErrors) showToast(error.message);
+    }
+  }
+
+  function renderMarketDetail(detail) {
+    const item = detail.opportunity;
+    const heading = element("div");
+    heading.append(element("p", "eyebrow", "Opportunity evidence file"), element("h2", "", item.job_title), element("p", "lede", `${item.company} · ${item.resume_file || "No resume selected"}`));
+    const metadata = document.createElement("form");
+    metadata.className = "opportunity-form";
+    metadata.innerHTML = `
+      <label><span>Track</span><select name="track"><option value="full_time">A · Full-time</option><option value="contract_project">B · Contract / Project</option><option value="freelance">C · Freelance</option></select></label>
+      <label><span>Application mode</span><select name="application_mode"><option value="automated">Automated</option><option value="manual_tailored">Manual-tailored</option></select></label>
+      <label><span>Resume filename</span><input name="resume_file"></label>
+      <label class="wide"><span>Saved job description</span><textarea name="description" rows="5"></textarea></label>
+      <button class="button" type="submit">Save opportunity evidence</button>`;
+    setFormValue(metadata, "track", item.track);
+    setFormValue(metadata, "application_mode", item.application_mode);
+    setFormValue(metadata, "resume_file", item.resume_file);
+    setFormValue(metadata, "description", item.description);
+    metadata.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        const values = Object.fromEntries(new FormData(metadata).entries());
+        await putJSON(`/api/job-finder/market-fit/opportunities/${item.id}`, values);
+        showToast("Opportunity evidence saved.");
+        openMarketOpportunity(item.id);
+        refreshMarketFit();
+      } catch (error) { showToast(error.message); }
+    });
+    const eventControls = element("div", "market-detail-actions");
+    const stage = document.createElement("select");
+    ["applied", "recruiter_response", "hr_interview", "technical_interview", "offer", "rejected", "withdrawn", "ghosted"].forEach((value) => {
+      const option = document.createElement("option"); option.value = value; option.textContent = value.replaceAll("_", " "); stage.append(option);
+    });
+    const addEvent = element("button", "button ghost", "Record outcome"); addEvent.type = "button";
+    addEvent.addEventListener("click", async () => {
+      await marketAction(`/api/job-finder/market-fit/opportunities/${item.id}/events`, { stage: stage.value }, "Outcome recorded.");
+    });
+    eventControls.append(stage, addEvent);
+    const timeline = element("ul", "timeline");
+    (detail.events || []).forEach((event) => timeline.append(element("li", "", `${event.stage.replaceAll("_", " ")} · ${new Date(event.occurred_at).toLocaleDateString()}${event.note ? ` · ${event.note}` : ""}`)));
+
+    const demandSection = element("section", "market-detail-section");
+    demandSection.append(element("h3", "", "Verified job demands"));
+    const draftButton = element("button", "button ghost", detail.demands ? "Redraft with AI" : "Draft demands with AI"); draftButton.type = "button";
+    const approveButton = element("button", "button", "Approve edited demands"); approveButton.type = "button";
+    const demandActions = element("div", "market-detail-actions"); demandActions.append(draftButton, approveButton);
+    const demandJSON = document.createElement("textarea"); demandJSON.className = "market-json";
+    demandJSON.value = JSON.stringify(stripDemandMetadata(detail.demands) || { requirements: [], constraints: [], warnings: [], confidence: 0 }, null, 2);
+    draftButton.addEventListener("click", async () => {
+      try {
+        const result = await post(`/api/job-finder/market-fit/opportunities/${item.id}/demands/draft`);
+        demandJSON.value = JSON.stringify(stripDemandMetadata(result), null, 2);
+        showToast("AI demand draft ready for human review.");
+      } catch (error) { showToast(error.message); }
+    });
+    approveButton.addEventListener("click", async () => {
+      try {
+        const value = JSON.parse(demandJSON.value);
+        await putJSON(`/api/job-finder/market-fit/opportunities/${item.id}/demands`, value);
+        showToast("Job demands verified.");
+        openMarketOpportunity(item.id);
+      } catch (error) { showToast(error.message); }
+    });
+    demandSection.append(demandActions, demandJSON);
+
+    const fitSection = element("section", "market-detail-section");
+    fitSection.append(element("h3", "", "Market-fit evidence profile"));
+    const assessButton = element("button", "button ghost", "Assess verified fit"); assessButton.type = "button";
+    assessButton.addEventListener("click", () => marketAction(`/api/job-finder/market-fit/opportunities/${item.id}/assessment`, null, "Fit assessment updated."));
+    fitSection.append(assessButton, renderFit(detail.assessment));
+
+    const prepSection = element("section", "market-detail-section");
+    prepSection.append(element("h3", "", "Evidence-backed interview prep"));
+    const prepButton = element("button", "button ghost", "Generate cited prep"); prepButton.type = "button";
+    prepButton.addEventListener("click", () => marketAction(`/api/job-finder/market-fit/opportunities/${item.id}/interview-prep`, null, "Interview prep generated."));
+    const approvePrep = element("button", "button", detail.interview_prep?.approved ? "Preparation approved" : "Approve preparation"); approvePrep.type = "button";
+    approvePrep.disabled = !detail.interview_prep || detail.interview_prep.approved;
+    approvePrep.addEventListener("click", async () => {
+      try {
+        await putJSON(`/api/job-finder/market-fit/opportunities/${item.id}/interview-prep/approve`, {});
+        showToast("Interview preparation approved.");
+        openMarketOpportunity(item.id);
+      } catch (error) { showToast(error.message); }
+    });
+    const prepText = element("pre", "market-json", JSON.stringify(detail.interview_prep || { status: "Not generated" }, null, 2));
+    const prepActions = element("div", "market-detail-actions"); prepActions.append(prepButton, approvePrep);
+    prepSection.append(prepActions, prepText);
+    marketDetailNode.replaceChildren(heading, metadata, eventControls, timeline, demandSection, fitSection, prepSection);
+  }
+
+  function renderFit(assessment) {
+    if (!assessment) return element("div", "empty", "No verified fit assessment yet.");
+    const grid = element("div", "fit-dimensions");
+    [["Eligibility", assessment.eligibility], ["Demands–abilities", assessment.demands_abilities], ["Needs–supplies", assessment.needs_supplies]].forEach(([label, value]) => {
+      const card = element("article"); card.append(element("span", "", label), element("strong", "", value)); grid.append(card);
+    });
+    return grid;
+  }
+
+  function stripDemandMetadata(value) {
+    if (!value) return null;
+    return { requirements: value.requirements || [], constraints: value.constraints || [], warnings: value.warnings || [], confidence: value.confidence || 0 };
+  }
+
+  async function marketAction(url, value, message) {
+    try {
+      if (value == null) await post(url); else await postJSON(url, value);
+      showToast(message);
+      await openMarketOpportunity(selectedMarketOpportunity);
+      refreshMarketFit();
+    } catch (error) { showToast(error.message); }
+  }
+
+  function setFormValue(form, name, value) {
+    const field = form.elements.namedItem(name);
+    if (field && value != null) field.value = value;
   }
 
   function render(state) {
@@ -489,6 +784,17 @@
     return payload;
   }
 
+  async function putJSON(url, value) {
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(value),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || payload.detail?.[0]?.msg || "Request failed.");
+    return payload;
+  }
+
   function setText(selector, value) {
     const node = document.querySelector(selector);
     if (node) node.textContent = value;
@@ -508,7 +814,7 @@
     toastTimer = window.setTimeout(() => toastNode.classList.remove("show"), 3500);
   }
 
-  refresh();
+  post("/api/job-finder/market-fit/refresh").catch(() => {}).finally(refresh);
   window.setInterval(() => {
     if (!document.hidden) refresh();
   }, 2000);

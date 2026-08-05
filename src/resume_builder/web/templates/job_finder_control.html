@@ -56,6 +56,66 @@
       <p class="goal-id" data-site-counts></p>
     </section>
 
+    <section class="panel market-fit-panel" aria-label="Market Fit and Interviews">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Research-grounded validation loop</p>
+          <h2>Market Fit &amp; Interviews</h2>
+        </div>
+        <div class="goal-actions">
+          <button class="button ghost" type="button" data-market-sync>Sync confirmed applications</button>
+          <button class="button ghost" type="button" data-market-refresh>Refresh outcomes</button>
+        </div>
+      </div>
+
+      <div class="market-mission">
+        <form class="market-campaign-form" data-market-campaign-form>
+          <label><span>Mission name</span><input name="name" required></label>
+          <label><span>Start</span><input name="start_date" type="date" required></label>
+          <label><span>Deadline</span><input name="end_date" type="date" required></label>
+          <label><span>Ghost after days</span><input name="ghost_after_days" type="number" min="1" required></label>
+          <label><span>Full-time %</span><input name="full_time_mix" type="number" min="0" max="100" required></label>
+          <label><span>Contract %</span><input name="contract_mix" type="number" min="0" max="100" required></label>
+          <label><span>Freelance %</span><input name="freelance_mix" type="number" min="0" max="100" required></label>
+          <label><span>Automated %</span><input name="automated_mix" type="number" min="0" max="100" required></label>
+          <label><span>Manual-tailored %</span><input name="manual_mix" type="number" min="0" max="100" required></label>
+          <button class="button" type="submit">Save campaign</button>
+        </form>
+        <div class="market-goals" data-market-goals></div>
+      </div>
+
+      <div class="conversion-grid" data-market-conversions></div>
+      <details class="market-segments">
+        <summary>Conversion segments by track, handling mode, and verified fit profile</summary>
+        <div class="conversion-grid" data-market-segments></div>
+      </details>
+      <p class="market-recommendation" data-market-recommendation></p>
+
+      <div class="market-workspace">
+        <section>
+          <div class="section-heading compact">
+            <div><p class="eyebrow">Persistent funnel</p><h2>Opportunities</h2></div>
+            <small>Fit remains unknown until job demands are reviewed.</small>
+          </div>
+          <form class="opportunity-form" data-market-opportunity-form>
+            <label><span>Company</span><input name="company" required></label>
+            <label><span>Job title</span><input name="job_title" required></label>
+            <label><span>Track</span><select name="track"><option value="full_time">A · Full-time</option><option value="contract_project" selected>B · Contract / Project</option><option value="freelance">C · Freelance</option></select></label>
+            <label><span>Application mode</span><select name="application_mode"><option value="automated">Automated</option><option value="manual_tailored">Manual-tailored</option></select></label>
+            <label><span>Resume filename</span><input name="resume_file" placeholder="automation-data.pdf"></label>
+            <label><span>Source URL</span><input name="source_url" type="url"></label>
+            <label class="wide"><span>Saved job description</span><textarea name="description" rows="5" required></textarea></label>
+            <button class="button" type="submit">Add opportunity</button>
+          </form>
+          <div class="market-opportunity-list" data-market-opportunities></div>
+        </section>
+
+        <section class="market-detail" data-market-detail>
+          <div class="empty">Select an opportunity to review its fit and interview plan.</div>
+        </section>
+      </div>
+    </section>
+
     <section class="panel resume-routing-panel">
       <div class="section-heading compact">
         <div>
