@@ -43,7 +43,12 @@
       </div>
       <form class="goal-form" data-goal-form>
         <label><span>Applications needed</span><input type="number" min="1" value="10" required data-goal-input></label>
-        <fieldset><legend>Countries</legend><label><input type="checkbox" value="Australia" checked data-country> Australia</label><label><input type="checkbox" value="Canada" checked data-country> Canada</label></fieldset>
+        <fieldset>
+          <legend>Countries · defaults to Philippines when empty</legend>
+          <label><input type="checkbox" value="Philippines" data-country> Philippines</label>
+          <label><input type="checkbox" value="Australia" data-country> Australia</label>
+          <label><input type="checkbox" value="Canada" data-country> Canada</label>
+        </fieldset>
         <label><span>Work mode</span><select disabled><option>Remote</option></select></label>
         <label><span>Job type</span><select disabled><option>Contract</option></select></label>
         <div class="goal-actions">

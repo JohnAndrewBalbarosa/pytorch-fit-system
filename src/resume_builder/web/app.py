@@ -360,7 +360,7 @@ def api_approve_market_fit_interview(opportunity_id: str):
 
 class JobFinderGoalRequest(BaseModel):
     target: int = Field(ge=1)
-    target_countries: list[str] = Field(default_factory=lambda: ["Australia", "Canada"])
+    target_countries: list[str] = Field(default_factory=list)
     work_mode: str = "remote"
     employment_type: str = "contract"
 

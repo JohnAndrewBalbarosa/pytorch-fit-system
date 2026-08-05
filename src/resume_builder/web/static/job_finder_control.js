@@ -446,10 +446,6 @@
     event.preventDefault();
     const target = Number(document.querySelector("[data-goal-input]").value);
     const targetCountries = [...document.querySelectorAll("[data-country]:checked")].map((node) => node.value);
-    if (!targetCountries.length) {
-      showToast("Select at least one target country.");
-      return;
-    }
     try {
       await postJSON("/api/job-finder/goals", {
         target,

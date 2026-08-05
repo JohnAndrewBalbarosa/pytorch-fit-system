@@ -32,6 +32,7 @@ from resume_builder.job_finder import (  # noqa: E402
 )
 
 _COUNTRY_HOSTS = {
+    "Philippines": "ph.indeed.com",
     "Australia": "au.indeed.com",
     "Canada": "ca.indeed.com",
 }
@@ -517,7 +518,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--open-tabs-only",
         action="store_true",
-        help="Collect only currently open AU/CA Indeed /viewjob tabs; do not run searches.",
+        help="Collect only currently open PH/AU/CA Indeed /viewjob tabs; do not run searches.",
     )
     parser.add_argument("--duplicate-days", type=int, default=30)
     return parser

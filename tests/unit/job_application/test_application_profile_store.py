@@ -113,3 +113,17 @@ def test_onboarding_answers_are_local_structured_staging(tmp_path: Path):
 
     store.clear_onboarding_answers()
     assert store.onboarding_answers() == {}
+
+
+def test_empty_country_selection_defaults_to_philippines(tmp_path: Path):
+    store = ApplicationProfileStore(tmp_path / "application.sqlite3")
+
+    preferences = store.save_onboarding_preferences(
+        target=3,
+        target_countries=[],
+        work_mode="remote",
+        employment_type="contract",
+        safe_auto_start=True,
+    )
+
+    assert preferences.target_countries == ("Philippines",)

@@ -225,10 +225,12 @@ class ApplicationProfileStore:
         safe_auto_start: bool,
     ) -> OnboardingPreferences:
         countries = tuple(dict.fromkeys(item.strip() for item in target_countries if item.strip()))
+        if not countries:
+            countries = ("Philippines",)
         if target < 1 or target > 100:
             raise ValueError("application target must be between 1 and 100")
-        if not countries or any(item not in {"Australia", "Canada"} for item in countries):
-            raise ValueError("select Australia and/or Canada")
+        if any(item not in {"Philippines", "Australia", "Canada"} for item in countries):
+            raise ValueError("select Philippines, Australia, and/or Canada")
         if work_mode != "remote":
             raise ValueError("Indeed v1 requires remote work mode")
         if employment_type != "contract":

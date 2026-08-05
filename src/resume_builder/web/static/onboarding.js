@@ -113,7 +113,8 @@
         <label><span>Work mode</span><select name="work_mode"><option value="remote">Remote</option></select></label>
         <label><span>Job type</span><select name="employment_type"><option value="contract">Contract</option></select></label>
       </div>
-      <fieldset><legend>Explicit target-country allowlist</legend>
+      <fieldset><legend>Target countries (optional — defaults to Philippines)</legend>
+        <label><input name="target_countries" type="checkbox" value="Philippines"> Philippines</label>
         <label><input name="target_countries" type="checkbox" value="Australia"> Australia</label>
         <label><input name="target_countries" type="checkbox" value="Canada"> Canada</label>
       </fieldset>
@@ -124,7 +125,6 @@
       event.preventDefault();
       const data = new FormData(form);
       const countries = data.getAll("target_countries");
-      if (!countries.length) return showError("Select at least one target country.");
       await submit("/api/onboarding/job-preferences", "PUT", {
         target: Number(data.get("target")),
         target_countries: countries,

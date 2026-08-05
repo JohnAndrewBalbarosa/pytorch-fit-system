@@ -41,7 +41,8 @@ def test_indeed_runtime_adapter_builds_a_goal_scoped_cycle(tmp_path):
 
     assert "--employment-type" in collect
     assert collect[collect.index("--employment-type") + 1] == "contract"
-    assert collect.count("--target-country") == 2
+    assert collect.count("--target-country") == 1
+    assert collect[collect.index("--target-country") + 1] == "Philippines"
     assert "--goal-id" in run
     assert run[run.index("--goal-id") + 1] == goal.id
     assert run[run.index("--target-submissions") + 1] == "9"

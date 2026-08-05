@@ -51,9 +51,10 @@ fails only that task closed and never enables retries or submission for another 
 For Indeed, `reconcile_indeed_post_apply` deterministically recognizes the exact post-apply route
 plus visible `Your application has been submitted!` proof. It records the SQL confirmation and
 resolves the matching CAPTCHA queue item, allowing that worker slot to return to job search.
-Every batch task carries an explicit target country and `remote|hybrid|onsite|any` work mode. The
-coordinator rejects a worker result that changes either value, so a foreign-country remote search
-cannot silently become a Philippines-targeted or onsite application.
+Every batch task carries an explicit target country and `remote|hybrid|onsite|any` work mode. An
+empty main-system country selection is deterministically resolved to `Philippines` before a batch
+is created; it is never inferred from browser locale or contact data. The coordinator rejects a
+worker result that changes either resolved value.
 When configured with `CountrySelectionPolicy`, the coordinator also rejects any task outside the
 human-selected country allowlist and requires remote mode. Home-country exclusion is optional, not
 implicit. Phone/contact country codes remain truthful profile data and never participate in this
@@ -215,14 +216,14 @@ The preview never fills fields, uploads a resume, clicks Continue, or submits an
 ## Bounded Indeed batch
 
 Job discovery and application execution remain separate commands. The deterministic collector uses
-the live Indeed search controls, enforces `remote`, searches only the human-selected Australia and
-Canada hosts, removes recent exact duplicates, rejects senior or mismatched titles, and writes a
-reviewable manifest:
+the live Indeed search controls, enforces `remote`, and searches the resolved Philippines,
+Australia, and/or Canada hosts. The main system defaults an empty selection to Philippines;
+foreign hosts remain explicit outsourcing choices. It removes recent exact duplicates, rejects
+senior or mismatched titles, and writes a reviewable manifest:
 
 ```bash
 python tools/job_finder/collect_indeed_candidates.py \
-  --target-country Australia \
-  --target-country Canada \
+  --target-country Philippines \
   --employment-type contract \
   --max-candidates 12 \
   --output out/indeed-unattended/candidate-manifest.json

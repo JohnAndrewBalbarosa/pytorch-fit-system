@@ -39,6 +39,20 @@ def test_candidate_canonicalizes_url_and_selects_intern_resume():
     assert "3+ years" in candidate.blocked_terms
 
 
+def test_candidate_supports_philippines_as_the_local_default():
+    candidate = collector.candidate_from_listing(
+        _listing(
+            "Backend Software Engineer",
+            detail_url="https://ph.indeed.com/rc/clk?jk=ph123",
+        ),
+        target_country="Philippines",
+    )
+
+    assert candidate is not None
+    assert candidate.listing_url == "https://ph.indeed.com/viewjob?jk=ph123"
+    assert candidate.target_country == "Philippines"
+
+
 def test_candidate_routes_ai_and_data_resumes():
     ai = collector.candidate_from_listing(
         _listing("AI Agent Engineer", detail_url="https://ca.indeed.com/rc/clk?jk=ai123"),

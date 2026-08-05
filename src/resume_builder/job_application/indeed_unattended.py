@@ -14,7 +14,7 @@ from .submission_history import (
 )
 
 _INDEED_DETAIL_PATHS = frozenset({"/viewjob"})
-_ALLOWED_TARGET_COUNTRIES = frozenset({"Australia", "Canada"})
+_ALLOWED_TARGET_COUNTRIES = frozenset({"Philippines", "Australia", "Canada"})
 
 
 class IndeedUnattendedJob(BaseModel):
@@ -52,10 +52,12 @@ class IndeedUnattendedJob(BaseModel):
 
     @field_validator("target_country")
     @classmethod
-    def require_approved_foreign_country(cls, value: str) -> str:
+    def require_approved_target_country(cls, value: str) -> str:
         country = value.strip()
         if country not in _ALLOWED_TARGET_COUNTRIES:
-            raise ValueError("unattended Indeed target_country must be Australia or Canada")
+            raise ValueError(
+                "unattended Indeed target_country must be Philippines, Australia, or Canada"
+            )
         return country
 
     @field_validator("resume_file")
@@ -69,6 +71,7 @@ class IndeedUnattendedJob(BaseModel):
     def require_country_specific_indeed_host(self) -> "IndeedUnattendedJob":
         host = (urlsplit(self.listing_url).hostname or "").lower()
         expected_host = {
+            "Philippines": "ph.indeed.com",
             "Australia": "au.indeed.com",
             "Canada": "ca.indeed.com",
         }[self.target_country]

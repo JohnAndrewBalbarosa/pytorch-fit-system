@@ -31,6 +31,16 @@ def test_job_accepts_explicit_remote_indeed_detail() -> None:
     assert job.batch_task().work_mode == "remote"
 
 
+def test_job_accepts_philippines_indeed_host() -> None:
+    job = _job(
+        listing_url="https://ph.indeed.com/viewjob?jk=abc",
+        target_country="Philippines",
+    )
+
+    assert job.batch_task().domain == "ph.indeed.com"
+    assert job.target_country == "Philippines"
+
+
 @pytest.mark.parametrize(
     "overrides",
     [

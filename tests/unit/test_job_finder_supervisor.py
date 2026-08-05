@@ -4,6 +4,23 @@ from resume_builder.job_application import ApplicationGoalStore, GoalItemState
 from resume_builder.web import job_finder_supervisor
 
 
+def test_empty_country_selection_starts_a_philippines_goal(monkeypatch, tmp_path):
+    store = ApplicationGoalStore(tmp_path / "history.sqlite3")
+    launched = []
+    monkeypatch.setattr(job_finder_supervisor, "goal_store", lambda: store)
+    monkeypatch.setattr(job_finder_supervisor, "launch_goal", launched.append)
+
+    goal = job_finder_supervisor.start_goal(
+        target=3,
+        target_countries=[],
+        work_mode="remote",
+        employment_type="contract",
+    )
+
+    assert goal.target_countries == ["Philippines"]
+    assert launched == [goal.id]
+
+
 def test_stop_refuses_process_group_not_owned_by_goal(monkeypatch):
     monkeypatch.setattr(
         job_finder_supervisor,

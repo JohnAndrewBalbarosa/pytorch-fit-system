@@ -105,7 +105,7 @@ class MarketFitCampaign(BaseModel):
             "AI Automation",
         ]
     )
-    target_countries: list[str] = Field(default_factory=lambda: ["Australia", "Canada"])
+    target_countries: list[str] = Field(default_factory=lambda: ["Philippines"])
     preferred_work_mode: str = "remote"
     minimum_monthly_salary_php: int = 20_000
     aspirational_monthly_salary_php_min: int = 30_000

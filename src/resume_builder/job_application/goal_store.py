@@ -36,7 +36,7 @@ class ApplicationGoal(BaseModel):
     reserved: int = 0
     status: ApplicationGoalStatus = ApplicationGoalStatus.ACTIVE
     sites: list[str] = Field(default_factory=lambda: ["indeed"])
-    target_countries: list[str] = Field(default_factory=lambda: ["Australia", "Canada"])
+    target_countries: list[str] = Field(default_factory=lambda: ["Philippines"])
     work_mode: str = "remote"
     employment_type: str = "contract"
     created_at: str
@@ -92,7 +92,7 @@ class ApplicationGoalStore:
         now = _now()
         goal_id = uuid.uuid4().hex
         selected_sites = sites or ["indeed"]
-        countries = target_countries or ["Australia", "Canada"]
+        countries = target_countries or ["Philippines"]
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             connection.execute(

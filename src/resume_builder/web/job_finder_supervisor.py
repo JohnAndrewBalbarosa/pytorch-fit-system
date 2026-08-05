@@ -60,8 +60,12 @@ def start_goal(
         raise ValueError("Indeed v1 requires work_mode=remote")
     if employment_type != "contract":
         raise ValueError("Indeed v1 requires employment_type=contract")
-    if not target_countries or any(country not in {"Australia", "Canada"} for country in target_countries):
-        raise ValueError("Indeed v1 countries must be Australia and/or Canada")
+    selected_countries = target_countries or ["Philippines"]
+    if any(
+        country not in {"Philippines", "Australia", "Canada"}
+        for country in selected_countries
+    ):
+        raise ValueError("Indeed v1 countries must be Philippines, Australia, and/or Canada")
     store = goal_store()
     previous = store.active()
     if previous is not None:
@@ -69,7 +73,7 @@ def start_goal(
     goal = store.create(
         target=target,
         sites=["indeed"],
-        target_countries=target_countries,
+        target_countries=selected_countries,
         work_mode=work_mode,
         employment_type=employment_type,
     )

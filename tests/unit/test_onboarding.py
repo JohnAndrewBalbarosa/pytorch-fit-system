@@ -111,6 +111,30 @@ def test_verified_runtime_identity_skips_contact_corrections(tmp_path):
     }
 
 
+def test_empty_outsourcing_selection_resolves_to_philippines(tmp_path):
+    artifacts = _artifacts(tmp_path / "outputs")
+    database = tmp_path / "application.sqlite3"
+    ApplicationProfileStore(database).save_verified_identity(
+        first_name="Ada",
+        last_name="Lovelace",
+        country_name="Philippines",
+        country_iso="PH",
+        phone_calling_code="+63",
+        verified_phone="+639123456789",
+    )
+    service = OnboardingService(artifact_dir=artifacts, database=database)
+
+    state = service.save_preferences(
+        target=3,
+        target_countries=[],
+        work_mode="remote",
+        employment_type="contract",
+        safe_auto_start=True,
+    )
+
+    assert state["preferences"]["target_countries"] == ["Philippines"]
+
+
 def test_invalid_seed_blocks_dashboard_as_system_error(tmp_path):
     artifacts = tmp_path / "outputs"
     artifacts.mkdir()
