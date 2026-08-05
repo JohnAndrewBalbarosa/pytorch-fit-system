@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -9,12 +9,17 @@ import {
   SubmissionStore,
   applyTriggerDecision,
   automationResumeDecision,
+  classifyApplyDestination,
   cleanListingIdentity,
   countOpenPageTargets,
   humanChangeRetryDecision,
   isExactIndeedConfirmation,
   normalizeExactIdentity,
 } from "../../tools/job_finder/indeed_event_watcher_core.mjs";
+import {
+  enqueueExternalHandoff,
+  sanitizeExternalApplicationUrl,
+} from "../../tools/job_finder/external_handoff_queue.mjs";
 
 test("listing identity rejects transient CSS contamination", () => {
   assert.equal(cleanListingIdentity("  EzzyBills  "), "EzzyBills");
@@ -143,88 +148,100 @@ test("a committed human field change retries only after a gated worker exit", ()
   );
 });
 
-test("click and focus events route one visible Apply control within the tab limit", () => {
-  const snapshot = {
-    accessBlocked: false,
-    applyControl: { kind: "indeed", text: "Apply with Indeed" },
-  };
+test("only an actual verified, mapped Apply click triggers destination tracking", () => {
   assert.deepEqual(
     applyTriggerDecision({
-      eventKind: "click",
-      snapshot,
+      eventKind: "apply_click",
       enabled: true,
-      openPageCount: 3,
-      maxTabs: 6,
+      mapped: true,
     }),
     {
       trigger: true,
-      reason: "visible_apply_control",
-      route: "indeed_automation",
+      reason: "verified_apply_click",
     },
   );
   assert.equal(
     applyTriggerDecision({
       eventKind: "focus",
-      snapshot: {
-        ...snapshot,
-        applyControl: { kind: "company_site", text: "Apply on company site" },
-      },
       enabled: true,
-      openPageCount: 3,
-      maxTabs: 6,
-    }).route,
-    "human_intervention",
+      mapped: true,
+    }).reason,
+    "event_not_verified_apply_click",
   );
 });
 
-test("apply trigger fails closed for blockers, repeats, background events, and tab pressure", () => {
-  const snapshot = {
-    accessBlocked: false,
-    applyControl: { kind: "indeed", text: "Apply with Indeed" },
-  };
+test("apply click tracking fails closed for background and unmapped events", () => {
   assert.equal(
-    applyTriggerDecision({ eventKind: "mutation", snapshot, enabled: true }).reason,
-    "event_not_user_navigation",
+    applyTriggerDecision({ eventKind: "mutation", enabled: true, mapped: true }).reason,
+    "event_not_verified_apply_click",
   );
   assert.equal(
     applyTriggerDecision({
-      eventKind: "click",
-      snapshot: { ...snapshot, accessBlocked: true },
+      eventKind: "apply_click",
       enabled: true,
+      mapped: false,
     }).reason,
-    "access_blocked",
-  );
-  assert.equal(
-    applyTriggerDecision({
-      eventKind: "click",
-      snapshot,
-      enabled: true,
-      alreadyTriggered: true,
-    }).reason,
-    "already_triggered",
-  );
-  assert.equal(
-    applyTriggerDecision({
-      eventKind: "click",
-      snapshot,
-      enabled: true,
-      openPageCount: 6,
-      maxTabs: 6,
-    }).reason,
-    "tab_limit_reached",
+    "apply_click_unmapped",
   );
 });
 
 test("automatic Apply is disabled unless explicitly enabled", () => {
   assert.equal(
     applyTriggerDecision({
-      eventKind: "click",
-      snapshot: {
-        accessBlocked: false,
-        applyControl: { kind: "indeed", text: "Apply with Indeed" },
-      },
+      eventKind: "apply_click",
+      mapped: true,
     }).reason,
     "automatic_apply_disabled",
+  );
+});
+
+test("Apply destinations are classified from the observed URL, not button text", () => {
+  assert.equal(
+    classifyApplyDestination("about:blank").kind,
+    "pending",
+  );
+  assert.equal(
+    classifyApplyDestination("https://ca.indeed.com/rc/clk?jk=job").kind,
+    "pending",
+  );
+  assert.equal(
+    classifyApplyDestination("https://smartapply.indeed.com/form/contact-info").kind,
+    "indeed_smart_apply",
+  );
+  assert.deepEqual(
+    classifyApplyDestination("https://careers.example.com/apply?token=secret"),
+    { kind: "external_company_site", host: "careers.example.com" },
+  );
+});
+
+test("external handoff queue strips secrets and preserves structured job identity", async () => {
+  const root = mkdtempSync(join(tmpdir(), "external-handoff-"));
+  const path = join(root, "queue.json");
+  const entry = await enqueueExternalHandoff(
+    path,
+    {
+      task_id: "job-1",
+      company: "Example Co",
+      job_title: "Backend Engineer",
+      goal_id: "goal-1",
+      resume_file: "/tmp/software-systems.pdf",
+    },
+    {
+      url: "https://careers.example.com/apply?token=secret#private",
+      targetId: "TARGET_1",
+    },
+  );
+
+  assert.equal(entry.action, "external_application");
+  assert.equal(entry.url, "https://careers.example.com/apply");
+  assert.equal(entry.browser_target_id, "TARGET_1");
+  assert.equal(entry.company, "Example Co");
+  assert.equal(entry.job_title, "Backend Engineer");
+  assert.equal(entry.resume_file, "software-systems.pdf");
+  assert.equal(readFileSync(path, "utf8").includes("secret"), false);
+  assert.equal(
+    sanitizeExternalApplicationUrl("https://apply.example.com/path?q=private"),
+    "https://apply.example.com/path",
   );
 });
 

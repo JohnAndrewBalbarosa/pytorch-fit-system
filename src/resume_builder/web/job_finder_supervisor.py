@@ -180,7 +180,7 @@ def stop_goal(goal_id: str, *, cancel: bool = True, timeout: float = 5.0) -> dic
     return {"goal_id": goal_id, "running": False, "cancelled": cancel}
 
 
-def confirm_item(goal_id: str, task_id: str) -> ApplicationGoal:
+def confirm_item(goal_id: str, task_id: str, *, source_url: str = "") -> ApplicationGoal:
     store = goal_store()
     item = store.item(goal_id, task_id)
     ApplicationSubmissionHistory(DEFAULT_DATABASE).record_existing_submission(
@@ -189,6 +189,7 @@ def confirm_item(goal_id: str, task_id: str) -> ApplicationGoal:
         applied_at=datetime.now(timezone.utc),
         confirmation="explicit manual confirmation from local control center",
         confirmation_source=ConfirmationSource.MANUAL,
+        source_url=source_url,
     )
     goal = store.confirm(goal_id, task_id, detail="explicit manual confirmation")
     if goal.status == ApplicationGoalStatus.TARGET_REACHED:

@@ -6,6 +6,8 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from resume_builder.job_application import (
+    ApplicationSubmissionHistory,
+    ConfirmationSource,
     HumanVerificationQueue,
     InterventionAction,
 )
@@ -181,6 +183,74 @@ def test_stale_queue_target_is_not_focusable():
 
     assert payload["can_focus"] is False
     assert payload["preview_url"] == ""
+
+
+def test_external_application_can_be_explicitly_confirmed_and_resolved(
+    tmp_path,
+    monkeypatch,
+):
+    queue_path = tmp_path / "queue.json"
+    database = tmp_path / "applications.sqlite3"
+    queued = HumanVerificationQueue(queue_path).enqueue_handoff(
+        application_reference="Example Co — Backend Engineer",
+        url="https://careers.example.com/apply?token=secret",
+        reason="apply_on_company_site",
+        browser_target_id="external-target",
+        task_id="job-1",
+        company="Example Co",
+        job_title="Backend Engineer",
+        resume_file="software-systems.pdf",
+    )
+    monkeypatch.setattr(job_finder_control, "DEFAULT_QUEUE_PATH", queue_path)
+    monkeypatch.setattr(job_finder_control, "DEFAULT_DATABASE", database)
+    monkeypatch.setattr(job_finder_control, "_goal_state", lambda: ({}, []))
+
+    result = job_finder_control.confirm_external_intervention(queued.id)
+
+    assert result == {
+        "confirmed": True,
+        "entry_id": queued.id,
+        "goal_id": "",
+        "task_id": "job-1",
+    }
+    assert HumanVerificationQueue(queue_path).pending() == []
+    submissions = ApplicationSubmissionHistory(database).recent_submissions(within_days=30)
+    assert len(submissions) == 1
+    assert submissions[0].company == "Example Co"
+    assert submissions[0].job_title == "Backend Engineer"
+    assert submissions[0].confirmation_source == ConfirmationSource.MANUAL
+    assert submissions[0].source_url == "https://careers.example.com/apply"
+
+    repeated = job_finder_control.confirm_external_intervention(queued.id)
+    assert repeated["confirmed"] is True
+    assert len(
+        ApplicationSubmissionHistory(database).recent_submissions(within_days=30)
+    ) == 1
+
+
+def test_external_confirmation_requires_structured_identity(tmp_path, monkeypatch):
+    queue_path = tmp_path / "queue.json"
+    queued = HumanVerificationQueue(queue_path).enqueue_handoff(
+        application_reference="Legacy external application",
+        url="https://careers.example.com/apply",
+        reason="apply_on_company_site",
+    )
+    monkeypatch.setattr(job_finder_control, "DEFAULT_QUEUE_PATH", queue_path)
+
+    try:
+        job_finder_control.confirm_external_intervention(queued.id)
+    except ValueError as error:
+        assert "structured company/job-title" in str(error)
+    else:
+        raise AssertionError("legacy handoff must not infer submission identity")
+
+
+def test_control_frontend_exposes_external_confirmation_action():
+    response = TestClient(app).get("/static/job_finder_control.js")
+
+    assert response.status_code == 200
+    assert "Confirm submitted" in response.text
+    assert "confirm-submitted" in response.text
 
 
 def test_unqueued_human_outcome_remains_visible_as_grouped_fallback():

@@ -269,7 +269,7 @@ def _visible_apply_control(page, *, timeout_ms: int, poll_ms: int):
         waited_ms += delay_ms
 
 
-def _open_smart_apply(
+def _open_apply_destination(
     page,
     context,
     *,
@@ -329,6 +329,8 @@ def _queue_company_site_handoff(
     page,
     job: IndeedUnattendedJob,
     queue: HumanVerificationQueue,
+    *,
+    goal_id: str = "",
 ) -> BatchApplicationOutcome:
     queue.enqueue(
         application_reference=job.batch_task().application_reference,
@@ -340,6 +342,11 @@ def _queue_company_site_handoff(
         ),
         browser_target_id=_browser_target_id(page),
         group=VerificationQueueGroup.HUMAN_INTERVENTION,
+        task_id=job.task_id,
+        company=job.company,
+        job_title=job.job_title,
+        goal_id=goal_id,
+        resume_file=job.resume_file,
     )
     return _outcome(
         job,
@@ -918,12 +925,17 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
                 BatchApplicationStatus.FAILED,
                 _tab_budget_detail(context, args),
             )
-        application_page, apply_error = _open_smart_apply(page, context)
+        application_page, apply_error = _open_apply_destination(page, context)
         if apply_error:
             if apply_error.startswith("apply on company site:"):
                 return _retire_if_terminal(
                     application_page,
-                    _queue_company_site_handoff(application_page, job, queue),
+                    _queue_company_site_handoff(
+                        application_page,
+                        job,
+                        queue,
+                        goal_id=str(getattr(args, "goal_id", "") or ""),
+                    ),
                 )
             status = (
                 BatchApplicationStatus.SKIPPED

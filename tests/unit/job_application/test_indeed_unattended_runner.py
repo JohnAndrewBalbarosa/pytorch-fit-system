@@ -724,7 +724,7 @@ class _ApplyPage:
         self.on_wait()
 
 
-def test_open_smart_apply_waits_for_delayed_visible_apply_control():
+def test_open_apply_destination_waits_for_delayed_visible_apply_control():
     page = _ApplyPage(
         url="https://ca.indeed.com/viewjob?jk=job",
         control_visible_after_ms=500,
@@ -736,7 +736,7 @@ def test_open_smart_apply_waits_for_delayed_visible_apply_control():
         "https://smartapply.indeed.com/beta/indeedapply/form/contact-info-module",
     )
 
-    application_page, error = runner._open_smart_apply(
+    application_page, error = runner._open_apply_destination(
         page,
         context,
         control_timeout_ms=1_000,
@@ -750,7 +750,7 @@ def test_open_smart_apply_waits_for_delayed_visible_apply_control():
     assert page.waited_ms == 500
 
 
-def test_open_smart_apply_waits_for_about_blank_popup_navigation():
+def test_open_apply_destination_waits_for_about_blank_popup_navigation():
     listing_page = _ApplyPage(url="https://au.indeed.com/viewjob?jk=job")
     popup = SimpleNamespace(url="about:blank")
     context = SimpleNamespace(pages=[listing_page])
@@ -768,7 +768,7 @@ def test_open_smart_apply_waits_for_about_blank_popup_navigation():
     listing_page.on_click = open_popup
     listing_page.on_wait = navigate_popup
 
-    application_page, error = runner._open_smart_apply(
+    application_page, error = runner._open_apply_destination(
         listing_page,
         context,
         control_timeout_ms=0,
@@ -782,13 +782,13 @@ def test_open_smart_apply_waits_for_about_blank_popup_navigation():
     assert listing_page.waited_ms == 500
 
 
-def test_open_smart_apply_returns_external_company_site_for_human_intervention():
+def test_open_apply_destination_returns_external_company_site_for_human_intervention():
     listing_page = _ApplyPage(url="https://ca.indeed.com/viewjob?jk=job")
     popup = SimpleNamespace(url="https://careers.example.com/jobs/backend-engineer?token=secret")
     context = SimpleNamespace(pages=[listing_page])
     listing_page.on_click = lambda: context.pages.append(popup)
 
-    application_page, error = runner._open_smart_apply(
+    application_page, error = runner._open_apply_destination(
         listing_page,
         context,
         control_timeout_ms=0,
@@ -821,7 +821,7 @@ def test_company_site_handoff_is_grouped_and_kept_open(monkeypatch):
 
     outcome = runner._retire_if_terminal(
         page,
-        runner._queue_company_site_handoff(page, job, _Queue()),
+        runner._queue_company_site_handoff(page, job, _Queue(), goal_id="goal-1"),
     )
 
     assert outcome.status == BatchApplicationStatus.HUMAN_HANDOFF
@@ -829,17 +829,21 @@ def test_company_site_handoff_is_grouped_and_kept_open(monkeypatch):
     assert captured["result"].reason == "apply_on_company_site"
     assert captured["group"].value == "human_intervention"
     assert captured["browser_target_id"] == "external-target"
+    assert captured["task_id"] == "job"
+    assert captured["company"] == "Company"
+    assert captured["job_title"] == "Backend Engineer"
+    assert captured["goal_id"] == "goal-1"
     assert page.closed is False
 
 
-def test_open_smart_apply_does_not_click_when_control_never_becomes_visible():
+def test_open_apply_destination_does_not_click_when_control_never_becomes_visible():
     page = _ApplyPage(
         url="https://ca.indeed.com/viewjob?jk=job",
         control_visible_after_ms=2_000,
     )
     context = SimpleNamespace(pages=[page])
 
-    application_page, error = runner._open_smart_apply(
+    application_page, error = runner._open_apply_destination(
         page,
         context,
         control_timeout_ms=1_000,

@@ -119,10 +119,20 @@ def test_queue_groups_company_site_apply_as_human_intervention(tmp_path):
         ),
         browser_target_id="company-site-target",
         group=VerificationQueueGroup.HUMAN_INTERVENTION,
+        task_id="job-1",
+        company="Company",
+        job_title="Backend Engineer",
+        goal_id="goal-1",
+        resume_file="software-systems.pdf",
     )
 
     assert queued.group == VerificationQueueGroup.HUMAN_INTERVENTION
     assert queue.pending()[0].reason == "apply_on_company_site"
+    assert queued.task_id == "job-1"
+    assert queued.company == "Company"
+    assert queued.job_title == "Backend Engineer"
+    assert queued.goal_id == "goal-1"
+    assert queued.resume_file == "software-systems.pdf"
     assert "secret" not in queue.path.read_text(encoding="utf-8")
 
 

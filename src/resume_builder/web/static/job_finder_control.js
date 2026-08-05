@@ -723,6 +723,9 @@
     const body = element("div");
     body.append(element("h3", "", item.application_reference || "Application"));
     body.append(element("p", "", item.instruction || item.reason));
+    if (item.action === "external_application" && item.domain) {
+      body.append(element("p", "detail", `Destination: ${item.domain}`));
+    }
     appendResumeTag(body, item.resume_file);
     if (item.question_labels?.length) {
       const list = element("ul", "question-list");
@@ -738,7 +741,24 @@
     recheck.type = "button";
     recheck.disabled = !item.can_focus;
     recheck.addEventListener("click", () => interventionAction(item.id, "recheck"));
-    actions.append(focus, recheck);
+    actions.append(focus);
+    if (item.action === "external_application") {
+      const confirm = element("button", "button", "Confirm submitted");
+      confirm.type = "button";
+      confirm.disabled = !item.company || !item.job_title;
+      confirm.addEventListener("click", async () => {
+        const accepted = window.confirm(
+          `Confirm that you submitted the application for ${item.company} — ${item.job_title}?`,
+        );
+        if (!accepted) return;
+        try {
+          await post(`/api/job-finder/interventions/${encodeURIComponent(item.id)}/confirm-submitted`);
+          showToast("External application confirmed.");
+          refresh();
+        } catch (error) { showToast(error.message); }
+      });
+      actions.append(confirm);
+    } else actions.append(recheck);
     card.append(body, actions);
     return card;
   }

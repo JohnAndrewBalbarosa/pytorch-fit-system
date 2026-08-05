@@ -23,6 +23,31 @@ export function countOpenPageTargets(targetInfos) {
     : 0;
 }
 
+export function isIndeedOwnedHost(value) {
+  const host = String(value ?? "").trim().toLowerCase();
+  return host === "indeed.com" || host.endsWith(".indeed.com");
+}
+
+export function classifyApplyDestination(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return { kind: "pending", reason: "destination_not_http" };
+  }
+  if (!new Set(["http:", "https:"]).has(url.protocol)) {
+    return { kind: "pending", reason: "destination_not_http" };
+  }
+  const host = url.hostname.toLowerCase();
+  if (host === "smartapply.indeed.com") {
+    return { kind: "indeed_smart_apply", host };
+  }
+  if (isIndeedOwnedHost(host)) {
+    return { kind: "pending", reason: "indeed_navigation_in_progress", host };
+  }
+  return { kind: "external_company_site", host };
+}
+
 export function sanitizeSourceUrl(value) {
   const url = new URL(value);
   return `${url.protocol}//${url.host}${url.pathname}`;
@@ -47,37 +72,19 @@ export function isExactIndeedConfirmation(snapshot) {
 
 export function applyTriggerDecision({
   eventKind,
-  snapshot,
   enabled = false,
-  alreadyTriggered = false,
-  openPageCount = 0,
-  maxTabs = 6,
+  mapped = false,
 }) {
   if (!enabled) {
     return { trigger: false, reason: "automatic_apply_disabled" };
   }
-  if (!["click", "focus"].includes(eventKind)) {
-    return { trigger: false, reason: "event_not_user_navigation" };
+  if (eventKind !== "apply_click") {
+    return { trigger: false, reason: "event_not_verified_apply_click" };
   }
-  if (snapshot?.accessBlocked) {
-    return { trigger: false, reason: "access_blocked" };
-  }
-  if (!snapshot?.applyControl?.kind) {
-    return { trigger: false, reason: "no_visible_apply_control" };
-  }
-  if (alreadyTriggered) {
-    return { trigger: false, reason: "already_triggered" };
-  }
-  if (openPageCount >= maxTabs) {
-    return { trigger: false, reason: "tab_limit_reached" };
-  }
+  if (!mapped) return { trigger: false, reason: "apply_click_unmapped" };
   return {
     trigger: true,
-    reason: "visible_apply_control",
-    route:
-      snapshot.applyControl.kind === "company_site"
-        ? "human_intervention"
-        : "indeed_automation",
+    reason: "verified_apply_click",
   };
 }
 

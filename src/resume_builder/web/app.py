@@ -52,6 +52,7 @@ from .mock_data import PROTOTYPE_DATA
 from .job_scraping_demo import current_session_artifact
 from .job_finder_control import (
     capture_target_preview,
+    confirm_external_intervention,
     control_state as job_finder_control_state,
     disconnect_provider as disconnect_job_finder_provider,
     focus_intervention,
@@ -319,6 +320,16 @@ def api_release_job_finder_item(goal_id: str, task_id: str):
     except KeyError:
         return JSONResponse({"error": "Unknown application goal item."}, status_code=404)
     return {**goal.model_dump(mode="json"), "remaining": goal.remaining}
+
+
+@app.post("/api/job-finder/interventions/{entry_id}/confirm-submitted")
+def api_confirm_external_intervention(entry_id: str):
+    try:
+        return confirm_external_intervention(entry_id)
+    except KeyError:
+        return JSONResponse({"error": "Unknown intervention."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
 
 
 @app.post("/api/job-finder/development-questions/answers")

@@ -14,6 +14,8 @@ import requests
 
 from ..job_application import (
     ApplicationProfileStore,
+    ApplicationSubmissionHistory,
+    ConfirmationSource,
     DevelopmentQuestionBridge,
     HumanVerificationQueue,
     InterventionAction,
@@ -403,7 +405,8 @@ def control_state() -> dict[str, Any]:
     resume_by_task, resume_by_reference = _resume_lookup()
     for item in pending:
         item["resume_file"] = resume_by_reference.get(
-            str(item.get("application_reference", "")), ""
+            str(item.get("application_reference", "")),
+            str(item.get("resume_file", "")),
         )
     for item in goal_items:
         reference = f"{item.get('company', '')} — {item.get('job_title', '')}"
@@ -531,6 +534,49 @@ def focus_intervention(entry_id: str) -> None:
     if not entry.browser_target_id:
         raise ValueError("intervention has no live browser target")
     focus_target(entry.browser_target_id)
+
+
+def confirm_external_intervention(entry_id: str) -> dict[str, Any]:
+    """Persist one explicit human confirmation and resolve its exact external handoff."""
+    queue = _queue()
+    entry = queue.get(entry_id)
+    if entry is None:
+        raise KeyError(entry_id)
+    if entry.action != InterventionAction.EXTERNAL_APPLICATION:
+        raise ValueError("only external applications can be manually confirmed here")
+    if not entry.company or not entry.job_title:
+        raise ValueError("external handoff has no structured company/job-title identity")
+
+    goal_id = entry.goal_id
+    if not goal_id and entry.task_id:
+        goal, items = _goal_state()
+        if any(str(item.get("task_id", "")) == entry.task_id for item in items):
+            goal_id = str(goal.get("id", ""))
+
+    if goal_id and entry.task_id:
+        from .job_finder_supervisor import confirm_item
+
+        confirm_item(goal_id, entry.task_id, source_url=entry.url)
+    else:
+        from datetime import datetime, timezone
+
+        ApplicationSubmissionHistory(DEFAULT_DATABASE).record_existing_submission(
+            company=entry.company,
+            job_title=entry.job_title,
+            applied_at=datetime.now(timezone.utc),
+            confirmation="explicit manual confirmation from local control center",
+            confirmation_source=ConfirmationSource.MANUAL,
+            source_url=entry.url,
+        )
+    resolved = queue.resolve(entry.id)
+    if resolved is None:
+        raise RuntimeError("submission was recorded but the intervention could not be resolved")
+    return {
+        "confirmed": True,
+        "entry_id": entry.id,
+        "goal_id": goal_id,
+        "task_id": entry.task_id,
+    }
 
 
 def open_browser_url(url: str) -> dict[str, str]:

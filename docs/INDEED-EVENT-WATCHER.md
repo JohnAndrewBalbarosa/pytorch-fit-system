@@ -8,19 +8,20 @@ The daemon learns exact job identity from a visible `au.indeed.com/viewjob` or
 `ca.indeed.com/viewjob` page and carries that identity across same-tab navigation or a popup.
 It reads visible labels (not raw descendant text) and rejects oversized or CSS-contaminated
 company/title snapshots, waiting for a clean rendered identity before binding the task.
-By default the watcher is confirmation-only: it never clicks Apply and never starts the Python
-application runner. When explicitly started with `--auto-open-apply`, a user click or focus on an
-exact mapped tab may trigger the behavior below. If it finds one
-visible, enabled `Apply with Indeed`, `Apply now`, or `Apply on company site` control, it clicks the
-control once. Indeed controls route into the active Indeed automation flow; company-site controls
-open the external tab for the `human_intervention` workflow. Mutation/input events still refresh
-confirmation state but never trigger Apply by themselves.
+By default the watcher is confirmation-only and never starts the Python application runner. When
+explicitly started with `--auto-open-apply`, it observes an actual user click on a visible, enabled
+`Apply with Indeed`, `Apply now`, or `Apply on company site` control. It does not synthesize a second
+click. Routing is based only on the resulting browser destination: `smartapply.indeed.com` enters
+the Indeed flow, while a settled non-Indeed domain is queued as an `external_application` under
+`human_intervention`. Focus, mutation, input, and unrelated page clicks never trigger this flow.
+External pages are not parsed or filled with Indeed selectors.
 
-Apply triggering is bounded by `--max-tabs` (default `6`). When the attached page count reaches the
-limit, the watcher logs `apply_deferred_resource_limit` and does not open another application tab.
-The decision queries Chrome's current page targets instead of trusting cached attachment events, so
-closed search tabs release capacity immediately.
-The per-target URL/control key prevents repeated clicks during event bursts.
+The watcher never blocks or repeats the user's click. `--max-tabs` (default `6`) remains the ceiling
+passed to the deterministic runner for automation-owned pages; it does not close a user-opened
+external tab.
+The source target/opener relationship correlates same-tab and popup destinations to the exact job.
+Transient `about:blank` and redirect URLs are allowed to settle before classification, and queue
+identity keeps repeated observations idempotent.
 
 ## Automatic continuation after human verification
 

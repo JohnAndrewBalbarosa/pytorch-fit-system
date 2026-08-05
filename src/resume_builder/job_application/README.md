@@ -325,6 +325,9 @@ the live browser-context page count; work is deferred when the tab ceiling has b
 Listings whose **Apply on company site** control opens an external application are not automated.
 The external tab stays open and is added to the verification queue with
 `group=human_intervention` and `reason=apply_on_company_site` for manual completion.
+The local control center groups these as **External applications**, focuses the exact browser tab,
+and records a submission only after the human explicitly chooses **Confirm submitted**. Destination
+navigation alone is never treated as submission proof.
 For Indeed's “Which location are you applying for?” question, the runner reads the exact location
 from the current Smart Apply job header and validates that value against the live select options;
 it never reuses a fixed city from another job.

@@ -68,6 +68,11 @@ class VerificationQueueEntry(BaseModel):
     group: VerificationQueueGroup = VerificationQueueGroup.ACCESS_VERIFICATION
     action: InterventionAction = InterventionAction.OTHER
     question_labels: list[str] = Field(default_factory=list)
+    task_id: str = ""
+    company: str = ""
+    job_title: str = ""
+    goal_id: str = ""
+    resume_file: str = ""
 
     @model_validator(mode="before")
     @classmethod
@@ -117,6 +122,11 @@ class HumanVerificationQueue:
         result: AccessGateResult,
         browser_target_id: str = "",
         group: VerificationQueueGroup = VerificationQueueGroup.ACCESS_VERIFICATION,
+        task_id: str = "",
+        company: str = "",
+        job_title: str = "",
+        goal_id: str = "",
+        resume_file: str = "",
     ) -> VerificationQueueEntry:
         if not result.blocked:
             raise ValueError("only human-required access results may be queued")
@@ -126,6 +136,11 @@ class HumanVerificationQueue:
             reason=result.reason,
             browser_target_id=browser_target_id,
             group=group,
+            task_id=task_id,
+            company=company,
+            job_title=job_title,
+            goal_id=goal_id,
+            resume_file=resume_file,
         )
 
     def enqueue_handoff(
@@ -138,6 +153,11 @@ class HumanVerificationQueue:
         group: VerificationQueueGroup = VerificationQueueGroup.HUMAN_INTERVENTION,
         action: InterventionAction | None = None,
         question_labels: list[str] | None = None,
+        task_id: str = "",
+        company: str = "",
+        job_title: str = "",
+        goal_id: str = "",
+        resume_file: str = "",
     ) -> VerificationQueueEntry:
         """Queue a non-access human handoff without pretending it is an access blocker."""
         with _QUEUE_LOCK:
@@ -177,6 +197,19 @@ class HumanVerificationQueue:
                     for label in (question_labels or [])[:12]
                     if redact(label, limit=240)
                 ],
+                task_id=redact(task_id, limit=160)
+                or (str(existing.get("task_id", "")) if existing else ""),
+                company=redact(company, limit=160)
+                or (str(existing.get("company", "")) if existing else ""),
+                job_title=redact(job_title, limit=200)
+                or (str(existing.get("job_title", "")) if existing else ""),
+                goal_id=redact(goal_id, limit=160)
+                or (str(existing.get("goal_id", "")) if existing else ""),
+                resume_file=(
+                    Path(resume_file).name
+                    if resume_file
+                    else (str(existing.get("resume_file", "")) if existing else "")
+                ),
             )
             payload[entry_id] = entry.model_dump(mode="json")
             self._save(payload)
@@ -231,6 +264,12 @@ class HumanVerificationQueue:
                 ),
                 key=lambda item: item.updated_at,
             )
+
+    def get(self, entry_id: str) -> VerificationQueueEntry | None:
+        """Return one queue entry regardless of whether it is pending or resolved."""
+        with _QUEUE_LOCK:
+            existing = self._load().get(entry_id)
+        return VerificationQueueEntry.model_validate(existing) if existing else None
 
     @staticmethod
     def _entry_id(

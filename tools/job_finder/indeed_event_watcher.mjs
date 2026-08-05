@@ -9,11 +9,12 @@ import {
   SubmissionStore,
   applyTriggerDecision,
   automationResumeDecision,
+  classifyApplyDestination,
   cleanListingIdentity,
-  countOpenPageTargets,
   humanChangeRetryDecision,
   isExactIndeedConfirmation,
 } from "./indeed_event_watcher_core.mjs";
+import { enqueueExternalHandoff } from "./external_handoff_queue.mjs";
 
 const BINDING = "__pytorchFitIndeedEvent";
 const INJECT = `(() => {
@@ -22,7 +23,24 @@ const INJECT = `(() => {
   const emit = kind => {
     try { globalThis.${BINDING}(JSON.stringify({ kind })); } catch {}
   };
-  addEventListener("click", () => emit("click"), true);
+  const visible = element => {
+    const style = getComputedStyle(element);
+    const box = element.getBoundingClientRect();
+    return style.visibility !== "hidden" && style.display !== "none" && box.width > 0 && box.height > 0;
+  };
+  const applyControl = target => {
+    const element = target instanceof Element
+      ? target.closest("[data-testid=indeedApplyButton], button, a")
+      : null;
+    if (!element || !visible(element) || element.matches(":disabled, [aria-disabled=true]")) {
+      return null;
+    }
+    const label = (element.textContent || element.getAttribute("aria-label") || "")
+      .replace(/\\s+/g, " ")
+      .trim();
+    return /^(apply now|apply with indeed|apply on company site)$/i.test(label) ? element : null;
+  };
+  addEventListener("click", event => emit(applyControl(event.target) ? "apply_click" : "click"), true);
   addEventListener("change", () => emit("change"), true);
   addEventListener("input", () => emit("input"), true);
   addEventListener("focus", () => emit("focus"), true);
@@ -88,27 +106,6 @@ const SNAPSHOT = `(() => {
     applyControl: applyElement ? { kind: applyKind, text: applyText } : null
   };
 })()`;
-const CLICK_VISIBLE_APPLY = `(() => {
-  const visible = element => {
-    const style = getComputedStyle(element);
-    const box = element.getBoundingClientRect();
-    return style.visibility !== "hidden" && style.display !== "none" && box.width > 0 && box.height > 0;
-  };
-  const candidates = [...document.querySelectorAll(
-    "[data-testid=indeedApplyButton], button, a"
-  )];
-  const element = candidates.find(candidate => {
-    if (!visible(candidate) || candidate.matches(":disabled, [aria-disabled=true]")) return false;
-    const label = (candidate.textContent || candidate.getAttribute("aria-label") || "")
-      .replace(/\\s+/g, " ")
-      .trim();
-    return /^(apply now|apply with indeed|apply on company site)$/i.test(label);
-  });
-  if (!element) return false;
-  element.click();
-  return true;
-})()`;
-
 function parseArgs(argv) {
   const values = {
     cdpUrl: "http://127.0.0.1:9222",
@@ -303,12 +300,13 @@ class IndeedEventWatcher {
     this.sessions = new Map();
     this.targetTasks = new Map();
     this.confirmedTargets = new Set();
-    this.triggeredApplyControls = new Set();
     this.manifestTasks = [];
     this.consumedManifestFallbacks = new Set();
     this.automationStates = new Map();
     this.activeAutomationTargetId = "";
     this.pendingAutomationTargets = new Set();
+    this.applyTransitions = new Map();
+    this.destinationTimers = new Map();
     this.stateWrite = Promise.resolve();
   }
 
@@ -408,6 +406,9 @@ class IndeedEventWatcher {
               reason = JSON.parse(message.params.payload).kind || reason;
             } catch {}
           }
+          if (reason === "apply_click") {
+            this.recordApplyClick(message.sessionId);
+          }
           this.schedule(message.sessionId, reason);
         }
       } else if (message.method === "Target.detachedFromTarget") {
@@ -421,6 +422,7 @@ class IndeedEventWatcher {
         this.targetTasks.delete(message.params.targetId);
         this.automationStates.delete(message.params.targetId);
         this.pendingAutomationTargets.delete(message.params.targetId);
+        this.clearApplyTransition(message.params.targetId);
       }
     } catch (error) {
       log("event_error", { error: error.name });
@@ -436,6 +438,12 @@ class IndeedEventWatcher {
     if (!this.targetTasks.has(targetInfo.targetId) && targetInfo.openerId) {
       const openerTask = this.targetTasks.get(targetInfo.openerId);
       if (openerTask) await this.bindTask(targetInfo.targetId, openerTask);
+    }
+    if (targetInfo.openerId && this.applyTransitions.has(targetInfo.openerId)) {
+      const transition = this.applyTransitions.get(targetInfo.openerId);
+      transition.targetIds.add(targetInfo.targetId);
+      transition.ambiguous = transition.targetIds.size > 2;
+      this.applyTransitions.set(targetInfo.targetId, transition);
     }
     await Promise.all([
       this.cdp.send("Page.enable", {}, sessionId),
@@ -519,6 +527,41 @@ class IndeedEventWatcher {
       }
     }
     const mappedTask = this.targetTasks.get(session.targetId);
+    const transition = this.applyTransitions.get(session.targetId);
+    if (transition) {
+      const destination = classifyApplyDestination(snapshot.href);
+      if (destination.kind === "external_company_site") {
+        if (reason !== "external_destination_settled") {
+          this.armDestinationSettlement(sessionId, session.targetId);
+          return;
+        }
+        if (transition.ambiguous) {
+          log("apply_destination_ambiguous", {
+            targetId: session.targetId,
+            taskId: transition.task.task_id,
+            candidateTargetCount: transition.targetIds.size,
+          });
+        } else if (!transition.handled) {
+          transition.handled = true;
+          const entry = await enqueueExternalHandoff(
+            this.options.queue,
+            transition.task,
+            { url: snapshot.href, targetId: session.targetId },
+          );
+          log("external_application_queued", {
+            targetId: session.targetId,
+            taskId: transition.task.task_id,
+            domain: entry.domain,
+            queueEntryId: entry.id,
+          });
+        }
+        this.clearApplyTransition(session.targetId);
+        return;
+      }
+      if (destination.kind === "indeed_smart_apply") {
+        this.clearApplyTransition(session.targetId);
+      }
+    }
     const automationState = this.automationStates.get(session.targetId) ?? {
       running: false,
       handledRouteKey: "",
@@ -552,42 +595,6 @@ class IndeedEventWatcher {
         resumeDecision.routeKey,
       );
     }
-    const applyKey = `${session.targetId}\n${snapshot.href}\n${snapshot.applyControl?.text ?? ""}`;
-    let openPageCount = this.sessions.size;
-    try {
-      const { targetInfos } = await this.cdp.send("Target.getTargets");
-      openPageCount = countOpenPageTargets(targetInfos);
-    } catch {}
-    const applyDecision = applyTriggerDecision({
-      eventKind: reason,
-      snapshot,
-      enabled: this.options.autoOpenApply,
-      alreadyTriggered: this.triggeredApplyControls.has(applyKey),
-      openPageCount,
-      maxTabs: this.options.maxTabs,
-    });
-    if (applyDecision.trigger && this.targetTasks.has(session.targetId)) {
-      this.triggeredApplyControls.add(applyKey);
-      const clicked = await this.cdp.send(
-        "Runtime.evaluate",
-        { expression: CLICK_VISIBLE_APPLY, returnByValue: true },
-        sessionId,
-      );
-      log("apply_control_triggered", {
-        targetId: session.targetId,
-        taskId: this.targetTasks.get(session.targetId).task_id,
-        route: applyDecision.route,
-        clicked: clicked.result?.value === true,
-        openPageCount,
-        maxTabs: this.options.maxTabs,
-      });
-    } else if (applyDecision.reason === "tab_limit_reached") {
-      log("apply_deferred_resource_limit", {
-        targetId: session.targetId,
-        openPageCount,
-        maxTabs: this.options.maxTabs,
-      });
-    }
     if (!isExactIndeedConfirmation(snapshot)) return;
     if (this.confirmedTargets.has(session.targetId)) return;
     const task = this.targetTasks.get(session.targetId);
@@ -604,6 +611,76 @@ class IndeedEventWatcher {
       databaseResult: result.status,
       applicationId: result.applicationId,
     });
+  }
+
+  recordApplyClick(sessionId) {
+    const session = this.sessions.get(sessionId);
+    const task = session ? this.targetTasks.get(session.targetId) : null;
+    const decision = applyTriggerDecision({
+      eventKind: "apply_click",
+      enabled: this.options.autoOpenApply,
+      mapped: Boolean(session && task),
+    });
+    if (!decision.trigger) {
+      if (decision.reason !== "automatic_apply_disabled") {
+        log("apply_click_unmapped", { targetId: session?.targetId ?? "" });
+      }
+      return;
+    }
+    this.clearApplyTransition(session.targetId);
+    const transition = {
+      sourceTargetId: session.targetId,
+      task,
+      handled: false,
+      ambiguous: false,
+      targetIds: new Set([session.targetId]),
+      expires: setTimeout(() => {
+        if (!transition.handled) {
+          log("apply_destination_ambiguous", {
+            targetId: session.targetId,
+            taskId: task.task_id,
+          });
+        }
+        this.clearApplyTransition(session.targetId);
+      }, 15_000),
+    };
+    this.applyTransitions.set(session.targetId, transition);
+    for (const child of this.sessions.values()) {
+      if (child.openerId === session.targetId) {
+        transition.targetIds.add(child.targetId);
+        this.applyTransitions.set(child.targetId, transition);
+      }
+    }
+    transition.ambiguous = transition.targetIds.size > 2;
+    log("verified_apply_click_observed", {
+      targetId: session.targetId,
+      taskId: task.task_id,
+    });
+  }
+
+  armDestinationSettlement(sessionId, targetId) {
+    const current = this.destinationTimers.get(targetId);
+    if (current) clearTimeout(current);
+    const timer = setTimeout(() => {
+      this.destinationTimers.delete(targetId);
+      this.schedule(sessionId, "external_destination_settled");
+    }, 1_500);
+    this.destinationTimers.set(targetId, timer);
+  }
+
+  clearApplyTransition(targetId) {
+    const transition = this.applyTransitions.get(targetId);
+    if (!transition) return;
+    clearTimeout(transition.expires);
+    for (const [candidateId, candidate] of this.applyTransitions.entries()) {
+      if (candidate === transition) this.applyTransitions.delete(candidateId);
+    }
+    for (const [candidateId, timer] of this.destinationTimers.entries()) {
+      if (candidateId === targetId || !this.applyTransitions.has(candidateId)) {
+        clearTimeout(timer);
+        this.destinationTimers.delete(candidateId);
+      }
+    }
   }
 
   async resumeAutomation(targetId, task, routeKey) {
