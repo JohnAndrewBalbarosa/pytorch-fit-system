@@ -1608,6 +1608,22 @@
       "assignee": ""
     },
     {
+      "title": "JOB.15 Apply-on-company-site cross-domain manual handoff",
+      "stage": "In Review",
+      "role": "AI",
+      "group": "Intelligence",
+      "body": "🤖 AI-built this session — needs human review.\n✅ An actual verified Apply click is correlated to its settled same-tab or popup destination. Indeed Smart Apply remains on the deterministic Indeed path; a non-Indeed domain never uses Indeed selectors and is queued as an external_application human handoff.\n✅ The control center shows the external destination, focuses the exact browser tab, and records submission only after explicit Confirm submitted. URLs are sanitized and confirmation is idempotent.\nWhere: tools/job_finder/indeed_event_watcher.mjs, src/resume_builder/job_application/access_verification.py, src/resume_builder/web/job_finder_control.py.\nTests: 755 passed, 2 platform skips; 14 Node tests passed. Commit: 2c455a0.",
+      "start": "2026-08-05",
+      "target": "2026-08-05",
+      "department": "AI & ML",
+      "hitl": "Yes",
+      "worst_case": "2026-08-12",
+      "priority": "P1",
+      "estimate": 2,
+      "milestone": "Platform & Intelligence — Wk2",
+      "assignee": "JohnAndrewBalbarosa"
+    },
+    {
       "title": "SCRAPE.1 Profile Scraper Agent — agnostic design spec",
       "stage": "In Review",
       "role": "Architect",
