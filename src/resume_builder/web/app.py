@@ -61,7 +61,10 @@ from .job_finder_control import (
     start_session as start_job_site_session,
 )
 from .job_finder_supervisor import (
+    DEFAULT_ARTIFACT_DIR,
+    DEFAULT_DATABASE,
     confirm_item as confirm_job_finder_item,
+    goal_store as job_finder_goal_store,
     launch_goal as launch_job_finder_goal,
     release_item as release_job_finder_item,
     retry_resolved_intervention,
@@ -77,6 +80,7 @@ from .market_fit_control import (
     store as market_fit_store,
     update_campaign as update_market_fit_campaign,
 )
+from .onboarding import OnboardingService
 from ..job_finder import JobScrapeArtifactStore, render_rule_overlay
 from ..job_application import (
     DEFAULT_MONGODB_DATABASE,
@@ -114,20 +118,26 @@ app.mount("/artifacts", StaticFiles(directory=str(_ARTIFACT_ROOT)), name="artifa
 
 _LOGIN_JOBS: dict[str, dict[str, str]] = {}
 _LOGIN_JOBS_LOCK = threading.Lock()
+_AUTO_START_LOCK = threading.RLock()
 
 
-@app.get("/", response_class=HTMLResponse)
+def _onboarding_service() -> OnboardingService:
+    return OnboardingService(artifact_dir=DEFAULT_ARTIFACT_DIR, database=DEFAULT_DATABASE)
+
+
+@app.get("/")
+def main_entry() -> RedirectResponse:
+    state = _onboarding_service().state()
+    return RedirectResponse(state["next_url"], status_code=303)
+
+
+@app.get("/prototype", response_class=HTMLResponse)
 def prototype(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "prototype.html",
         {"data": PROTOTYPE_DATA},
     )
-
-
-@app.get("/prototype", response_class=HTMLResponse)
-def prototype_alias(request: Request) -> HTMLResponse:
-    return prototype(request)
 
 
 @app.get("/developer/scraping", response_class=HTMLResponse)
@@ -155,9 +165,93 @@ def developer_job_scraping(request: Request) -> HTMLResponse:
     )
 
 
-@app.get("/job-finder-control", response_class=HTMLResponse)
-def job_finder_control(request: Request) -> HTMLResponse:
+@app.get("/setup", response_class=HTMLResponse)
+def setup(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "onboarding.html",
+        {"initial_state": _onboarding_service().state()},
+    )
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard(request: Request):
+    if not _onboarding_service().state()["ready"]:
+        return RedirectResponse("/setup", status_code=303)
     return templates.TemplateResponse(request, "job_finder_control.html", {})
+
+
+@app.get("/job-finder-control")
+def job_finder_control() -> RedirectResponse:
+    return RedirectResponse("/dashboard", status_code=307)
+
+
+class OnboardingCorrectionRequest(BaseModel):
+    values: dict[str, str] = Field(default_factory=dict)
+
+
+class OnboardingPreferencesRequest(BaseModel):
+    target: int = Field(ge=1, le=100)
+    target_countries: list[str]
+    work_mode: str
+    employment_type: str
+    safe_auto_start: bool
+
+
+@app.get("/api/onboarding/state")
+def api_onboarding_state() -> dict:
+    return _onboarding_service().state()
+
+
+@app.post("/api/onboarding/corrections/{field}")
+def api_onboarding_correction(field: str, request: OnboardingCorrectionRequest):
+    try:
+        return _onboarding_service().save_correction(field, request.values)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
+@app.put("/api/onboarding/job-preferences")
+def api_onboarding_preferences(request: OnboardingPreferencesRequest):
+    try:
+        return _onboarding_service().save_preferences(**request.model_dump())
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
+@app.post("/api/job-finder/auto-start")
+def api_job_finder_auto_start():
+    with _AUTO_START_LOCK:
+        service = _onboarding_service()
+        onboarding = service.state()
+        if not onboarding["ready"]:
+            return JSONResponse({"error": "Onboarding is not ready."}, status_code=409)
+        preferences = onboarding.get("preferences") or {}
+        if not preferences.get("safe_auto_start"):
+            return {"started": False, "reason": "safe auto-start is disabled"}
+        sessions = job_finder_control_state().get("sessions", {})
+        indeed = sessions.get("job_sites", {}).get("indeed", {})
+        if not indeed.get("connected"):
+            return {"started": False, "reason": "verified Indeed session is not connected"}
+        active = job_finder_goal_store().active()
+        if active is not None:
+            return {"started": False, "reason": "goal already active", "goal_id": active.id}
+        activation_key = str(onboarding["activation_key"])
+        prior_goal_id = str(onboarding.get("auto_started_goal_id", ""))
+        if prior_goal_id:
+            return {
+                "started": False,
+                "reason": "this onboarding revision already started a goal",
+                "goal_id": prior_goal_id,
+            }
+        goal = create_job_finder_goal(
+            target=int(preferences["target"]),
+            target_countries=list(preferences["target_countries"]),
+            work_mode=str(preferences["work_mode"]),
+            employment_type=str(preferences["employment_type"]),
+        )
+        service.mark_auto_started(activation_key, goal.id)
+        return {"started": True, "goal_id": goal.id, "mode": "safe_draft_only"}
 
 
 @app.get("/api/job-finder/control-state")
@@ -587,6 +681,7 @@ def disconnect_social(vendor: str) -> dict[str, object]:
 
 
 @app.get("/build-form", response_class=HTMLResponse)
+@app.get("/developer/resume-builder", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
     settings = get_settings()
     roles = StaticRolePicker(settings.roles_path).list_available()

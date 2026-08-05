@@ -679,6 +679,25 @@ def _matching_existing_page(
     return None, False
 
 
+def _application_permissions(
+    args: argparse.Namespace,
+) -> tuple[ApplicationPermissionPolicy, SmartApplyApprovals]:
+    safe_draft_only = bool(getattr(args, "safe_draft_only", False))
+    return (
+        ApplicationPermissionPolicy(
+            autonomous_draft_writes=True,
+            autonomous_sensitive_writes=not safe_draft_only,
+            autonomous_submit=getattr(args, "autonomous_submit", False),
+            allowed_domains={"smartapply.indeed.com"},
+        ),
+        SmartApplyApprovals(
+            resume_upload=not safe_draft_only,
+            resume_continue=not safe_draft_only,
+            final_submit=getattr(args, "autonomous_submit", False),
+        ),
+    )
+
+
 def _run_application(
     application_page,
     job: IndeedUnattendedJob,
@@ -722,22 +741,27 @@ def _run_application(
         getattr(args, "phone_country_iso", "")
         or (identity.country_iso if identity else "")
     )
-    policy = ApplicationPermissionPolicy(
-        autonomous_draft_writes=True,
-        autonomous_sensitive_writes=True,
-        autonomous_submit=getattr(args, "autonomous_submit", False),
-        allowed_domains={"smartapply.indeed.com"},
-    )
-    approvals = SmartApplyApprovals(
-        resume_upload=True,
-        resume_continue=True,
-        final_submit=getattr(args, "autonomous_submit", False),
-    )
+    policy, approvals = _application_permissions(args)
     result = None
     approved_questions = _load_approved_questions(args)
     for _ in range(8):
         question_plan = None
         if "/questions-module" in urlsplit(str(application_page.url)).path:
+            if bool(getattr(args, "safe_draft_only", False)):
+                observed_questions = observe_indeed_screening_questions(application_page)
+                queue.enqueue_handoff(
+                    application_reference=job.batch_task().application_reference,
+                    url=str(application_page.url),
+                    reason="safe_draft_questionnaire_gate",
+                    browser_target_id=_browser_target_id(application_page),
+                    action=InterventionAction.UNKNOWN_QUESTION,
+                    question_labels=[question.label for question in observed_questions],
+                )
+                return _outcome(
+                    job,
+                    BatchApplicationStatus.HUMAN_HANDOFF,
+                    "safe draft mode stops before questionnaires",
+                )
             question_plan = _adaptive_question_page_plan(
                 application_page,
                 job,
@@ -1235,6 +1259,14 @@ def _parser() -> argparse.ArgumentParser:
         help="Explicitly permit validated final Submit on smartapply.indeed.com for this batch.",
     )
     parser.add_argument(
+        "--safe-draft-only",
+        action="store_true",
+        help=(
+            "Allow read-only and nonsensitive draft-safe work, but stop before sensitive "
+            "writes, resume upload/Continue, Review, and Submit."
+        ),
+    )
+    parser.add_argument(
         "--verified-phone",
         default="",
         help=(
@@ -1300,6 +1332,8 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = _parser().parse_args()
+    if args.safe_draft_only and args.autonomous_submit:
+        raise SystemExit("--safe-draft-only cannot be combined with --autonomous-submit")
     if not 1 <= args.target_submissions <= 24:
         raise SystemExit("--target-submissions must be between 1 and 24")
     if not 1 <= args.max_parallel <= 5:

@@ -31,6 +31,16 @@ class StoredResumeRoute:
     is_default: bool = False
 
 
+@dataclass(frozen=True)
+class OnboardingPreferences:
+    target: int
+    target_countries: tuple[str, ...]
+    work_mode: str
+    employment_type: str
+    safe_auto_start: bool
+    updated_at: str
+
+
 class ApplicationProfileStore:
     """Persist structured user facts separately from resumes and browser state."""
 
@@ -169,6 +179,125 @@ class ApplicationProfileStore:
             for row in rows
         )
 
+    def save_onboarding_answer(self, field: str, value: dict[str, str]) -> None:
+        if field not in {"name", "country", "phone"}:
+            raise ValueError("unsupported onboarding field")
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO onboarding_answers (field, value_json, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(field) DO UPDATE SET
+                    value_json = excluded.value_json,
+                    updated_at = excluded.updated_at
+                """,
+                (field, json.dumps(value, ensure_ascii=False), _now()),
+            )
+
+    def onboarding_answers(self) -> dict[str, dict[str, str]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT field, value_json FROM onboarding_answers ORDER BY field"
+            ).fetchall()
+        answers: dict[str, dict[str, str]] = {}
+        for row in rows:
+            try:
+                value = json.loads(row["value_json"])
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if isinstance(value, dict):
+                answers[row["field"]] = {
+                    str(key): str(item) for key, item in value.items()
+                }
+        return answers
+
+    def clear_onboarding_answers(self) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM onboarding_answers")
+
+    def save_onboarding_preferences(
+        self,
+        *,
+        target: int,
+        target_countries: list[str] | tuple[str, ...],
+        work_mode: str,
+        employment_type: str,
+        safe_auto_start: bool,
+    ) -> OnboardingPreferences:
+        countries = tuple(dict.fromkeys(item.strip() for item in target_countries if item.strip()))
+        if target < 1 or target > 100:
+            raise ValueError("application target must be between 1 and 100")
+        if not countries or any(item not in {"Australia", "Canada"} for item in countries):
+            raise ValueError("select Australia and/or Canada")
+        if work_mode != "remote":
+            raise ValueError("Indeed v1 requires remote work mode")
+        if employment_type != "contract":
+            raise ValueError("Indeed v1 requires contract employment type")
+        updated_at = _now()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO onboarding_preferences (
+                    singleton_id, target, target_countries_json, work_mode,
+                    employment_type, safe_auto_start, updated_at
+                ) VALUES (1, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(singleton_id) DO UPDATE SET
+                    target = excluded.target,
+                    target_countries_json = excluded.target_countries_json,
+                    work_mode = excluded.work_mode,
+                    employment_type = excluded.employment_type,
+                    safe_auto_start = excluded.safe_auto_start,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    target,
+                    json.dumps(countries, ensure_ascii=False),
+                    work_mode,
+                    employment_type,
+                    int(safe_auto_start),
+                    updated_at,
+                ),
+            )
+        saved = self.onboarding_preferences()
+        if saved is None:  # pragma: no cover - SQLite write/read invariant
+            raise RuntimeError("onboarding preferences were not persisted")
+        return saved
+
+    def onboarding_preferences(self) -> OnboardingPreferences | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM onboarding_preferences WHERE singleton_id = 1"
+            ).fetchone()
+        if row is None:
+            return None
+        return OnboardingPreferences(
+            target=int(row["target"]),
+            target_countries=tuple(json.loads(row["target_countries_json"])),
+            work_mode=row["work_mode"],
+            employment_type=row["employment_type"],
+            safe_auto_start=bool(row["safe_auto_start"]),
+            updated_at=row["updated_at"],
+        )
+
+    def auto_started_goal(self, activation_key: str) -> str:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT goal_id FROM onboarding_auto_starts WHERE activation_key = ?",
+                (activation_key,),
+            ).fetchone()
+        return str(row["goal_id"]) if row else ""
+
+    def mark_auto_started(self, activation_key: str, goal_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO onboarding_auto_starts (
+                    activation_key, goal_id, created_at
+                ) VALUES (?, ?, ?)
+                """,
+                (activation_key, goal_id, _now()),
+            )
+
     def _initialize(self) -> None:
         with self._connect() as connection:
             connection.executescript(
@@ -192,6 +321,25 @@ class ApplicationProfileStore:
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_resume_routes_one_default
                     ON resume_routes(is_default) WHERE is_default = 1 AND enabled = 1;
+                CREATE TABLE IF NOT EXISTS onboarding_answers (
+                    field TEXT PRIMARY KEY,
+                    value_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS onboarding_preferences (
+                    singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                    target INTEGER NOT NULL CHECK (target BETWEEN 1 AND 100),
+                    target_countries_json TEXT NOT NULL,
+                    work_mode TEXT NOT NULL,
+                    employment_type TEXT NOT NULL,
+                    safe_auto_start INTEGER NOT NULL CHECK (safe_auto_start IN (0, 1)),
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS onboarding_auto_starts (
+                    activation_key TEXT PRIMARY KEY,
+                    goal_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
 
@@ -234,3 +382,7 @@ class ApplicationProfileStore:
             phone_calling_code=calling_code,
             verified_phone=phone,
         )
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()

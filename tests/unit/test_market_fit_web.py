@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -17,7 +18,12 @@ from resume_builder.web.app import app
 from resume_builder.web import market_fit_control
 
 
-def test_job_finder_page_contains_market_fit_interview_workspace():
+def test_job_finder_page_contains_market_fit_interview_workspace(monkeypatch):
+    monkeypatch.setattr(
+        web_app,
+        "_onboarding_service",
+        lambda: SimpleNamespace(state=lambda: {"ready": True}),
+    )
     response = TestClient(app).get("/job-finder-control")
 
     assert response.status_code == 200

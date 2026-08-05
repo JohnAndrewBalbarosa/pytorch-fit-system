@@ -15,7 +15,7 @@ from resume_builder.web.cdo_advisor import (
 
 
 def test_sidebar_is_user_facing_spa_without_dev_or_auth_pages():
-    response = TestClient(app).get("/")
+    response = TestClient(app).get("/prototype")
 
     assert response.status_code == 200
     html = response.text
@@ -32,7 +32,7 @@ def test_sidebar_is_user_facing_spa_without_dev_or_auth_pages():
 
 
 def test_prototype_visualizes_full_scraping_flow():
-    response = TestClient(app).get("/")
+    response = TestClient(app).get("/prototype")
 
     assert response.status_code == 200
     html = response.text
@@ -97,7 +97,7 @@ def test_latest_job_scraping_api_returns_visualization_artifact(tmp_path, monkey
 
 
 def test_dashboard_renders_get_started_auth_controls():
-    response = TestClient(app).get("/")
+    response = TestClient(app).get("/prototype")
 
     assert response.status_code == 200
     html = response.text
@@ -109,7 +109,7 @@ def test_dashboard_renders_get_started_auth_controls():
 
 
 def test_resume_studio_has_preview_controls_and_generated_resume_mount():
-    response = TestClient(app).get("/")
+    response = TestClient(app).get("/prototype")
 
     assert response.status_code == 200
     html = response.text

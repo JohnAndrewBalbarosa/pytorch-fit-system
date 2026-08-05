@@ -57,6 +57,19 @@ def _outcome(job, status):
     return BatchApplicationOutcome(task=job.batch_task(), status=status)
 
 
+def test_safe_draft_only_disables_sensitive_writes_and_resume_approvals():
+    policy, approvals = runner._application_permissions(
+        SimpleNamespace(safe_draft_only=True, autonomous_submit=False)
+    )
+
+    assert policy.autonomous_draft_writes is True
+    assert policy.autonomous_sensitive_writes is False
+    assert policy.autonomous_submit is False
+    assert approvals.resume_upload is False
+    assert approvals.resume_continue is False
+    assert approvals.final_submit is False
+
+
 def test_submitted_goal_outcome_consumes_one_token(tmp_path):
     database = tmp_path / "history.sqlite3"
     store = ApplicationGoalStore(database)

@@ -82,3 +82,34 @@ def test_resume_route_rejects_paths_and_empty_terms(tmp_path: Path):
         store.replace_resume_route(filename="../resume.pdf", terms=["backend"])
     with pytest.raises(ValueError):
         store.replace_resume_route(filename="resume.pdf", terms=[])
+
+
+def test_onboarding_preferences_and_activation_are_durable(tmp_path: Path):
+    store = ApplicationProfileStore(tmp_path / "application.sqlite3")
+
+    preferences = store.save_onboarding_preferences(
+        target=3,
+        target_countries=["Australia", "Canada", "Australia"],
+        work_mode="remote",
+        employment_type="contract",
+        safe_auto_start=True,
+    )
+    store.mark_auto_started("revision-1", "goal-1")
+
+    assert preferences.target_countries == ("Australia", "Canada")
+    assert preferences.safe_auto_start is True
+    assert store.onboarding_preferences() == preferences
+    assert store.auto_started_goal("revision-1") == "goal-1"
+    assert store.auto_started_goal("revision-2") == ""
+
+
+def test_onboarding_answers_are_local_structured_staging(tmp_path: Path):
+    store = ApplicationProfileStore(tmp_path / "application.sqlite3")
+    store.save_onboarding_answer("name", {"first_name": "Ada", "last_name": "Lovelace"})
+
+    assert store.onboarding_answers() == {
+        "name": {"first_name": "Ada", "last_name": "Lovelace"}
+    }
+
+    store.clear_onboarding_answers()
+    assert store.onboarding_answers() == {}

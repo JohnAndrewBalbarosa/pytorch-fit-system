@@ -11,6 +11,7 @@ from .questionnaire_store import (
 )
 from .application_profile_store import (
     ApplicationProfileStore,
+    OnboardingPreferences,
     StoredResumeRoute,
     VerifiedApplicationIdentity,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "DEFAULT_MONGODB_DATABASE",
     "DEFAULT_MONGODB_URI",
     "MongoQuestionnaireRepository",
+    "OnboardingPreferences",
     "StoredResumeRoute",
     "VerifiedApplicationIdentity",
 ]

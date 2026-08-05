@@ -37,6 +37,8 @@
   let marketCampaign = null;
   let selectedMarketOpportunity = "";
   let marketSignature = "";
+  let autoStartInFlight = false;
+  let autoStartSettled = false;
   const autoRecheckedAt = new Map();
 
   document.querySelectorAll("[data-tab]").forEach((button) => {
@@ -82,6 +84,7 @@
       if (!response.ok) throw new Error(state.error || "Control state is unavailable.");
       render(state);
       await refreshMarketFit();
+      await maybeAutoStart(state);
       const connection = document.querySelector("[data-connection]");
       connection.classList.add("online");
       connection.lastChild.textContent = " Connected";
@@ -90,6 +93,27 @@
       connection.classList.remove("online");
       connection.lastChild.textContent = " Offline";
       showToast(error.message);
+    }
+  }
+
+  async function maybeAutoStart(state) {
+    const status = state.goal?.status || "";
+    const active = ["active", "waiting_for_human", "waiting_for_candidates"].includes(status);
+    if (active || !state.sessions?.job_sites?.indeed?.connected || autoStartInFlight || autoStartSettled) return;
+    autoStartInFlight = true;
+    try {
+      const result = await post("/api/job-finder/auto-start");
+      if (result.started) {
+        autoStartSettled = true;
+        showToast("Safe automation started from your verified setup.");
+        window.setTimeout(refresh, 250);
+      } else if (result.reason?.includes("already")) {
+        autoStartSettled = true;
+      }
+    } catch (error) {
+      if (!error.message.includes("Onboarding is not ready")) showToast(error.message);
+    } finally {
+      autoStartInFlight = false;
     }
   }
 

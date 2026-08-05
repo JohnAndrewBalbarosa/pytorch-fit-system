@@ -12,10 +12,16 @@ from resume_builder.job_application import (
     InterventionAction,
 )
 from resume_builder.web.app import app
+from resume_builder.web import app as web_app
 from resume_builder.web import job_finder_control
 
 
-def test_job_finder_control_page_is_standalone():
+def test_job_finder_control_page_is_standalone(monkeypatch):
+    monkeypatch.setattr(
+        web_app,
+        "_onboarding_service",
+        lambda: SimpleNamespace(state=lambda: {"ready": True}),
+    )
     response = TestClient(app).get("/job-finder-control")
 
     assert response.status_code == 200
