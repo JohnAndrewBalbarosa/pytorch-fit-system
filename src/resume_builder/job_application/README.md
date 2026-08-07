@@ -86,6 +86,19 @@ redacted confirmation and its source, plus an audit row for each safety decision
 ## Local Job Finder Control Center
 
 Start the FastAPI prototype and open `/job-finder-control` for the standalone browser companion.
+For the normal visible development workflow, start it with:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m resume_builder.web.dev_server 8000 --open-browser
+```
+
+`--open-browser` reuses the Chrome/CDP browser already listening on the configured loopback port. If
+none exists, it starts one persistent local profile and opens the control center there. Dashboard,
+sign-in, search, listing, application, and human-handoff pages then open as tabs in that same browser
+context; the automation does not launch a browser per job. Set `JOB_FINDER_CHROME_EXECUTABLE` only
+when Chrome or Chromium cannot be discovered, and `JOB_FINDER_CHROME_PROFILE` when the persistent
+profile needs a non-default location.
+
 The page first asks for the exact number of confirmed applications required. A durable SQLite goal
 ledger keeps separate `available`, `reserved at Review`, and `confirmed` counts. Confirmation is
 the only event that permanently reduces the remaining target; skips, failures, and human gates

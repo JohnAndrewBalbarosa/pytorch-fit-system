@@ -24,6 +24,7 @@ from ..job_application import (
 )
 from .auth import IdentityStore, auth_status, clear_social_session, provider_configuration_status
 from .job_finder_supervisor import DEFAULT_ARTIFACT_DIR, DEFAULT_DATABASE
+from .shared_browser import cdp_url, open_tab
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_QUEUE_PATH = REPO_ROOT / ".cache" / "application-verification-queue.json"
@@ -46,7 +47,7 @@ _PREVIEW_CACHE: dict[str, tuple[float, bytes]] = {}
 
 
 def _cdp_url() -> str:
-    return os.environ.get("RESUME_BUILD_PLAYWRIGHT_CDP_URL", "http://127.0.0.1:9222").rstrip("/")
+    return cdp_url()
 
 
 def _queue() -> HumanVerificationQueue:
@@ -580,10 +581,7 @@ def confirm_external_intervention(entry_id: str) -> dict[str, Any]:
 
 
 def open_browser_url(url: str) -> dict[str, str]:
-    response = requests.put(f"{_cdp_url()}/json/new?{quote(url, safe=':/')}", timeout=4)
-    response.raise_for_status()
-    payload = response.json()
-    return {"target_id": str(payload.get("id", "")), "url": str(payload.get("url", url))}
+    return open_tab(url)
 
 
 def start_session(provider: str) -> dict[str, str]:

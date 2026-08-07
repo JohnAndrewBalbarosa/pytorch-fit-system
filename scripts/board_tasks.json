@@ -1624,6 +1624,22 @@
       "assignee": "JohnAndrewBalbarosa"
     },
     {
+      "title": "JOB.16 Shared visible browser with tab-only job orchestration",
+      "stage": "In Review",
+      "role": "Architect",
+      "group": "Intelligence",
+      "body": "🤖 AI-built this session — needs human review.\n✅ The local control center now reuses one visible loopback Chrome/CDP browser. Dashboard, sign-in, search, listing, application, and handoff pages open as tabs in the same default browser context instead of launching a browser per workflow.\n✅ If no approved CDP browser exists, the explicit --open-browser development entrypoint starts one persistent local profile. Existing browser sessions are reused and automation remains bounded by the existing tab budget and human gates.\nWhere: src/resume_builder/web/shared_browser.py, src/resume_builder/web/dev_server.py, src/resume_builder/web/job_finder_control.py.\nTests: full Python regression, focused shared-browser tests, Node watcher tests, and live CDP tab verification.",
+      "start": "2026-08-07",
+      "target": "2026-08-07",
+      "department": "Platform Core",
+      "hitl": "Yes",
+      "worst_case": "2026-08-14",
+      "priority": "P1",
+      "estimate": 1,
+      "milestone": "Platform & Intelligence — Wk2",
+      "assignee": "JohnAndrewBalbarosa"
+    },
+    {
       "title": "SCRAPE.1 Profile Scraper Agent — agnostic design spec",
       "stage": "In Review",
       "role": "Architect",

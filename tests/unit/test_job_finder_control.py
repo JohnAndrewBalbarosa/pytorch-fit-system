@@ -146,6 +146,21 @@ def test_focus_target_uses_only_validated_cdp_target(monkeypatch):
     assert captured["url"].endswith("/json/activate/ABC_123")
 
 
+def test_open_browser_url_uses_shared_browser_tab(monkeypatch):
+    monkeypatch.setattr(
+        job_finder_control,
+        "open_tab",
+        lambda url: {"target_id": "SHARED_TAB", "url": url},
+    )
+
+    result = job_finder_control.open_browser_url("https://secure.indeed.com/auth")
+
+    assert result == {
+        "target_id": "SHARED_TAB",
+        "url": "https://secure.indeed.com/auth",
+    }
+
+
 def test_live_pages_expose_safe_path_and_preview_without_query(monkeypatch):
     monkeypatch.setattr(
         job_finder_control,
