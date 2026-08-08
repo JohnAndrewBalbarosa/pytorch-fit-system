@@ -166,7 +166,7 @@ def _record_goal_outcome(
         store.release(goal_id, task.task_id, state=state, detail=outcome.detail)
 
 
-def _check_access(page, job, queue):
+def _check_access(page, job, queue, *, goal_id: str = ""):
     reference = job.batch_task().application_reference
     access = check_access_gate(page)
     if not access.blocked:
@@ -192,6 +192,11 @@ def _check_access(page, job, queue):
             url=str(page.url),
             result=access,
             browser_target_id=target_id,
+            task_id=job.task_id,
+            company=job.company,
+            job_title=job.job_title,
+            goal_id=goal_id,
+            resume_file=job.resume_file,
         )
     return access
 
@@ -769,7 +774,8 @@ def _run_application(
     *,
     description: str,
 ) -> BatchApplicationOutcome:
-    application_access = _check_access(application_page, job, queue)
+    goal_id = str(getattr(args, "goal_id", "") or "")
+    application_access = _check_access(application_page, job, queue, goal_id=goal_id)
     if application_access.blocked:
         return _outcome(
             job,
@@ -816,6 +822,11 @@ def _run_application(
                     browser_target_id=_browser_target_id(application_page),
                     action=InterventionAction.UNKNOWN_QUESTION,
                     question_labels=[question.label for question in observed_questions],
+                    task_id=job.task_id,
+                    company=job.company,
+                    job_title=job.job_title,
+                    goal_id=goal_id,
+                    resume_file=resume_path.name,
                 )
                 return _outcome(
                     job,
@@ -844,6 +855,11 @@ def _run_application(
                         for question in observed_questions
                         if question.question_id in unresolved
                     ],
+                    task_id=job.task_id,
+                    company=job.company,
+                    job_title=job.job_title,
+                    goal_id=goal_id,
+                    resume_file=resume_path.name,
                 )
         else:
             queue.resolve_matching(
@@ -973,7 +989,12 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
                 )
             page = context.new_page()
             page.goto(job.listing_url, wait_until="domcontentloaded", timeout=30_000)
-        access = _check_access(page, job, queue)
+        access = _check_access(
+            page,
+            job,
+            queue,
+            goal_id=str(getattr(args, "goal_id", "") or ""),
+        )
         if access.blocked:
             return _outcome(
                 job,

@@ -475,8 +475,12 @@ def test_access_check_rebinds_stale_target_after_browser_restart(monkeypatch):
     monkeypatch.setattr(runner, "check_access_gate", lambda _page: blocked)
     monkeypatch.setattr(runner, "_browser_target_id", lambda _page: "restarted-target")
 
-    assert runner._check_access(page, job, queue) is blocked
+    assert runner._check_access(page, job, queue, goal_id="current-goal") is blocked
     assert queued[0]["browser_target_id"] == "restarted-target"
+    assert queued[0]["task_id"] == "job"
+    assert queued[0]["company"] == "Company"
+    assert queued[0]["job_title"] == "Backend Engineer"
+    assert queued[0]["goal_id"] == "current-goal"
 
 
 def test_qualification_evidence_includes_exact_remote_title():

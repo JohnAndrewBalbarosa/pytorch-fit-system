@@ -44,6 +44,7 @@ _WEBSITE_LOGOUT_URLS = {
 _SIGN_IN_URLS = {"indeed": "https://secure.indeed.com/auth"}
 _PREVIEW_LOCK = RLock()
 _PREVIEW_CACHE: dict[str, tuple[float, bytes]] = {}
+_CURRENT_GOAL_STATUSES = {"active", "waiting_for_human", "waiting_for_candidates"}
 
 
 def _cdp_url() -> str:
@@ -193,6 +194,77 @@ def _entry_payload(
             f"/api/job-finder/targets/{entry.browser_target_id}/preview" if target_is_live else ""
         ),
     }
+
+
+def _current_queue_entries(
+    entries: list[VerificationQueueEntry],
+    *,
+    live_target_ids: set[str],
+    goal: dict[str, Any],
+    goal_items: list[dict[str, Any]],
+) -> list[VerificationQueueEntry]:
+    """Keep only handoffs tied to the active plan or an actually open browser page."""
+    active_goal_id = (
+        str(goal.get("id", ""))
+        if str(goal.get("status", "")) in _CURRENT_GOAL_STATUSES
+        else ""
+    )
+    active_task_ids = {
+        str(item.get("task_id", ""))
+        for item in goal_items
+        if item.get("task_id")
+    }
+    active_references = {
+        f"{str(item.get('company', '')).strip()} — {str(item.get('job_title', '')).strip()}"
+        for item in goal_items
+        if item.get("company") or item.get("job_title")
+    }
+    current: list[VerificationQueueEntry] = []
+    for entry in entries:
+        target_is_live = bool(entry.browser_target_id) and entry.browser_target_id in live_target_ids
+        belongs_to_goal = bool(active_goal_id) and entry.goal_id == active_goal_id
+        legacy_goal_match = bool(active_goal_id) and not entry.goal_id and (
+            (bool(entry.task_id) and entry.task_id in active_task_ids)
+            or entry.application_reference in active_references
+        )
+        if target_is_live or belongs_to_goal or legacy_goal_match:
+            current.append(entry)
+    return current
+
+
+def _intervention_key(item: dict[str, Any]) -> str:
+    company = " ".join(str(item.get("company", "")).casefold().split())
+    title = " ".join(str(item.get("job_title", "")).casefold().split())
+    if company or title:
+        return f"reference:{company}—{title}"
+    reference = " ".join(str(item.get("application_reference", "")).casefold().split())
+    if reference:
+        return f"reference:{reference.replace(' — ', '—')}"
+    task_id = str(item.get("task_id", "")).strip()
+    if task_id:
+        return f"task:{task_id}"
+    return f"entry:{str(item.get('id', '')).strip()}"
+
+
+def _current_intervention_count(
+    interventions: list[dict[str, Any]],
+    goal: dict[str, Any],
+    goal_items: list[dict[str, Any]],
+) -> int:
+    if str(goal.get("status", "")) in _CURRENT_GOAL_STATUSES:
+        actionable_goal_items = [
+            item
+            for item in goal_items
+            if item.get("state") in {"reserved", "human_handoff"}
+        ]
+    else:
+        actionable_goal_items = []
+    return len(
+        {
+            _intervention_key(item)
+            for item in [*interventions, *actionable_goal_items]
+        }
+    )
 
 
 def _automatic_work(run: dict[str, Any]) -> list[dict[str, Any]]:
@@ -447,9 +519,15 @@ def control_state() -> dict[str, Any]:
     run = _latest_run()
     targets = _targets()
     live_target_ids = {str(target.get("id", "")) for target in targets}
-    pending_entries = _queue().pending()
-    pending = [_entry_payload(entry, live_target_ids=live_target_ids) for entry in pending_entries]
+    all_pending_entries = _queue().pending()
     goal_payload, goal_items = _goal_state()
+    pending_entries = _current_queue_entries(
+        all_pending_entries,
+        live_target_ids=live_target_ids,
+        goal=goal_payload,
+        goal_items=goal_items,
+    )
+    pending = [_entry_payload(entry, live_target_ids=live_target_ids) for entry in pending_entries]
     resume_by_task, resume_by_reference = _resume_lookup()
     for item in pending:
         item["resume_file"] = resume_by_reference.get(
@@ -466,7 +544,11 @@ def control_state() -> dict[str, Any]:
     }
     interventions = [
         *pending,
-        *_run_interventions(run, pending, suppressed_references),
+        *(
+            _run_interventions(run, pending, suppressed_references)
+            if run.get("status") == "running"
+            else []
+        ),
     ]
     automatic = _automatic_work(run)
     development_requests = DevelopmentQuestionBridge(DEFAULT_DEVELOPMENT_BRIDGE_ROOT).pending()
@@ -522,7 +604,11 @@ def control_state() -> dict[str, Any]:
         ],
         "counts": {
             "automatic": len(automatic),
-            "interventions": len(interventions),
+            "interventions": _current_intervention_count(
+                interventions,
+                goal_payload,
+                goal_items,
+            ),
         },
     }
 
