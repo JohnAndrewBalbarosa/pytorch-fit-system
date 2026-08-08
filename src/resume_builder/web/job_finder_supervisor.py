@@ -226,6 +226,15 @@ def release_item(goal_id: str, task_id: str) -> ApplicationGoal:
     return goal
 
 
+def approve_item_review(goal_id: str, task_id: str) -> ApplicationGoal:
+    store = goal_store()
+    store.approve_human_review(goal_id, task_id)
+    goal = store.set_status(goal_id, ApplicationGoalStatus.ACTIVE)
+    if not process_status(goal_id)["running"]:
+        launch_goal(goal_id)
+    return goal
+
+
 def retry_resolved_intervention(application_reference: str) -> str:
     """Return one cleared human-gated goal item to the deterministic replay queue."""
     store = goal_store()

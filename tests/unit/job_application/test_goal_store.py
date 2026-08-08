@@ -160,3 +160,37 @@ def test_retry_observation_does_not_erase_verified_salary_or_level(tmp_path):
     assert item.salary_band == SalaryBand.PHP_20K_40K
     assert item.salary_monthly_min_php == 30_000
     assert item.job_level.value == "junior"
+
+
+def test_control_center_review_approval_is_limited_to_non_access_evidence_gaps(tmp_path):
+    store = ApplicationGoalStore(tmp_path / "history.sqlite3")
+    goal = store.create(target=20)
+    store.observe(
+        goal.id,
+        task_id="salary-review",
+        site="indeed",
+        company="Example",
+        job_title="Data Analyst Intern",
+        state=GoalItemState.HUMAN_HANDOFF,
+        detail="salary review required: salary unavailable",
+        salary_band=SalaryBand.UNKNOWN,
+        job_level="intern",
+    )
+
+    approved = store.approve_human_review(goal.id, "salary-review")
+
+    assert approved.state == GoalItemState.OBSERVED
+    assert approved.human_review_approved is True
+    assert approved.counts_toward_target is False
+
+    store.observe(
+        goal.id,
+        task_id="captcha",
+        site="indeed",
+        company="Blocked",
+        job_title="Junior Developer",
+        state=GoalItemState.HUMAN_HANDOFF,
+        detail="access gate remains pending: verification_required",
+    )
+    with pytest.raises(ValueError, match="cannot be approved"):
+        store.approve_human_review(goal.id, "captcha")

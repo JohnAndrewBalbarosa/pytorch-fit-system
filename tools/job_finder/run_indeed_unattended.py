@@ -250,6 +250,20 @@ def _observe_job_evidence(args: argparse.Namespace, job: IndeedUnattendedJob) ->
     )
 
 
+def _human_review_approved(args: argparse.Namespace, job: IndeedUnattendedJob) -> bool:
+    goal_id = str(getattr(args, "goal_id", "") or "").strip()
+    if not goal_id:
+        return False
+    try:
+        return (
+            ApplicationGoalStore(Path(args.database))
+            .item(goal_id, job.task_id)
+            .human_review_approved
+        )
+    except KeyError:
+        return False
+
+
 def _tab_budget_available(context, args: argparse.Namespace) -> bool:
     max_tabs = int(getattr(args, "max_tabs", 0) or 0)
     baseline_tabs = int(getattr(args, "baseline_tabs", 0) or 0)
@@ -999,13 +1013,14 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
             }
         )
         _observe_job_evidence(args, job)
-        if not job.employment_type:
+        human_review_approved = _human_review_approved(args, job)
+        if not job.employment_type and not human_review_approved:
             return _outcome(
                 job,
                 BatchApplicationStatus.HUMAN_HANDOFF,
                 "employment-type review required: listing does not prove full-time, contract, or internship",
             )
-        if job.salary_band == SalaryBand.UNKNOWN:
+        if job.salary_band == SalaryBand.UNKNOWN and not human_review_approved:
             return _outcome(
                 job,
                 BatchApplicationStatus.HUMAN_HANDOFF,

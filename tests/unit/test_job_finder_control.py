@@ -275,6 +275,9 @@ def test_control_frontend_exposes_external_confirmation_action():
     assert '"pushState"' in response.text
     assert "popstate" in response.text
     assert "salary_target_mix" in response.text
+    assert "Looks right — continue safely" in response.text
+    assert "review-approve" in response.text
+    assert "Skip job" in response.text
 
 
 def test_unqueued_human_outcome_remains_visible_as_grouped_fallback():

@@ -332,7 +332,17 @@ def _goal_state() -> tuple[dict[str, Any], list[dict[str, Any]]]:
             "salary_analytics": salary_analytics,
             "job_level_counts": level_counts,
         },
-        [item.model_dump(mode="json") for item in items],
+        [
+            {
+                **item.model_dump(mode="json"),
+                "can_review_in_control_center": item.state.value == "human_handoff"
+                and (
+                    item.detail.casefold().startswith("salary review required:")
+                    or item.detail.casefold().startswith("employment-type review required:")
+                ),
+            }
+            for item in items
+        ],
     )
 
 
@@ -452,9 +462,7 @@ def control_state() -> dict[str, Any]:
             str(item.get("task_id", "")), resume_by_reference.get(reference, "")
         )
     suppressed_references = {
-        f"{item.get('company', '')} — {item.get('job_title', '')}"
-        for item in goal_items
-        if item.get("state") not in {"human_handoff", "reserved"}
+        f"{item.get('company', '')} — {item.get('job_title', '')}" for item in goal_items
     }
     interventions = [
         *pending,

@@ -850,6 +850,16 @@
         release.addEventListener("click", () => goalItemAction(goal.id, item.task_id, "release"));
         actions.append(confirm, release);
         card.append(actions);
+      } else if (item.state === "human_handoff" && item.can_review_in_control_center) {
+        const actions = element("div", "work-actions review-actions");
+        const approve = element("button", "button", "Looks right — continue safely");
+        approve.type = "button";
+        approve.addEventListener("click", () => goalItemAction(goal.id, item.task_id, "review-approve"));
+        const skip = element("button", "button ghost", "Skip job");
+        skip.type = "button";
+        skip.addEventListener("click", () => goalItemAction(goal.id, item.task_id, "release"));
+        actions.append(approve, skip);
+        card.append(actions);
       }
       return card;
     }));
@@ -858,7 +868,12 @@
   async function goalItemAction(goalId, taskId, action) {
     try {
       await post(`/api/job-finder/goals/${encodeURIComponent(goalId)}/items/${encodeURIComponent(taskId)}/${action}`);
-      showToast(action === "confirm" ? "Submission confirmed; quota decremented." : "Token released.");
+      const message = action === "confirm"
+        ? "Submission confirmed; quota decremented."
+        : action === "review-approve"
+          ? "Review accepted; safe replay started. Unknown salary still does not count toward quota."
+          : "Job skipped and token released.";
+      showToast(message);
       refresh();
     } catch (error) { showToast(error.message); }
   }

@@ -61,6 +61,7 @@ h3 { margin: 0; font-size: 1rem; }
 .session-meta, .work-meta { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
 .session-card p, .work-card p { margin: 5px 0 0; color: var(--muted); font-size: .82rem; line-height: 1.5; }
 .session-actions, .work-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.review-actions { grid-column: 1 / -1; }
 .session-actions .button, .work-actions .button { padding: 7px 11px; font-size: .8rem; }
 .pill { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px; color: var(--muted); font-size: .7rem; text-transform: capitalize; white-space: nowrap; }
 .pill.connected, .pill.submitted { border-color: rgba(99, 230, 190, .45); color: var(--accent); }

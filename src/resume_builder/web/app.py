@@ -63,6 +63,7 @@ from .job_finder_control import (
 from .job_finder_supervisor import (
     DEFAULT_ARTIFACT_DIR,
     DEFAULT_DATABASE,
+    approve_item_review as approve_job_finder_item_review,
     confirm_item as confirm_job_finder_item,
     goal_store as job_finder_goal_store,
     launch_goal as launch_job_finder_goal,
@@ -437,6 +438,17 @@ def api_release_job_finder_item(goal_id: str, task_id: str):
         goal = release_job_finder_item(goal_id, task_id)
     except KeyError:
         return JSONResponse({"error": "Unknown application goal item."}, status_code=404)
+    return {**goal.model_dump(mode="json"), "remaining": goal.remaining}
+
+
+@app.post("/api/job-finder/goals/{goal_id}/items/{task_id}/review-approve")
+def api_approve_job_finder_item_review(goal_id: str, task_id: str):
+    try:
+        goal = approve_job_finder_item_review(goal_id, task_id)
+    except KeyError:
+        return JSONResponse({"error": "Unknown application goal item."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
     return {**goal.model_dump(mode="json"), "remaining": goal.remaining}
 
 

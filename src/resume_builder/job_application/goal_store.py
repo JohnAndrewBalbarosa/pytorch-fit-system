@@ -97,6 +97,7 @@ class GoalItem(BaseModel):
     salary_monthly_max_php: int | None = None
     salary_band: SalaryBand = SalaryBand.UNKNOWN
     job_level: JobLevel = JobLevel.UNKNOWN
+    human_review_approved: bool = False
     detail: str = ""
     updated_at: str
 
@@ -456,6 +457,44 @@ class ApplicationGoalStore:
             )
         return self.get(goal_id)
 
+    def approve_human_review(self, goal_id: str, task_id: str) -> GoalItem:
+        """Approve only a non-access evidence gap and return it to deterministic replay."""
+        now = _now()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            item = connection.execute(
+                "SELECT * FROM application_goal_items WHERE goal_id = ? AND task_id = ?",
+                (goal_id, task_id),
+            ).fetchone()
+            if item is None:
+                raise KeyError(f"unknown goal item {goal_id}/{task_id}")
+            if item["state"] != GoalItemState.HUMAN_HANDOFF.value:
+                raise ValueError("only a human-handoff item can be reviewed")
+            detail = str(item["detail"]).casefold()
+            reviewable = detail.startswith("salary review required:") or detail.startswith(
+                "employment-type review required:"
+            )
+            if not reviewable:
+                raise ValueError(
+                    "access, CAPTCHA, login, and questionnaire gates cannot be approved here"
+                )
+            connection.execute(
+                """
+                UPDATE application_goal_items
+                SET state = ?, human_review_approved = 1,
+                    detail = ?, updated_at = ?
+                WHERE goal_id = ? AND task_id = ?
+                """,
+                (
+                    GoalItemState.OBSERVED.value,
+                    "human reviewed evidence gap; deterministic safe replay queued",
+                    now,
+                    goal_id,
+                    task_id,
+                ),
+            )
+        return self.item(goal_id, task_id)
+
     def item(self, goal_id: str, task_id: str) -> GoalItem:
         with self._connect() as connection:
             row = connection.execute(
@@ -517,6 +556,7 @@ class ApplicationGoalStore:
                     salary_monthly_max_php INTEGER,
                     salary_band TEXT NOT NULL DEFAULT 'unknown',
                     job_level TEXT NOT NULL DEFAULT 'unknown',
+                    human_review_approved INTEGER NOT NULL DEFAULT 0,
                     detail TEXT NOT NULL DEFAULT '',
                     updated_at TEXT NOT NULL,
                     PRIMARY KEY(goal_id, task_id)
@@ -545,6 +585,7 @@ class ApplicationGoalStore:
                     "salary_monthly_max_php": "INTEGER",
                     "salary_band": "TEXT NOT NULL DEFAULT 'unknown'",
                     "job_level": "TEXT NOT NULL DEFAULT 'unknown'",
+                    "human_review_approved": "INTEGER NOT NULL DEFAULT 0",
                 },
             )
 
