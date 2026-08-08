@@ -20,6 +20,10 @@ from .indeed_smart_apply import (
     classify_indeed_smart_apply_module,
 )
 from .autonomous_questions import QuestionPlanningResult
+from .indeed_questionnaire import (
+    observe_indeed_screening_questions,
+    question_set_fingerprint,
+)
 from .permissions import ApplicationPermissionPolicy
 from .shared import check_access_gate, evaluate_final_submit_gate
 from .submission_history import (
@@ -215,8 +219,7 @@ def _visible_validation_reason(page: Any) -> str:
 
 def _post_apply_is_confirmed(page: Any) -> bool:
     return (
-        classify_indeed_smart_apply_module(str(page.url))
-        == IndeedSmartApplyModule.POST_APPLY
+        classify_indeed_smart_apply_module(str(page.url)) == IndeedSmartApplyModule.POST_APPLY
         and _POST_APPLY_CONFIRMATION in _visible_body_text(page).casefold()
     )
 
@@ -271,6 +274,7 @@ def run_indeed_smart_apply_until_gate(
     phone_country_calling_code: str = "",
     phone_country_iso: str = "",
     question_plan: QuestionPlanningResult | None = None,
+    human_approved_question_fingerprint: str = "",
     verification_queue: HumanVerificationQueue | None = None,
     application_reference: str = "",
     submission_history: (
@@ -344,6 +348,48 @@ def run_indeed_smart_apply_until_gate(
                 stop_reason="observable post-apply page reached",
             )
         if module == IndeedSmartApplyModule.QUESTIONS:
+            observed_fingerprint = question_set_fingerprint(
+                observe_indeed_screening_questions(page)
+            )
+            if human_approved_question_fingerprint:
+                if observed_fingerprint != human_approved_question_fingerprint:
+                    return IndeedSmartApplyRunResult(
+                        status=IndeedSmartApplyRunStatus.HUMAN_HANDOFF,
+                        module=module,
+                        modules_seen=seen,
+                        actions_executed=executed,
+                        stop_reason="human questionnaire approval does not match the live page",
+                    )
+                if not _required_question_answers_present(page):
+                    return IndeedSmartApplyRunResult(
+                        status=IndeedSmartApplyRunStatus.GATE_REACHED,
+                        module=module,
+                        modules_seen=seen,
+                        actions_executed=executed,
+                        stop_reason="human-approved questionnaire has unanswered required fields",
+                    )
+                before = _page_observation(page)
+                _first(page, "button:visible:has-text('Continue')").click()
+                executed.append(f"{module.value}:human_approved_click")
+                human_approved_question_fingerprint = ""
+                transitioned, observed = _wait_for_transition(page, before)
+                if not transitioned:
+                    return IndeedSmartApplyRunResult(
+                        status=IndeedSmartApplyRunStatus.HUMAN_HANDOFF,
+                        module=module,
+                        modules_seen=seen,
+                        actions_executed=executed,
+                        stop_reason="human-approved questionnaire did not advance",
+                    )
+                if observed[1] == IndeedSmartApplyModule.QUESTIONS:
+                    return IndeedSmartApplyRunResult(
+                        status=IndeedSmartApplyRunStatus.GATE_REACHED,
+                        module=module,
+                        modules_seen=seen,
+                        actions_executed=executed,
+                        stop_reason="next questionnaire page requires fresh inventory and planning",
+                    )
+                continue
             if question_plan is None or question_plan.unresolved or not question_plan.steps:
                 return IndeedSmartApplyRunResult(
                     status=IndeedSmartApplyRunStatus.HUMAN_HANDOFF,

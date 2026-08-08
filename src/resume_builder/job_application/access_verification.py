@@ -73,6 +73,9 @@ class VerificationQueueEntry(BaseModel):
     job_title: str = ""
     goal_id: str = ""
     resume_file: str = ""
+    question_fingerprint: str = ""
+    question_approved_at: str = ""
+    question_approval_consumed_at: str = ""
 
     @model_validator(mode="before")
     @classmethod
@@ -324,6 +327,80 @@ class HumanVerificationQueue:
             if resolved:
                 self._save(payload)
         return resolved
+
+    def approve_question(
+        self,
+        entry_id: str,
+        *,
+        question_fingerprint: str,
+    ) -> VerificationQueueEntry:
+        """Resolve one exact question handoff with a non-secret, one-use approval marker."""
+        fingerprint = question_fingerprint.strip().lower()
+        if len(fingerprint) != 40 or any(
+            character not in "0123456789abcdef" for character in fingerprint
+        ):
+            raise ValueError("question fingerprint must be a SHA-1 hex digest")
+        with _QUEUE_LOCK:
+            payload = self._load()
+            existing = payload.get(entry_id)
+            if not existing:
+                raise KeyError(entry_id)
+            entry = VerificationQueueEntry.model_validate(existing)
+            if entry.action != InterventionAction.UNKNOWN_QUESTION:
+                raise ValueError("only unknown-question handoffs can be approved")
+            now = datetime.now(timezone.utc).isoformat()
+            existing["status"] = VerificationQueueState.RESOLVED.value
+            existing["updated_at"] = now
+            existing["question_fingerprint"] = fingerprint
+            existing["question_approved_at"] = now
+            existing["question_approval_consumed_at"] = ""
+            payload[entry_id] = existing
+            self._save(payload)
+        return VerificationQueueEntry.model_validate(existing)
+
+    def approved_question(
+        self,
+        *,
+        application_reference: str,
+        browser_target_id: str,
+        question_fingerprint: str,
+    ) -> VerificationQueueEntry | None:
+        """Return an unconsumed approval for this exact application, tab, and question set."""
+        reference = _safe_application_reference(application_reference, "")
+        with _QUEUE_LOCK:
+            entries = [
+                VerificationQueueEntry.model_validate(value) for value in self._load().values()
+            ]
+        return next(
+            (
+                entry
+                for entry in sorted(entries, key=lambda item: item.updated_at, reverse=True)
+                if entry.action == InterventionAction.UNKNOWN_QUESTION
+                and entry.status == VerificationQueueState.RESOLVED
+                and entry.application_reference == reference
+                and entry.browser_target_id == browser_target_id
+                and entry.question_fingerprint == question_fingerprint
+                and not entry.question_approval_consumed_at
+            ),
+            None,
+        )
+
+    def consume_question_approval(self, entry_id: str) -> VerificationQueueEntry | None:
+        """Consume a question approval only after its exact page successfully advances."""
+        with _QUEUE_LOCK:
+            payload = self._load()
+            existing = payload.get(entry_id)
+            if not existing:
+                return None
+            entry = VerificationQueueEntry.model_validate(existing)
+            if not entry.question_approved_at or entry.question_approval_consumed_at:
+                return entry
+            now = datetime.now(timezone.utc).isoformat()
+            existing["updated_at"] = now
+            existing["question_approval_consumed_at"] = now
+            payload[entry_id] = existing
+            self._save(payload)
+        return VerificationQueueEntry.model_validate(existing)
 
     def _load(self) -> dict[str, dict]:
         if not self.path.exists():

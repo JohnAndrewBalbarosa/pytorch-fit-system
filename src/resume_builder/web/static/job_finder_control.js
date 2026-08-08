@@ -450,6 +450,8 @@
     setText("[data-count-interventions]", counts.interventions || 0);
     setText("[data-tab-automatic-count]", counts.automatic || 0);
     setText("[data-tab-intervention-count]", counts.interventions || 0);
+    setText("[data-access-intervention-count]", counts.access_interventions || 0);
+    setText("[data-question-intervention-count]", counts.question_interventions || 0);
     const goal = state.goal || {};
     activeGoalId = goal.id || "";
     setText("[data-goal-target]", goal.target || 0);
@@ -792,19 +794,19 @@
 
   function renderLivePages(items) {
     const signature = JSON.stringify(items.map((item) => [
-      item.target_id, item.group, item.action, item.status, item.title, item.safe_path,
+      item.target_id, item.page_role, item.group, item.action, item.status, item.title, item.safe_path,
     ]));
     if (signature === livePagesSignature) return;
     livePagesSignature = signature;
     if (!items.length) {
-      livePagesNode.replaceChildren(element("div", "empty", "No registered Indeed pages are open."));
+      livePagesNode.replaceChildren(element("div", "empty", "No registered job-search or application pages are open."));
       return;
     }
-    const groups = ["automatic", "human_intervention"].map((group) => {
-      const matching = items.filter((item) => item.group === group);
+    const groups = [["search", "Search tabs"], ["application", "Application tabs"]].map(([role, label]) => {
+      const matching = items.filter((item) => item.page_role === role);
       if (!matching.length) return null;
       const section = element("section", "live-group");
-      section.append(element("h3", "live-group-title", group === "automatic" ? "Automatic work" : "Human intervention"));
+      section.append(element("h3", "live-group-title", label));
       const grid = element("div", "preview-grid");
       matching.forEach((item) => grid.append(liveCard(item)));
       section.append(grid);
@@ -815,16 +817,11 @@
 
   function liveCard(item) {
     const card = element("article", "preview-card");
-    const image = document.createElement("img");
-    image.alt = `Live preview: ${item.title || item.site}`;
-    image.loading = "lazy";
-    image.dataset.previewUrl = item.preview_url;
-    image.src = `${item.preview_url}?revision=${Date.now()}`;
-    image.addEventListener("click", () => focusTarget(item.target_id));
     const body = element("div", "preview-body");
     body.append(element("h3", "", item.application_reference || item.title || "Indeed page"));
     body.append(element("p", "", `${item.site} · ${item.safe_path}`));
     body.append(element("span", `pill ${item.status}`, String(item.action || item.status).replaceAll("_", " ")));
+    body.append(element("span", `pill ${item.group}`, item.group === "human_intervention" ? "needs human" : "automatic"));
     if (item.question_labels?.length) {
       body.append(element("p", "detail", item.question_labels.join(" · ")));
     }
@@ -832,7 +829,16 @@
     focus.type = "button";
     focus.addEventListener("click", () => focusTarget(item.target_id));
     body.append(focus);
-    card.append(image, body);
+    if (item.preview_url) {
+      const image = document.createElement("img");
+      image.alt = `Live preview: ${item.title || item.site}`;
+      image.loading = "lazy";
+      image.dataset.previewUrl = item.preview_url;
+      image.src = `${item.preview_url}?revision=${Date.now()}`;
+      image.addEventListener("click", () => focusTarget(item.target_id));
+      card.append(image);
+    }
+    card.append(body);
     return card;
   }
 
@@ -919,7 +925,13 @@
     recheck.disabled = !item.can_focus;
     recheck.addEventListener("click", () => interventionAction(item.id, "recheck"));
     actions.append(focus);
-    if (item.action === "external_application") {
+    if (item.action === "unknown_question") {
+      const approve = element("button", "button", "Save answers & continue");
+      approve.type = "button";
+      approve.disabled = !item.can_focus;
+      approve.addEventListener("click", () => approveQuestionAnswers(item.id));
+      actions.append(approve);
+    } else if (item.action === "external_application") {
       const confirm = element("button", "button", "Confirm submitted");
       confirm.type = "button";
       confirm.disabled = !item.company || !item.job_title;
@@ -942,7 +954,7 @@
 
   function autoRecheck(items) {
     const now = Date.now();
-    items.filter((item) => item.can_focus && ["captcha", "human_verification", "sign_in", "unknown_question"].includes(item.action))
+    items.filter((item) => item.can_focus && ["captcha", "human_verification", "sign_in"].includes(item.action))
       .forEach((item) => {
         const previous = autoRecheckedAt.get(item.id) || 0;
         if (now - previous < 10000) return;
@@ -951,6 +963,16 @@
           .then((result) => { if (result.resolved) refresh(); })
           .catch(() => {});
       });
+  }
+
+  async function approveQuestionAnswers(id) {
+    try {
+      const result = await post(`/api/job-finder/interventions/${encodeURIComponent(id)}/approve-question-answers`);
+      showToast(`${result.saved_answers || 0} safe answer(s) saved; deterministic replay started.`);
+      refresh();
+    } catch (error) {
+      showToast(error.message);
+    }
   }
 
   async function interventionAction(id, action) {

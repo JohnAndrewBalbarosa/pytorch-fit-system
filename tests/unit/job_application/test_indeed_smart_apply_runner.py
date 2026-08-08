@@ -9,6 +9,7 @@ from resume_builder.job_application import (
     IndeedSmartApplyRunStatus,
     QuestionPlanningResult,
     SmartApplyApprovals,
+    question_set_fingerprint,
     run_indeed_smart_apply_until_gate,
 )
 from resume_builder.job_application.indeed_smart_apply_runner import _visible_access_blocker
@@ -333,6 +334,26 @@ def test_runner_executes_one_accepted_question_plan_then_stops_at_review():
     assert result.status == IndeedSmartApplyRunStatus.REVIEW_READY
     assert result.actions_executed == ["questions:select", "questions:click"]
     assert page.states[0].fields["question_answer"] == "No"
+
+
+def test_runner_advances_exact_human_approved_questionnaire_without_a_plan():
+    root = "https://smartapply.indeed.com/beta/indeedapply/form"
+    page = _Page(
+        [
+            _State(f"{root}/questions-module/questions/1", "Human completed answers", {}),
+            _State(f"{root}/review-module", "Submit your application", {}),
+        ]
+    )
+
+    result = run_indeed_smart_apply_until_gate(
+        page,
+        _resume(),
+        human_approved_question_fingerprint=question_set_fingerprint([]),
+    )
+
+    assert result.status == IndeedSmartApplyRunStatus.REVIEW_READY
+    assert result.actions_executed == ["questions:human_approved_click"]
+    assert page.index == 1
 
 
 def test_runner_waits_for_observable_post_apply_after_approved_submit():

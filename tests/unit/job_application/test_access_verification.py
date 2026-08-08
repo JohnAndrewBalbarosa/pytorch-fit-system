@@ -181,6 +181,41 @@ def test_distinct_human_actions_can_coexist_for_one_application(tmp_path):
     assert question.question_labels == ["Describe your Python experience."]
 
 
+def test_question_approval_is_exact_and_consumed_once(tmp_path):
+    queue = HumanVerificationQueue(tmp_path / "verification.json")
+    question = queue.enqueue_handoff(
+        application_reference="Company — Backend Engineer",
+        url="https://smartapply.indeed.com/questions-module",
+        reason="unknown_question",
+        browser_target_id="target-123",
+        action=InterventionAction.UNKNOWN_QUESTION,
+    )
+    fingerprint = "a" * 40
+
+    approved = queue.approve_question(question.id, question_fingerprint=fingerprint)
+
+    assert approved.status == VerificationQueueState.RESOLVED
+    assert queue.pending() == []
+    assert (
+        queue.approved_question(
+            application_reference="Company — Backend Engineer",
+            browser_target_id="target-123",
+            question_fingerprint=fingerprint,
+        )
+        is not None
+    )
+    queue.consume_question_approval(question.id)
+    assert (
+        queue.approved_question(
+            application_reference="Company — Backend Engineer",
+            browser_target_id="target-123",
+            question_fingerprint=fingerprint,
+        )
+        is None
+    )
+    assert "answer" not in queue.path.read_text(encoding="utf-8")
+
+
 def test_legacy_queue_entry_is_classified_without_rewrite(tmp_path):
     path = tmp_path / "verification.json"
     path.write_text(

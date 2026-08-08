@@ -812,9 +812,15 @@ def _run_application(
     approved_questions = _load_approved_questions(args)
     for _ in range(8):
         question_plan = None
+        question_approval = None
         if "/questions-module" in urlsplit(str(application_page.url)).path:
+            observed_questions = observe_indeed_screening_questions(application_page)
+            question_approval = queue.approved_question(
+                application_reference=job.batch_task().application_reference,
+                browser_target_id=_browser_target_id(application_page),
+                question_fingerprint=question_set_fingerprint(observed_questions),
+            )
             if bool(getattr(args, "safe_draft_only", False)):
-                observed_questions = observe_indeed_screening_questions(application_page)
                 queue.enqueue_handoff(
                     application_reference=job.batch_task().application_reference,
                     url=str(application_page.url),
@@ -833,16 +839,16 @@ def _run_application(
                     BatchApplicationStatus.HUMAN_HANDOFF,
                     "safe draft mode stops before questionnaires",
                 )
-            question_plan = _adaptive_question_page_plan(
-                application_page,
-                job,
-                args,
-                resume,
-                verified_phone=verified_phone,
-                approved_questions=approved_questions,
-            )
-            if question_plan.unresolved:
-                observed_questions = observe_indeed_screening_questions(application_page)
+            if question_approval is None:
+                question_plan = _adaptive_question_page_plan(
+                    application_page,
+                    job,
+                    args,
+                    resume,
+                    verified_phone=verified_phone,
+                    approved_questions=approved_questions,
+                )
+            if question_plan is not None and question_plan.unresolved:
                 unresolved = set(question_plan.unresolved)
                 queue.enqueue_handoff(
                     application_reference=job.batch_task().application_reference,
@@ -876,6 +882,9 @@ def _run_application(
             phone_country_calling_code=phone_country_calling_code,
             phone_country_iso=phone_country_iso,
             question_plan=question_plan,
+            human_approved_question_fingerprint=(
+                question_approval.question_fingerprint if question_approval is not None else ""
+            ),
             verification_queue=queue,
             application_reference=job.batch_task().application_reference,
             submission_history=history,
@@ -883,6 +892,11 @@ def _run_application(
             job_title=job.job_title,
             duplicate_window_days=args.duplicate_days,
         )
+        if (
+            question_approval is not None
+            and "questions:human_approved_click" in result.actions_executed
+        ):
+            queue.consume_question_approval(question_approval.id)
         repeatable_gate = any(
             marker in result.stop_reason
             for marker in (

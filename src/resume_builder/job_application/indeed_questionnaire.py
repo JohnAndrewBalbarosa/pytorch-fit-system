@@ -57,11 +57,7 @@ class ApprovedIndeedQuestionAnswerSet(BaseModel):
     ) -> ApprovedIndeedQuestionAnswers | None:
         fingerprint = question_set_fingerprint(questions)
         return next(
-            (
-                page
-                for page in self.pages
-                if page.question_set_fingerprint == fingerprint
-            ),
+            (page for page in self.pages if page.question_set_fingerprint == fingerprint),
             None,
         )
 
@@ -119,9 +115,7 @@ def observe_indeed_screening_questions(page: Any) -> list[ScreeningQuestion]:
             continue
         label_text = label.inner_text().strip()
         context = _question_context(label)
-        required = bool(
-            page.locator(f'[data-testid="input-{question_id}-label-asterisk"]').count()
-        )
+        required = bool(page.locator(f'[data-testid="input-{question_id}-label-asterisk"]').count())
         group_selector = f'[data-testid="input-{question_id}"]'
         group = page.locator(group_selector)
         combo_selector = f'[data-testid="input-{question_id}-select-list-select-list"]'
@@ -172,6 +166,39 @@ def observe_indeed_screening_questions(page: Any) -> list[ScreeningQuestion]:
             )
         )
     return questions
+
+
+def observe_indeed_question_answers(
+    page: Any,
+    questions: list[ScreeningQuestion],
+) -> dict[str, str]:
+    """Read only visible questionnaire values; never inspect cookies or browser storage."""
+    answers: dict[str, str] = {}
+    for question in questions:
+        value = ""
+        if question.kind == "radio":
+            group = page.locator(question.selector)
+            if group.count():
+                checked = group.first.locator("input:checked")
+                if checked.count():
+                    selected = checked.first
+                    label = group.first.locator("label:has(input:checked)")
+                    value = (
+                        label.first.inner_text().strip()
+                        if label.count()
+                        else (selected.get_attribute("value") or "").strip()
+                    )
+        elif question.kind == "select":
+            control = page.locator(question.selector)
+            if control.count():
+                value = control.first.input_value().strip()
+        elif question.selector:
+            control = page.locator(question.selector)
+            if control.count():
+                value = control.first.input_value().strip()
+        if value:
+            answers[question.question_id] = value
+    return answers
 
 
 def build_approved_indeed_question_plan(

@@ -51,6 +51,7 @@ from .cdo_advisor import AdvisorAnalyzeRequest, analyze_for_injection
 from .mock_data import PROTOTYPE_DATA
 from .job_scraping_demo import current_session_artifact
 from .job_finder_control import (
+    approve_question_answers,
     capture_target_preview,
     confirm_external_intervention,
     control_state as job_finder_control_state,
@@ -545,6 +546,27 @@ def api_recheck_job_finder_intervention(entry_id: str):
         return JSONResponse({"error": "Unknown intervention."}, status_code=404)
     except Exception as exc:  # noqa: BLE001 - browser drift must surface without resolving
         return JSONResponse({"error": f"Could not recheck browser tab: {exc}"}, status_code=503)
+
+
+@app.post("/api/job-finder/interventions/{entry_id}/approve-question-answers")
+def api_approve_job_finder_question_answers(entry_id: str):
+    try:
+        result = approve_question_answers(entry_id)
+        retry_resolved_intervention(str(result.get("application_reference", "")))
+        from .job_finder_supervisor import goal_store, process_status
+
+        goal = goal_store().active()
+        if goal is not None and not process_status(goal.id)["running"]:
+            launch_job_finder_goal(goal.id)
+        return result
+    except KeyError:
+        return JSONResponse({"error": "Unknown intervention."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except Exception as exc:  # noqa: BLE001 - local browser/storage failures are visible
+        return JSONResponse(
+            {"error": f"Could not approve questionnaire answers: {exc}"}, status_code=503
+        )
 
 
 @app.post("/api/job-finder/sessions/{provider}/sign-in")

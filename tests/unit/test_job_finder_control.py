@@ -186,11 +186,14 @@ def test_current_queue_accepts_live_legacy_target_but_not_inactive_goal(tmp_path
     )
 
     assert current == [live]
-    assert job_finder_control._current_intervention_count(
-        [],
-        {"id": "cancelled-goal", "status": "cancelled"},
-        [{"task_id": "old", "state": "human_handoff"}],
-    ) == 0
+    assert (
+        job_finder_control._current_intervention_count(
+            [],
+            {"id": "cancelled-goal", "status": "cancelled"},
+            [{"task_id": "old", "state": "human_handoff"}],
+        )
+        == 0
+    )
 
 
 def test_resume_catalog_inventories_generated_artifacts_and_routes(tmp_path, monkeypatch):
@@ -270,6 +273,12 @@ def test_live_pages_expose_safe_path_and_preview_without_query(monkeypatch):
                 "url": "https://au.indeed.com/viewjob?jk=secret-token",
             },
             {
+                "id": "SEARCH",
+                "type": "page",
+                "title": "Python jobs",
+                "url": "https://au.indeed.com/jobs?q=private-search",
+            },
+            {
                 "id": "OTHER",
                 "type": "page",
                 "title": "Unrelated",
@@ -280,9 +289,11 @@ def test_live_pages_expose_safe_path_and_preview_without_query(monkeypatch):
 
     pages = job_finder_control._live_pages([])
 
-    assert len(pages) == 1
-    assert pages[0]["safe_path"] == "/viewjob"
-    assert pages[0]["preview_url"].endswith("/TARGET_1/preview")
+    assert len(pages) == 2
+    assert {page["page_role"] for page in pages} == {"search", "application"}
+    application = next(page for page in pages if page["page_role"] == "application")
+    assert application["safe_path"] == "/viewjob"
+    assert application["preview_url"].endswith("/TARGET_1/preview")
     assert "secret-token" not in json.dumps(pages)
 
 
@@ -374,6 +385,10 @@ def test_control_frontend_exposes_external_confirmation_action():
     assert "review-approve" in response.text
     assert "Skip job" in response.text
     assert "Scan current results" in response.text
+    assert "Search tabs" in response.text
+    assert "Application tabs" in response.text
+    assert "Save answers & continue" in response.text
+    assert '["captcha", "human_verification", "sign_in"].includes' in response.text
 
 
 def test_unqueued_human_outcome_remains_visible_as_grouped_fallback():

@@ -93,6 +93,11 @@ _NON_PERSISTENT = re.compile(
 )
 
 
+def is_reusable_question_label(label: str) -> bool:
+    """Return whether a human-approved answer may enter the reusable question bank."""
+    return not bool(_NON_PERSISTENT.search(label))
+
+
 class SmartApplyNovelQuestionAnswerer:
     """Use a provider-neutral structured-output model only for safe novel questions."""
 
@@ -110,8 +115,7 @@ class SmartApplyNovelQuestionAnswerer:
     def has_matching_preference(self, question: ScreeningQuestion) -> bool:
         question_tokens = _semantic_tokens(question.label)
         return any(
-            bool(question_tokens & _semantic_tokens(key))
-            for key in self.application_preferences
+            bool(question_tokens & _semantic_tokens(key)) for key in self.application_preferences
         )
 
     def answer(self, question: ScreeningQuestion) -> QuestionAnswer:
@@ -236,9 +240,7 @@ def build_adaptive_indeed_question_plan(
                 rationale = answer.rationale
                 value_source = decision.value_source
                 source = (
-                    "runtime"
-                    if decision.value_source.startswith("verified_profile.")
-                    else "resume"
+                    "runtime" if decision.value_source.startswith("verified_profile.") else "resume"
                 )
             elif answerer is not None and (
                 decision.allow_ai or answerer.has_matching_preference(question)
@@ -303,7 +305,7 @@ def build_adaptive_indeed_question_plan(
                 source=source,
             )
         )
-        if not _NON_PERSISTENT.search(question.label):
+        if is_reusable_question_label(question.label):
             persistable[question.question_id] = value
     profile = {
         "name": resume.contact.name,

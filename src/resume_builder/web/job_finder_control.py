@@ -165,12 +165,28 @@ def _site_for_domain(domain: str) -> str:
     return normalized or "other"
 
 
+def _page_role(url: str, entry: VerificationQueueEntry | None = None) -> str:
+    """Classify only supported search and mapped application browser pages."""
+    parts = urlsplit(url)
+    host = (parts.hostname or "").casefold()
+    path = parts.path.rstrip("/") or "/"
+    indeed_host = host == "indeed.com" or host.endswith(".indeed.com")
+    if indeed_host and path == "/jobs":
+        return "search"
+    if host == "smartapply.indeed.com" or (indeed_host and path == "/viewjob"):
+        return "application"
+    if entry is not None and entry.action == InterventionAction.EXTERNAL_APPLICATION:
+        return "application"
+    return ""
+
+
 def _instruction(action: InterventionAction) -> str:
     return {
         InterventionAction.CAPTCHA: "Complete the CAPTCHA in the open browser tab.",
         InterventionAction.HUMAN_VERIFICATION: "Complete the visible human verification check.",
         InterventionAction.UNKNOWN_QUESTION: (
-            "Answer the listed fields in the browser, then use the site's Continue control."
+            "Answer the listed fields in the browser, then return here and use "
+            "Save answers & continue."
         ),
         InterventionAction.SIGN_IN: "Sign in in the visible browser and complete any 2FA prompt.",
         InterventionAction.EXTERNAL_APPLICATION: "Complete this company-site application manually.",
@@ -206,15 +222,9 @@ def _current_queue_entries(
 ) -> list[VerificationQueueEntry]:
     """Keep only handoffs tied to the active plan or an actually open browser page."""
     active_goal_id = (
-        str(goal.get("id", ""))
-        if str(goal.get("status", "")) in _CURRENT_GOAL_STATUSES
-        else ""
+        str(goal.get("id", "")) if str(goal.get("status", "")) in _CURRENT_GOAL_STATUSES else ""
     )
-    active_task_ids = {
-        str(item.get("task_id", ""))
-        for item in goal_items
-        if item.get("task_id")
-    }
+    active_task_ids = {str(item.get("task_id", "")) for item in goal_items if item.get("task_id")}
     active_references = {
         f"{str(item.get('company', '')).strip()} — {str(item.get('job_title', '')).strip()}"
         for item in goal_items
@@ -222,11 +232,17 @@ def _current_queue_entries(
     }
     current: list[VerificationQueueEntry] = []
     for entry in entries:
-        target_is_live = bool(entry.browser_target_id) and entry.browser_target_id in live_target_ids
+        target_is_live = (
+            bool(entry.browser_target_id) and entry.browser_target_id in live_target_ids
+        )
         belongs_to_goal = bool(active_goal_id) and entry.goal_id == active_goal_id
-        legacy_goal_match = bool(active_goal_id) and not entry.goal_id and (
-            (bool(entry.task_id) and entry.task_id in active_task_ids)
-            or entry.application_reference in active_references
+        legacy_goal_match = (
+            bool(active_goal_id)
+            and not entry.goal_id
+            and (
+                (bool(entry.task_id) and entry.task_id in active_task_ids)
+                or entry.application_reference in active_references
+            )
         )
         if target_is_live or belongs_to_goal or legacy_goal_match:
             current.append(entry)
@@ -254,18 +270,11 @@ def _current_intervention_count(
 ) -> int:
     if str(goal.get("status", "")) in _CURRENT_GOAL_STATUSES:
         actionable_goal_items = [
-            item
-            for item in goal_items
-            if item.get("state") in {"reserved", "human_handoff"}
+            item for item in goal_items if item.get("state") in {"reserved", "human_handoff"}
         ]
     else:
         actionable_goal_items = []
-    return len(
-        {
-            _intervention_key(item)
-            for item in [*interventions, *actionable_goal_items]
-        }
-    )
+    return len({_intervention_key(item) for item in [*interventions, *actionable_goal_items]})
 
 
 def _automatic_work(run: dict[str, Any]) -> list[dict[str, Any]]:
@@ -309,22 +318,26 @@ def _live_pages(
         target_id = str(target.get("id", ""))
         url = str(target.get("url", ""))
         parts = urlsplit(url)
-        site = _site_for_domain(parts.hostname or "")
-        if site != "indeed":
-            continue
         entry = by_target.get(target_id)
+        page_role = _page_role(url, entry)
+        if not page_role:
+            continue
+        site = _site_for_domain(parts.hostname or "")
         pages.append(
             {
                 "target_id": target_id,
                 "site": site,
                 "title": str(target.get("title", "Indeed"))[:200],
                 "safe_path": parts.path or "/",
+                "page_role": page_role,
                 "group": "human_intervention" if entry else "automatic",
                 "action": entry.action.value if entry else "working",
                 "status": entry.status.value if entry else "browser_open",
                 "application_reference": entry.application_reference if entry else "",
                 "question_labels": entry.question_labels if entry else [],
-                "preview_url": f"/api/job-finder/targets/{target_id}/preview",
+                "preview_url": (
+                    f"/api/job-finder/targets/{target_id}/preview" if site == "indeed" else ""
+                ),
                 "can_focus": True,
             }
         )
@@ -626,6 +639,13 @@ def control_state() -> dict[str, Any]:
                 goal_payload,
                 goal_items,
             ),
+            "access_interventions": sum(
+                item.get("action") in {"captcha", "human_verification", "sign_in"}
+                for item in interventions
+            ),
+            "question_interventions": sum(
+                item.get("action") == "unknown_question" for item in interventions
+            ),
         },
     }
 
@@ -781,9 +801,11 @@ def recheck_intervention(entry_id: str) -> dict[str, Any]:
         if page is None:
             return {"resolved": False, "reason": "The saved browser tab is no longer open."}
         if entry.action == InterventionAction.UNKNOWN_QUESTION:
-            clear = "/questions-module" not in urlsplit(str(page.url)).path
-            reason = "questionnaire page advanced" if clear else "questionnaire still open"
-        elif entry.action in {
+            return {
+                "resolved": False,
+                "reason": "Use Save answers & continue for unknown questions.",
+            }
+        if entry.action in {
             InterventionAction.CAPTCHA,
             InterventionAction.HUMAN_VERIFICATION,
             InterventionAction.SIGN_IN,
@@ -799,4 +821,100 @@ def recheck_intervention(entry_id: str) -> dict[str, Any]:
         "resolved": clear,
         "reason": reason,
         "application_reference": entry.application_reference,
+    }
+
+
+def approve_question_answers(entry_id: str) -> dict[str, Any]:
+    """Validate one exact live questionnaire, save safe answers, and approve one replay."""
+    queue = _queue()
+    entry = next((item for item in queue.pending() if item.id == entry_id), None)
+    if entry is None:
+        raise KeyError(entry_id)
+    if entry.action != InterventionAction.UNKNOWN_QUESTION:
+        raise ValueError("only unknown-question handoffs use this action")
+    if not entry.browser_target_id:
+        raise ValueError("question handoff has no live browser target")
+
+    from playwright.sync_api import sync_playwright
+
+    from ..job_application import (
+        DEFAULT_MONGODB_DATABASE,
+        DEFAULT_MONGODB_URI,
+        MongoQuestionnaireRepository,
+        observe_indeed_question_answers,
+        observe_indeed_screening_questions,
+        question_set_fingerprint,
+    )
+    from ..job_application.intelligence.smart_apply_questions import (
+        is_reusable_question_label,
+    )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.connect_over_cdp(_cdp_url(), timeout=5_000)
+        page = None
+        for context in browser.contexts:
+            for candidate in context.pages:
+                session = context.new_cdp_session(candidate)
+                try:
+                    info = session.send("Target.getTargetInfo")
+                    if (
+                        str(info.get("targetInfo", {}).get("targetId", ""))
+                        == entry.browser_target_id
+                    ):
+                        page = candidate
+                        break
+                finally:
+                    session.detach()
+            if page is not None:
+                break
+        if page is None:
+            raise ValueError("the saved questionnaire tab is no longer open")
+        if (urlsplit(str(page.url)).hostname or "").casefold() != "smartapply.indeed.com" or (
+            "/questions-module" not in urlsplit(str(page.url)).path
+        ):
+            raise ValueError("the exact questionnaire page is no longer open")
+        questions = observe_indeed_screening_questions(page)
+        if not questions:
+            raise ValueError("no questionnaire fields were observed")
+        answers = observe_indeed_question_answers(page, questions)
+        missing = [
+            question.label
+            for question in questions
+            if question.required and not answers.get(question.question_id)
+        ]
+        if missing:
+            raise ValueError("required answers are missing: " + " · ".join(missing[:6]))
+        for question in questions:
+            answer = answers.get(question.question_id, "")
+            if answer and question.options and answer not in question.options:
+                raise ValueError(f"answer does not match an observed option: {question.label}")
+            if answer and question.max_length and len(answer) > question.max_length:
+                raise ValueError(f"answer exceeds the field limit: {question.label}")
+        fingerprint = question_set_fingerprint(questions)
+        safe_answers = {
+            question.question_id: answers[question.question_id]
+            for question in questions
+            if question.question_id in answers and is_reusable_question_label(question.label)
+        }
+        repository = MongoQuestionnaireRepository(
+            DEFAULT_MONGODB_URI,
+            database=DEFAULT_MONGODB_DATABASE,
+        )
+        try:
+            repository.ping()
+            repository.save_observed_page(
+                questions,
+                safe_answers,
+                domain="smartapply.indeed.com",
+                source="explicit control-center human approval",
+            )
+        finally:
+            repository.close()
+    approved = queue.approve_question(entry.id, question_fingerprint=fingerprint)
+    return {
+        "approved": True,
+        "entry_id": approved.id,
+        "application_reference": approved.application_reference,
+        "saved_answers": len(safe_answers),
+        "question_count": len(questions),
     }

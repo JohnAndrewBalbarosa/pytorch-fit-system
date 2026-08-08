@@ -136,6 +136,7 @@ from resume_builder.job_application.indeed_questionnaire import (
     ApprovedIndeedQuestionAnswers,
     build_approved_indeed_question_plan,
     observe_indeed_screening_questions,
+    observe_indeed_question_answers,
     question_set_fingerprint,
 )
 from resume_builder.job_application.persistence.questionnaire_store import (
@@ -350,6 +351,7 @@ __all__ = [
     "ApprovedIndeedQuestionAnswerSet",
     "build_approved_indeed_question_plan",
     "observe_indeed_screening_questions",
+    "observe_indeed_question_answers",
     "question_set_fingerprint",
     "DEFAULT_MONGODB_DATABASE",
     "DEFAULT_MONGODB_URI",
