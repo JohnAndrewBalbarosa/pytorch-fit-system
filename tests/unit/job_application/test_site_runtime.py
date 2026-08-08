@@ -25,6 +25,7 @@ def test_indeed_runtime_adapter_builds_a_goal_scoped_cycle(tmp_path):
         root=Path("/repo"),
         goal=goal,
         manifest_path=tmp_path / "manifest.json",
+        inventory_report_path=tmp_path / "inventory.json",
         attempted_task_ids_path=tmp_path / "seen.json",
         artifact_dir=tmp_path / "resumes",
         database=tmp_path / "history.sqlite3",
@@ -40,6 +41,8 @@ def test_indeed_runtime_adapter_builds_a_goal_scoped_cycle(tmp_path):
     run = adapter.run_command(request)
 
     assert "--employment-type" in collect
+    assert "--current-search-only" in collect
+    assert collect[collect.index("--inventory-output") + 1] == str(tmp_path / "inventory.json")
     assert collect[collect.index("--employment-type") + 1] == "contract"
     assert collect.count("--target-country") == 1
     assert collect[collect.index("--target-country") + 1] == "Philippines"

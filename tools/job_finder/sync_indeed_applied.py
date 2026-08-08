@@ -35,7 +35,7 @@ def _parse_applied_date(label: str, observed_on: date) -> date:
     prefix = "Applied on Indeed on "
     if not label.startswith(prefix):
         raise ValueError(f"unsupported Indeed application date: {label!r}")
-    weekday = label.removeprefix(prefix)
+    visible_date = label.removeprefix(prefix)
     weekdays = (
         "Monday",
         "Tuesday",
@@ -46,11 +46,55 @@ def _parse_applied_date(label: str, observed_on: date) -> date:
         "Sunday",
     )
     try:
-        target_weekday = weekdays.index(weekday)
+        target_weekday = weekdays.index(visible_date)
     except ValueError as exc:
-        raise ValueError(f"unsupported Indeed weekday: {weekday!r}") from exc
+        try:
+            parsed = datetime.strptime(
+                f"{visible_date} {observed_on.year}", "%b %d %Y"
+            ).date()
+        except ValueError:
+            raise ValueError(f"unsupported Indeed application date: {label!r}") from exc
+        if parsed > observed_on:
+            parsed = parsed.replace(year=observed_on.year - 1)
+        return parsed
     days_back = (observed_on.weekday() - target_weekday) % 7 or 7
     return observed_on - timedelta(days=days_back)
+
+
+def sync_page(
+    page,
+    *,
+    database: Path,
+    timezone_name: str,
+    history_days: int = 3650,
+) -> dict[str, int | str]:
+    """Persist exact visible Applied-card confirmations from an access-clear page."""
+    local_zone = ZoneInfo(timezone_name)
+    observed = datetime.now(local_zone)
+    access = check_access_gate(page)
+    if access.blocked:
+        raise RuntimeError(f"access gate requires human action: {access.reason}")
+    cards = _extract_applied_cards(page, observed_on=observed.date())
+    history = ApplicationSubmissionHistory(database)
+    inserted = 0
+    matched = 0
+    for card in cards:
+        before = len(history.recent_submissions(within_days=history_days, now=observed))
+        applied_at = datetime.combine(card.applied_on, time.min, tzinfo=timezone.utc)
+        history.record_existing_submission(
+            company=card.company,
+            job_title=card.job_title,
+            applied_at=applied_at,
+            confirmation="visible on Indeed Applied page",
+            confirmation_source=ConfirmationSource.BROWSER,
+            source_url=card.source_url,
+        )
+        after = len(history.recent_submissions(within_days=history_days, now=observed))
+        if after > before:
+            inserted += 1
+        else:
+            matched += 1
+    return {"status": "synced", "cards": len(cards), "inserted": inserted, "matched": matched}
 
 
 def _extract_applied_cards(page, *, observed_on: date) -> list[AppliedCard]:
@@ -84,8 +128,6 @@ def _extract_applied_cards(page, *, observed_on: date) -> list[AppliedCard]:
 def sync(args: argparse.Namespace) -> int:
     from playwright.sync_api import sync_playwright
 
-    local_zone = ZoneInfo(args.timezone)
-    observed = datetime.now(local_zone)
     with sync_playwright() as playwright:
         browser = playwright.chromium.connect_over_cdp(args.cdp_url)
         pages = [
@@ -98,37 +140,19 @@ def sync(args: argparse.Namespace) -> int:
         if not pages:
             print("STOP: no open https://myjobs.indeed.com/applied page")
             return 2
-        page = pages[-1]
-        access = check_access_gate(page)
-        if access.blocked:
-            print(f"STOP: access gate requires human action: {access.reason}")
+        try:
+            result = sync_page(
+                pages[-1],
+                database=args.database,
+                timezone_name=args.timezone,
+                history_days=args.history_days,
+            )
+        except (RuntimeError, ValueError) as exc:
+            print(f"STOP: {exc}")
             return 2
-        cards = _extract_applied_cards(page, observed_on=observed.date())
-
-    history = ApplicationSubmissionHistory(args.database)
-    inserted = 0
-    matched = 0
-    for card in cards:
-        before = len(history.recent_submissions(within_days=args.history_days, now=observed))
-        # Indeed exposes day precision here. UTC midnight is a normalized date value, not an
-        # invented application time.
-        applied_at = datetime.combine(card.applied_on, time.min, tzinfo=timezone.utc)
-        history.record_existing_submission(
-            company=card.company,
-            job_title=card.job_title,
-            applied_at=applied_at,
-            confirmation="visible on Indeed Applied page",
-            confirmation_source=ConfirmationSource.BROWSER,
-            source_url=card.source_url,
-        )
-        after = len(history.recent_submissions(within_days=args.history_days, now=observed))
-        if after > before:
-            inserted += 1
-        else:
-            matched += 1
     print(
-        f"access=clear cards={len(cards)} inserted={inserted} "
-        f"matched_existing={matched} database={args.database}"
+        f"access=clear cards={result['cards']} inserted={result['inserted']} "
+        f"matched_existing={result['matched']} database={args.database}"
     )
     return 0
 

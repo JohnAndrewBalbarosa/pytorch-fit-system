@@ -29,6 +29,7 @@ def test_job_finder_control_page_is_standalone(monkeypatch):
     assert "Automatic Work" in response.text
     assert "Needs Human Intervention" in response.text
     assert "Salary &amp; Funnel Analytics" in response.text
+    assert "data-search-inventory" in response.text
     assert 'data-view-link="overview"' in response.text
     assert "/static/job_finder_control.js" in response.text
 
@@ -372,6 +373,7 @@ def test_control_frontend_exposes_external_confirmation_action():
     assert "Looks right — continue safely" in response.text
     assert "review-approve" in response.text
     assert "Skip job" in response.text
+    assert "Scan current results" in response.text
 
 
 def test_unqueued_human_outcome_remains_visible_as_grouped_fallback():

@@ -459,6 +459,23 @@
     setText("[data-run-status]", String(goal.status || state.run?.status || "not started").replaceAll("_", " "));
     setText("[data-process-status]", goal.process?.running ? "Running" : "Stopped");
     setText("[data-goal-id]", goal.id ? `Goal ${goal.id} · ${goal.sites.join(", ")}` : "No active goal.");
+    const inventory = goal.search_inventory || {};
+    const inventorySource = inventory.source?.host
+      ? `${inventory.source.host}${inventory.source.safe_path || ""}`
+      : "no open search source";
+    const appliedSync = inventory.applied_sync?.status === "synced"
+      ? ` · ${inventory.applied_sync.cards || 0} Applied-page confirmations synced`
+      : "";
+    setText(
+      "[data-search-inventory]",
+      inventory.status
+        ? `Candidate scan: ${String(inventory.status).replaceAll("_", " ")} · ${inventorySource} · ${inventory.observed || 0} observed · ${inventory.eligible || 0} eligible · ${inventory.already_applied || 0} already applied · ${inventory.attempted || 0} attempted${appliedSync}${inventory.warning ? ` · ${inventory.warning}` : ""}`
+        : "No candidate inventory yet. Open one Indeed search-results tab before scanning.",
+    );
+    const resumeButton = document.querySelector("[data-resume-goal]");
+    resumeButton.textContent = goal.status === "waiting_for_candidates"
+      ? "Scan current results"
+      : "Resume current work";
     const siteSummary = Object.entries(goal.site_counts || {}).map(([site, counts]) =>
       `${site}: ${counts.confirmed} confirmed · ${counts.reserved} reserved · ${counts.human} human · ${counts.skipped} skipped`,
     ).join(" | ");
@@ -590,7 +607,7 @@
     if (!id) return showToast("No goal is available to resume.");
     try {
       await post(`/api/job-finder/goals/${encodeURIComponent(id)}/resume`);
-      showToast("Goal runner resumed.");
+      showToast("One current-results scan started. It will stop after this inventory cycle.");
       refresh();
     } catch (error) { showToast(error.message); }
   }

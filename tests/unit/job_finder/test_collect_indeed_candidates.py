@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 
 from resume_builder.job_finder import JobListing
@@ -135,3 +136,25 @@ def test_candidate_rejects_senior_mismatch_and_missing_identity():
         )
         is None
     )
+
+
+def test_inventory_report_summarizes_applied_attempted_and_filtered():
+    report = collector._inventory_report(
+        status="ready",
+        source_url="https://ph.indeed.com/jobs?q=python&token=not-persisted",
+        pages_scanned=2,
+        items=[
+            {"status": "eligible"},
+            {"status": "already_applied"},
+            {"status": "attempted"},
+            {"status": "filtered_profile_or_level"},
+        ],
+    )
+
+    assert report["source"]["host"] == "ph.indeed.com"
+    assert report["source"]["safe_path"] == "/jobs"
+    assert "token" not in json.dumps(report["source"])
+    assert report["eligible"] == 1
+    assert report["already_applied"] == 1
+    assert report["attempted"] == 1
+    assert report["filtered"] == 1

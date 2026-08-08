@@ -8,9 +8,12 @@ by ``run_indeed_unattended.py``.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
+from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -22,6 +25,8 @@ from resume_builder.job_application import (  # noqa: E402
     ApplicationGoalStore,
     JobLevel,
     SalaryBand,
+    HumanVerificationQueue,
+    InterventionAction,
     classify_job_level,
     parse_salary_signal,
 )
@@ -37,6 +42,10 @@ from resume_builder.job_finder import (  # noqa: E402
     WorkMode,
     apply_listing_rules,
 )
+try:  # noqa: E402 - supports both direct CLI execution and package-style unit imports
+    from tools.job_finder.sync_indeed_applied import sync_page
+except ModuleNotFoundError:  # pragma: no cover - direct script path
+    from sync_indeed_applied import sync_page
 
 _COUNTRY_HOSTS = {
     "Philippines": "ph.indeed.com",
@@ -149,6 +158,70 @@ _EARLY_CAREER_TERMS = (
     "entry-level",
     "early career",
 )
+
+
+def _browser_target_id(page) -> str:
+    session = None
+    try:
+        session = page.context.new_cdp_session(page)
+        result = session.send("Target.getTargetInfo")
+        return str(result.get("targetInfo", {}).get("targetId", ""))
+    except Exception:
+        return ""
+    finally:
+        if session is not None:
+            try:
+                session.detach()
+            except Exception:
+                pass
+
+
+def _inventory_report(
+    *,
+    status: str,
+    source_url: str = "",
+    pages_scanned: int = 0,
+    items: list[dict[str, str]] | None = None,
+    applied_sync: dict[str, int | str] | None = None,
+    warning: str = "",
+) -> dict[str, object]:
+    inventory_items = items or []
+    counts = Counter(str(item.get("status", "filtered")) for item in inventory_items)
+    parts = urlsplit(source_url)
+    return {
+        "schema_version": 1,
+        "status": status,
+        "scanned_at": datetime.now(timezone.utc).isoformat(),
+        "source": {
+            "site": "indeed",
+            "host": (parts.hostname or "").lower(),
+            "safe_path": parts.path or "",
+            "fingerprint": (
+                hashlib.sha256(source_url.encode()).hexdigest()[:16] if source_url else ""
+            ),
+        },
+        "pages_scanned": pages_scanned,
+        "observed": len(inventory_items),
+        "eligible": counts.get("eligible", 0),
+        "already_applied": counts.get("already_applied", 0),
+        "attempted": counts.get("attempted", 0),
+        "filtered": sum(
+            value
+            for key, value in counts.items()
+            if key not in {"eligible", "already_applied", "attempted"}
+        ),
+        "reason_counts": dict(sorted(counts.items())),
+        "applied_sync": applied_sync or {"status": "not_available"},
+        "warning": warning[:300],
+        "items": inventory_items,
+    }
+
+
+def _write_inventory(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    temporary.replace(path)
 
 
 def _clean(value: str | None) -> str:
@@ -376,6 +449,217 @@ def _execute_search(
     return listings
 
 
+def collect_current_search(
+    args: argparse.Namespace,
+) -> tuple[list[IndeedUnattendedJob], dict[str, object]]:
+    """Inventory one open Indeed results URL without submitting another search."""
+    from playwright.sync_api import sync_playwright
+
+    history = ApplicationSubmissionHistory(args.database)
+    excluded_task_ids: set[str] = set()
+    if args.exclude_task_ids and args.exclude_task_ids.is_file():
+        loaded = json.loads(args.exclude_task_ids.read_text(encoding="utf-8"))
+        if not isinstance(loaded, list):
+            raise ValueError("exclude-task-ids must contain a JSON array")
+        excluded_task_ids = {str(item) for item in loaded}
+
+    band_capacity: dict[SalaryBand, int] = {}
+    if args.goal_id:
+        goal_store = ApplicationGoalStore(args.database)
+        goal = goal_store.get(args.goal_id)
+        used = {band: 0 for band in goal.salary_targets}
+        for item in goal_store.items(args.goal_id):
+            if item.state.value in {"reserved", "confirmed"}:
+                used[item.salary_band] = used.get(item.salary_band, 0) + 1
+        band_capacity = {
+            band: max(0, goal.salary_targets.get(band, 0) - used.get(band, 0))
+            for band in goal.salary_targets
+        }
+
+    selected: list[IndeedUnattendedJob] = []
+    selected_by_band: dict[SalaryBand, int] = {}
+    identities: set[tuple[str, str]] = set()
+    listing_keys: set[tuple[str, str]] = set()
+    items: list[dict[str, str]] = []
+    applied_sync: dict[str, int | str] = {"status": "not_available"}
+    warning = ""
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.connect_over_cdp(args.cdp_url)
+        if not browser.contexts:
+            report = _inventory_report(status="source_missing", warning="Chrome has no context")
+            return [], report
+        context = browser.contexts[0]
+        allowed_hosts = {_COUNTRY_HOSTS[country]: country for country in args.target_country}
+        search_pages = [
+            page
+            for page in context.pages
+            if (urlsplit(page.url).hostname or "").lower() in allowed_hosts
+            and urlsplit(page.url).path.rstrip("/") == "/jobs"
+        ]
+        visible_pages = []
+        for page in search_pages:
+            try:
+                if page.evaluate("document.visibilityState") == "visible":
+                    visible_pages.append(page)
+            except Exception:
+                pass
+        if len(visible_pages) == 1:
+            source_page = visible_pages[0]
+        elif len(search_pages) == 1:
+            source_page = search_pages[0]
+        else:
+            detail = (
+                "Open one Indeed search-results tab before scanning."
+                if not search_pages
+                else "Keep only one active Indeed search-results tab before scanning."
+            )
+            return [], _inventory_report(
+                status="source_missing",
+                warning=detail,
+            )
+
+        source_url = str(source_page.url)
+        country = allowed_hosts[(urlsplit(source_url).hostname or "").lower()]
+        applied_pages = [
+            page
+            for page in context.pages
+            if urlsplit(page.url).hostname == "myjobs.indeed.com"
+            and urlsplit(page.url).path == "/applied"
+        ]
+        if applied_pages:
+            try:
+                applied_sync = sync_page(
+                    applied_pages[-1],
+                    database=args.database,
+                    timezone_name=args.timezone,
+                )
+            except (RuntimeError, ValueError) as exc:
+                applied_sync = {"status": "failed"}
+                warning = f"Applied sync skipped: {exc}"
+        else:
+            warning = "Applied page is not open; existing confirmed history was used."
+
+        scan_page = context.new_page()
+        keep_page = False
+        pages_scanned = 0
+        try:
+            scan_page.goto(source_url, wait_until="domcontentloaded", timeout=15_000)
+            next_url = source_url
+            visited: set[str] = set()
+            while next_url and pages_scanned < args.max_pages and len(selected) < args.max_candidates:
+                if next_url in visited:
+                    break
+                visited.add(next_url)
+                if pages_scanned and scan_page.url != next_url:
+                    scan_page.goto(next_url, wait_until="domcontentloaded", timeout=15_000)
+                scan_page.wait_for_timeout(1_000)
+                html = _stable_content(scan_page)
+                decision = AccessGuard().classify(url=scan_page.url, html=html)
+                if not decision.should_continue:
+                    action = (
+                        InterventionAction.CAPTCHA
+                        if "captcha" in decision.reason.casefold()
+                        else InterventionAction.HUMAN_VERIFICATION
+                    )
+                    HumanVerificationQueue(args.queue).enqueue_handoff(
+                        application_reference=f"Indeed candidate scan — {args.goal_id or 'manual'}",
+                        url=str(scan_page.url),
+                        reason=decision.reason,
+                        browser_target_id=_browser_target_id(scan_page),
+                        action=action,
+                        goal_id=args.goal_id,
+                    )
+                    keep_page = True
+                    report = _inventory_report(
+                        status="human_required",
+                        source_url=source_url,
+                        pages_scanned=pages_scanned,
+                        items=items,
+                        applied_sync=applied_sync,
+                        warning=decision.reason,
+                    )
+                    return selected, report
+                layout = INDEED_ADAPTER.build_listing_layout(scan_page.url, html)
+                listings, next_urls, _, _ = apply_listing_rules(
+                    html,
+                    scan_page.url,
+                    f"{urlsplit(scan_page.url).scheme}://{urlsplit(scan_page.url).netloc}",
+                    layout.rules,
+                )
+                pages_scanned += 1
+                for listing in listings:
+                    candidate = candidate_from_listing(
+                        listing,
+                        target_country=country,
+                        employment_type=args.employment_type,
+                        job_levels=args.job_level,
+                    )
+                    item = {
+                        "company": _clean(listing.company),
+                        "job_title": _clean(listing.title),
+                        "task_id": candidate.task_id if candidate else "",
+                        "status": "filtered_profile_or_level",
+                    }
+                    if candidate is None:
+                        items.append(item)
+                        continue
+                    identity = (
+                        " ".join(candidate.company.casefold().split()),
+                        " ".join(candidate.job_title.casefold().split()),
+                    )
+                    host = (urlsplit(candidate.listing_url).hostname or "").lower()
+                    key = parse_qs(urlsplit(candidate.listing_url).query)["jk"][0]
+                    listing_identity = (host, key)
+                    status = "eligible"
+                    if candidate.task_id in excluded_task_ids:
+                        status = "attempted"
+                    elif identity in identities or listing_identity in listing_keys:
+                        status = "duplicate_in_inventory"
+                    elif has_recent_exact_submission(
+                        history,
+                        company=candidate.company,
+                        job_title=candidate.job_title,
+                        within_days=args.duplicate_days,
+                    ):
+                        status = "already_applied"
+                    elif band_capacity and candidate.salary_band != SalaryBand.UNKNOWN and (
+                        selected_by_band.get(candidate.salary_band, 0)
+                        >= band_capacity.get(candidate.salary_band, 0)
+                    ):
+                        status = "salary_band_full"
+                    elif candidate.salary_band == SalaryBand.UNKNOWN and (
+                        selected_by_band.get(SalaryBand.UNKNOWN, 0) >= 3
+                    ):
+                        status = "unknown_salary_limit"
+                    item["status"] = status
+                    items.append(item)
+                    identities.add(identity)
+                    listing_keys.add(listing_identity)
+                    if status != "eligible":
+                        continue
+                    selected.append(candidate)
+                    selected_by_band[candidate.salary_band] = (
+                        selected_by_band.get(candidate.salary_band, 0) + 1
+                    )
+                    if len(selected) >= args.max_candidates:
+                        break
+                next_url = next_urls[0] if next_urls else ""
+        finally:
+            if not keep_page:
+                scan_page.close()
+
+    status = "ready" if selected else "exhausted"
+    return selected, _inventory_report(
+        status=status,
+        source_url=source_url,
+        pages_scanned=pages_scanned,
+        items=items,
+        applied_sync=applied_sync,
+        warning=warning,
+    )
+
+
 def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
     from playwright.sync_api import sync_playwright
 
@@ -568,6 +852,11 @@ def _parser() -> argparse.ArgumentParser:
         default=ROOT / ".cache" / "application-submissions.sqlite3",
     )
     parser.add_argument("--goal-id", default="")
+    parser.add_argument("--queue", type=Path, default=ROOT / ".cache" / "application-verification-queue.json")
+    parser.add_argument("--inventory-output", type=Path)
+    parser.add_argument("--current-search-only", action="store_true")
+    parser.add_argument("--max-pages", type=int, default=3)
+    parser.add_argument("--timezone", default="Asia/Manila")
     parser.add_argument(
         "--output",
         type=Path,
@@ -628,19 +917,42 @@ def main() -> int:
         args.job_level = ["junior", "intern"]
     if not 1 <= args.max_candidates <= 24:
         raise SystemExit("--max-candidates must be between 1 and 24")
-    manifest = collect(args)
+    if not 1 <= args.max_pages <= 5:
+        raise SystemExit("--max-pages must be between 1 and 5")
+    if args.current_search_only:
+        try:
+            current_jobs, inventory = collect_current_search(args)
+        except Exception as exc:  # noqa: BLE001 - report deterministic scan failure to supervisor
+            inventory = _inventory_report(status="error", warning=str(exc))
+            current_jobs = []
+        if args.inventory_output:
+            _write_inventory(args.inventory_output, inventory)
+        manifest = IndeedUnattendedManifest(jobs=current_jobs) if current_jobs else None
+    else:
+        manifest = collect(args)
+        inventory = {"status": "ready"}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_suffix(args.output.suffix + ".tmp")
-    temporary.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+    temporary.write_text(
+        manifest.model_dump_json(indent=2) if manifest else json.dumps({"jobs": []}, indent=2),
+        encoding="utf-8",
+    )
     temporary.replace(args.output)
     print(f"Indeed candidate manifest: {args.output}", flush=True)
-    print(f"Candidates: {len(manifest.jobs)}", flush=True)
-    for job in manifest.jobs:
+    jobs = manifest.jobs if manifest else []
+    print(f"Candidates: {len(jobs)}", flush=True)
+    for job in jobs:
         print(
             f"- {job.target_country} | {job.company} | {job.job_title} | {job.resume_file}",
             flush=True,
         )
-    return 0
+    return {
+        "ready": 0,
+        "exhausted": 0,
+        "source_missing": 2,
+        "human_required": 3,
+        "error": 4,
+    }.get(str(inventory.get("status", "ready")), 4)
 
 
 if __name__ == "__main__":

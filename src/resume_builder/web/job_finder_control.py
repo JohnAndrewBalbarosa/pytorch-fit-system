@@ -30,6 +30,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_QUEUE_PATH = REPO_ROOT / ".cache" / "application-verification-queue.json"
 DEFAULT_RUN_ROOT = REPO_ROOT / "out" / "indeed-unattended"
 DEFAULT_DEVELOPMENT_BRIDGE_ROOT = REPO_ROOT / "out" / "development-question-bridge"
+DEFAULT_GOAL_ROOT = REPO_ROOT / "out" / "goals"
 
 _PROVIDERS = {"github", "google", "microsoft", "facebook", "linkedin", "indeed"}
 _SOCIAL_PROVIDERS = {"facebook", "linkedin"}
@@ -338,6 +339,21 @@ def _goal_state() -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if goal is None:
         return {}, []
     items = store.items(goal.id)
+    inventory_candidates = list((DEFAULT_GOAL_ROOT / goal.id).glob("cycle-*/inventory.json"))
+    search_inventory: dict[str, Any] = {}
+    if inventory_candidates:
+        inventory_path = max(inventory_candidates, key=lambda path: path.stat().st_mtime)
+        try:
+            loaded_inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+            if isinstance(loaded_inventory, dict):
+                search_inventory = {
+                    key: value for key, value in loaded_inventory.items() if key != "items"
+                }
+        except (OSError, json.JSONDecodeError):
+            search_inventory = {
+                "status": "error",
+                "warning": "Latest candidate inventory is unreadable.",
+            }
     site_counts: dict[str, dict[str, int]] = {}
     salary_counts: dict[str, dict[str, int]] = {
         band.value: {"discovered": 0, "reserved": 0, "confirmed": 0} for band in goal.salary_targets
@@ -403,6 +419,7 @@ def _goal_state() -> tuple[dict[str, Any], list[dict[str, Any]]]:
             "site_counts": site_counts,
             "salary_analytics": salary_analytics,
             "job_level_counts": level_counts,
+            "search_inventory": search_inventory,
         },
         [
             {

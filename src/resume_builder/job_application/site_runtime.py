@@ -15,6 +15,7 @@ class SiteCycleRequest:
     root: Path
     goal: ApplicationGoal
     manifest_path: Path
+    inventory_report_path: Path
     attempted_task_ids_path: Path
     artifact_dir: Path
     database: Path
@@ -52,6 +53,13 @@ class IndeedRuntimeAdapter:
             str(request.attempted_task_ids_path),
             "--output",
             str(request.manifest_path),
+            "--inventory-output",
+            str(request.inventory_report_path),
+            "--queue",
+            str(request.queue),
+            "--current-search-only",
+            "--max-pages",
+            "3",
         ]
         for employment_type in request.goal.employment_types:
             command.extend(["--employment-type", employment_type])
