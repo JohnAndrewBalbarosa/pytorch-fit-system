@@ -54,6 +54,8 @@ from resume_builder.job_application import (  # noqa: E402
     read_browser_resource_snapshot,
     recommend_role_resume,
     run_indeed_smart_apply_until_gate,
+    SalaryBand,
+    parse_salary_signal,
 )
 from resume_builder.llm import GoogleProvider, LLMUnavailableError  # noqa: E402
 from resume_builder.job_application.indeed_unattended import (  # noqa: E402
@@ -109,12 +111,29 @@ def _should_delay_for_human(outcome: BatchApplicationOutcome) -> bool:
     )
 
 
-def _record_goal_outcome(args: argparse.Namespace, outcome: BatchApplicationOutcome) -> None:
+def _record_goal_outcome(
+    args: argparse.Namespace,
+    outcome: BatchApplicationOutcome,
+    job: IndeedUnattendedJob | None = None,
+) -> None:
     goal_id = str(getattr(args, "goal_id", "") or "").strip()
     if not goal_id:
         return
     store = ApplicationGoalStore(Path(args.database))
     task = outcome.task
+    try:
+        existing = store.item(goal_id, task.task_id)
+    except KeyError:
+        existing = None
+    salary_signal = job.salary_signal if job else ""
+    salary_min = job.salary_monthly_min_php if job else None
+    salary_max = job.salary_monthly_max_php if job else None
+    salary_band = job.salary_band if job else SalaryBand.LEGACY
+    if existing is not None and salary_band == SalaryBand.UNKNOWN:
+        salary_signal = existing.salary_signal
+        salary_min = existing.salary_monthly_min_php
+        salary_max = existing.salary_monthly_max_php
+        salary_band = existing.salary_band
     state = {
         BatchApplicationStatus.SUBMITTED: GoalItemState.OBSERVED,
         BatchApplicationStatus.SKIPPED: GoalItemState.SKIPPED,
@@ -130,6 +149,11 @@ def _record_goal_outcome(args: argparse.Namespace, outcome: BatchApplicationOutc
         job_title=task.job_title,
         state=state,
         detail=outcome.detail,
+        salary_signal=salary_signal,
+        salary_monthly_min_php=salary_min,
+        salary_monthly_max_php=salary_max,
+        salary_band=salary_band,
+        job_level=job.job_level if job else "unknown",
     )
     if outcome.status == BatchApplicationStatus.SUBMITTED:
         store.confirm(goal_id, task.task_id, detail=outcome.detail)
@@ -192,6 +216,38 @@ def _browser_target_id(page) -> str:
 def _visible_text(page, selector: str) -> str:
     locator = page.locator(selector).first
     return locator.inner_text() if locator.count() and locator.is_visible() else ""
+
+
+def _rendered_salary_signal(page) -> str:
+    for selector in (
+        "#salaryInfoAndJobType",
+        "[data-testid=attribute_snippet_testid]",
+        ".salary-snippet-container",
+        "[class*=salary]",
+    ):
+        value = _visible_text(page, selector)
+        if value and ("₱" in value or "PHP" in value.upper()):
+            return value
+    return ""
+
+
+def _observe_job_evidence(args: argparse.Namespace, job: IndeedUnattendedJob) -> None:
+    goal_id = str(getattr(args, "goal_id", "") or "").strip()
+    if not goal_id:
+        return
+    ApplicationGoalStore(Path(args.database)).observe(
+        goal_id,
+        task_id=job.task_id,
+        site="indeed",
+        company=job.company,
+        job_title=job.job_title,
+        salary_signal=job.salary_signal,
+        salary_monthly_min_php=job.salary_monthly_min_php,
+        salary_monthly_max_php=job.salary_monthly_max_php,
+        salary_band=job.salary_band,
+        job_level=job.job_level,
+        detail="rendered listing evidence classified",
+    )
 
 
 def _tab_budget_available(context, args: argparse.Namespace) -> bool:
@@ -389,8 +445,7 @@ def _select_resume(
         return candidate if candidate.is_file() else None
     routes = _profile_store(args).resume_routes()
     profiles = tuple(
-        ResumeArtifactProfile(filename=route.filename, terms=route.terms)
-        for route in routes
+        ResumeArtifactProfile(filename=route.filename, terms=route.terms) for route in routes
     )
     default_filename = next(
         (route.filename for route in routes if route.is_default),
@@ -470,9 +525,10 @@ def _runtime_verified_phone(page, args: argparse.Namespace, identity=None) -> st
     value = phone.input_value().strip()
     observed_iso = (country.get_attribute("data-value") or "").strip().upper()
     expected_iso = (
-        getattr(args, "phone_country_iso", "")
-        or (identity.country_iso if identity else "")
-    ).strip().upper()
+        (getattr(args, "phone_country_iso", "") or (identity.country_iso if identity else ""))
+        .strip()
+        .upper()
+    )
     original_calling_code = "".join(
         character
         for character in getattr(args, "saved_phone_original_calling_code", "")
@@ -491,11 +547,7 @@ def _runtime_verified_phone(page, args: argparse.Namespace, identity=None) -> st
         return visible_digits[len(original_calling_code) :]
     if value and observed_iso == expected_iso:
         return value
-    if (
-        value
-        and observed_iso
-        and getattr(args, "use_saved_contact_phone", False)
-    ):
+    if value and observed_iso and getattr(args, "use_saved_contact_phone", False):
         return value
     return ""
 
@@ -607,8 +659,7 @@ def _adaptive_question_page_plan(
         "job_title": job.job_title,
     }
     print(
-        "Smart Apply page context: "
-        + json.dumps(summary_payload, ensure_ascii=False),
+        "Smart Apply page context: " + json.dumps(summary_payload, ensure_ascii=False),
         flush=True,
     )
     _append_jsonl(
@@ -620,9 +671,7 @@ def _adaptive_question_page_plan(
         unresolved_questions = [
             question for question in questions if question.question_id in unresolved
         ]
-        DevelopmentQuestionBridge(
-            ROOT / "out" / "development-question-bridge"
-        ).create_request(
+        DevelopmentQuestionBridge(ROOT / "out" / "development-question-bridge").create_request(
             domain="smartapply.indeed.com",
             company=job.company,
             job_title=job.job_title,
@@ -637,8 +686,7 @@ def _adaptive_question_page_plan(
                 "company": job.company,
                 "job_title": job.job_title,
                 "questions": [
-                    question.model_dump(mode="json")
-                    for question in unresolved_questions
+                    question.model_dump(mode="json") for question in unresolved_questions
                 ],
             },
         )
@@ -733,13 +781,11 @@ def _run_application(
     resume = load_resume_artifact(resume_json)
     resume = _resume_with_verified_identity(resume, identity)
     verified_phone = _runtime_verified_phone(application_page, args, identity)
-    phone_country_calling_code = (
-        getattr(args, "phone_country_calling_code", "")
-        or (identity.phone_calling_code if identity else "")
+    phone_country_calling_code = getattr(args, "phone_country_calling_code", "") or (
+        identity.phone_calling_code if identity else ""
     )
-    phone_country_iso = (
-        getattr(args, "phone_country_iso", "")
-        or (identity.country_iso if identity else "")
+    phone_country_iso = getattr(args, "phone_country_iso", "") or (
+        identity.country_iso if identity else ""
     )
     policy, approvals = _application_permissions(args)
     result = None
@@ -943,6 +989,29 @@ def _worker(job: IndeedUnattendedJob, args: argparse.Namespace) -> BatchApplicat
                 _outcome(job, BatchApplicationStatus.SKIPPED, reason),
             )
 
+        salary = parse_salary_signal(_rendered_salary_signal(page) or job.salary_signal)
+        job = job.model_copy(
+            update={
+                "salary_signal": salary.raw,
+                "salary_monthly_min_php": salary.monthly_min_php,
+                "salary_monthly_max_php": salary.monthly_max_php,
+                "salary_band": salary.band,
+            }
+        )
+        _observe_job_evidence(args, job)
+        if not job.employment_type:
+            return _outcome(
+                job,
+                BatchApplicationStatus.HUMAN_HANDOFF,
+                "employment-type review required: listing does not prove full-time, contract, or internship",
+            )
+        if job.salary_band == SalaryBand.UNKNOWN:
+            return _outcome(
+                job,
+                BatchApplicationStatus.HUMAN_HANDOFF,
+                f"salary review required: {salary.reason}",
+            )
+
         if not _tab_budget_available(context, args):
             return _outcome(
                 job,
@@ -999,15 +1068,12 @@ def _run_payload(
         "started_at": started_at,
         "target_submissions": target_submissions,
         "confirmed_submissions": sum(
-            outcome.status == BatchApplicationStatus.SUBMITTED
-            for outcome in latest.values()
+            outcome.status == BatchApplicationStatus.SUBMITTED for outcome in latest.values()
         ),
         "candidates_started": len(candidates_started),
         "jobs": [job.model_dump(mode="json") for job in jobs],
         "outcomes": [
-            latest[job.task_id].model_dump(mode="json")
-            for job in jobs
-            if job.task_id in latest
+            latest[job.task_id].model_dump(mode="json") for job in jobs if job.task_id in latest
         ],
     }
     if resource_limits is not None:
@@ -1089,7 +1155,7 @@ def run(args: argparse.Namespace, *, worker=_worker) -> int:
                         f"worker failed closed: {type(exc).__name__}",
                     )
                 latest[job.task_id] = outcome
-                _record_goal_outcome(args, outcome)
+                _record_goal_outcome(args, outcome, job)
                 if (
                     outcome.status == BatchApplicationStatus.SUBMITTED
                     and job.task_id not in outcomes
@@ -1144,7 +1210,8 @@ def run(args: argparse.Namespace, *, worker=_worker) -> int:
         if goal.status == ApplicationGoalStatus.TARGET_REACHED:
             terminal_status = "target_reached"
         elif any(
-            item.status in {
+            item.status
+            in {
                 BatchApplicationStatus.HUMAN_HANDOFF,
                 BatchApplicationStatus.VERIFICATION_PENDING,
             }
@@ -1158,9 +1225,7 @@ def run(args: argparse.Namespace, *, worker=_worker) -> int:
         terminal_status = "all_candidates_processed"
     else:
         terminal_status = (
-            "target_reached"
-            if confirmed >= args.target_submissions
-            else "bounded_without_target"
+            "target_reached" if confirmed >= args.target_submissions else "bounded_without_target"
         )
     _write_json(
         args.output / "run.json",
@@ -1176,14 +1241,16 @@ def run(args: argparse.Namespace, *, worker=_worker) -> int:
         ),
     )
     if getattr(args, "process_all_candidates", False):
-        return 1 if any(
-            item.status == BatchApplicationStatus.FAILED for item in outcomes.values()
-        ) else 0
+        return (
+            1
+            if any(item.status == BatchApplicationStatus.FAILED for item in outcomes.values())
+            else 0
+        )
     if confirmed >= args.target_submissions:
         return 0
-    return 1 if any(
-        item.status == BatchApplicationStatus.FAILED for item in outcomes.values()
-    ) else 2
+    return (
+        1 if any(item.status == BatchApplicationStatus.FAILED for item in outcomes.values()) else 2
+    )
 
 
 def _unique_run_directory(base: Path) -> Path:

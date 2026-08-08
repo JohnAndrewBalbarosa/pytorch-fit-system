@@ -1640,6 +1640,22 @@
       "assignee": "JohnAndrewBalbarosa"
     },
     {
+      "title": "JOB.17 Salary-quota job finder analytics and modular control center",
+      "stage": "In Review",
+      "role": "Analytics",
+      "group": "Intelligence",
+      "body": "🤖 AI-built this session — needs human review.\n✅ Enforces a 20-application remote-Philippines junior/intern mix: 7 below ₱20k, 10 at ₱20k–₱40k, 2 at ₱40k–₱80k, and 1 at ₱80k+. Salary/level evidence is persisted, reservations are atomic per band, and unknown salary or employment evidence is review-only.\n✅ Replaces the long control center with Overview, Automation, Salary & Funnel Analytics, Opportunities, Resumes, and Connections modules. URL state, Back/Forward, drill-down segments, and the shared single-browser tab model were live-smoke-tested.\n👤 HITL: the 20-slot goal is queued in waiting_for_human because the normal Indeed tab requires sign-in; no bypass or submission was attempted.\nTests: 779 passed, 2 platform skips; 14 Node tests passed; Ruff and JavaScript syntax checks passed.",
+      "start": "2026-08-08",
+      "target": "2026-08-08",
+      "department": "AI & ML",
+      "hitl": "Yes",
+      "worst_case": "2026-08-15",
+      "priority": "P1",
+      "estimate": 2,
+      "milestone": "Platform & Intelligence — Wk2",
+      "assignee": "JohnAndrewBalbarosa"
+    },
+    {
       "title": "SCRAPE.1 Profile Scraper Agent — agnostic design spec",
       "stage": "In Review",
       "role": "Architect",

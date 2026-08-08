@@ -8,7 +8,14 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from .salary_policy import (
+    DEFAULT_SALARY_TARGET_MIX,
+    JobLevel,
+    SalaryBand,
+    allocate_salary_targets,
+)
 
 
 class ApplicationGoalStatus(str, Enum):
@@ -39,6 +46,15 @@ class ApplicationGoal(BaseModel):
     target_countries: list[str] = Field(default_factory=lambda: ["Philippines"])
     work_mode: str = "remote"
     employment_type: str = "contract"
+    employment_types: list[str] = Field(
+        default_factory=lambda: ["full_time", "contract", "internship"]
+    )
+    job_levels: list[JobLevel] = Field(default_factory=lambda: [JobLevel.JUNIOR, JobLevel.INTERN])
+    salary_target_mix: dict[SalaryBand, int] = Field(
+        default_factory=lambda: dict(DEFAULT_SALARY_TARGET_MIX)
+    )
+    salary_targets: dict[SalaryBand, int] = Field(default_factory=dict)
+    unknown_salary_policy: str = "review_only"
     created_at: str
     updated_at: str
 
@@ -57,6 +73,16 @@ class ApplicationGoal(BaseModel):
             raise ValueError("target must be at least 1")
         return value
 
+    @model_validator(mode="after")
+    def validate_policy(self) -> "ApplicationGoal":
+        if not self.employment_types:
+            self.employment_types = [self.employment_type]
+        if not self.salary_targets:
+            self.salary_targets = allocate_salary_targets(self.target, self.salary_target_mix)
+        if self.unknown_salary_policy != "review_only":
+            raise ValueError("unknown_salary_policy must be review_only")
+        return self
+
 
 class GoalItem(BaseModel):
     goal_id: str
@@ -66,6 +92,11 @@ class GoalItem(BaseModel):
     job_title: str
     state: GoalItemState
     counts_toward_target: bool = False
+    salary_signal: str = ""
+    salary_monthly_min_php: int | None = None
+    salary_monthly_max_php: int | None = None
+    salary_band: SalaryBand = SalaryBand.UNKNOWN
+    job_level: JobLevel = JobLevel.UNKNOWN
     detail: str = ""
     updated_at: str
 
@@ -86,6 +117,10 @@ class ApplicationGoalStore:
         target_countries: list[str] | None = None,
         work_mode: str = "remote",
         employment_type: str = "contract",
+        employment_types: list[str] | None = None,
+        job_levels: list[JobLevel | str] | None = None,
+        salary_target_mix: dict[SalaryBand | str, int] | None = None,
+        unknown_salary_policy: str = "review_only",
     ) -> ApplicationGoal:
         if target < 1:
             raise ValueError("target must be at least 1")
@@ -93,6 +128,15 @@ class ApplicationGoalStore:
         goal_id = uuid.uuid4().hex
         selected_sites = sites or ["indeed"]
         countries = target_countries or ["Philippines"]
+        selected_types = employment_types or [employment_type]
+        selected_levels = [JobLevel(value) for value in (job_levels or ["junior", "intern"])]
+        selected_mix = {
+            SalaryBand(key): int(value)
+            for key, value in (salary_target_mix or DEFAULT_SALARY_TARGET_MIX).items()
+        }
+        salary_targets = allocate_salary_targets(target, selected_mix)
+        if unknown_salary_policy != "review_only":
+            raise ValueError("unknown_salary_policy must be review_only")
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             connection.execute(
@@ -109,8 +153,10 @@ class ApplicationGoalStore:
                 """
                 INSERT INTO application_goals (
                     id, target, confirmed, reserved, status, sites, target_countries,
-                    work_mode, employment_type, created_at, updated_at
-                ) VALUES (?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?)
+                    work_mode, employment_type, employment_types, job_levels,
+                    salary_target_mix, salary_targets, unknown_salary_policy,
+                    created_at, updated_at
+                ) VALUES (?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     goal_id,
@@ -119,7 +165,12 @@ class ApplicationGoalStore:
                     _encode(selected_sites),
                     _encode(countries),
                     work_mode,
-                    employment_type,
+                    selected_types[0],
+                    _encode(selected_types),
+                    _encode([item.value for item in selected_levels]),
+                    _encode_mapping(selected_mix),
+                    _encode_mapping(salary_targets),
+                    unknown_salary_policy,
                     now,
                     now,
                 ),
@@ -178,6 +229,11 @@ class ApplicationGoalStore:
         job_title: str,
         state: GoalItemState = GoalItemState.OBSERVED,
         detail: str = "",
+        salary_signal: str = "",
+        salary_monthly_min_php: int | None = None,
+        salary_monthly_max_php: int | None = None,
+        salary_band: SalaryBand | str = SalaryBand.LEGACY,
+        job_level: JobLevel | str = JobLevel.UNKNOWN,
     ) -> GoalItem:
         now = _now()
         with self._connect() as connection:
@@ -185,8 +241,9 @@ class ApplicationGoalStore:
                 """
                 INSERT INTO application_goal_items (
                     goal_id, task_id, site, company, job_title, state,
-                    counts_toward_target, detail, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+                    counts_toward_target, salary_signal, salary_monthly_min_php,
+                    salary_monthly_max_php, salary_band, job_level, detail, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(goal_id, task_id) DO UPDATE SET
                     site = excluded.site,
                     company = excluded.company,
@@ -195,9 +252,41 @@ class ApplicationGoalStore:
                         WHEN application_goal_items.state IN ('reserved', 'confirmed')
                         THEN application_goal_items.state ELSE excluded.state END,
                     detail = excluded.detail,
+                    salary_signal = CASE WHEN excluded.salary_signal != ''
+                        THEN excluded.salary_signal ELSE application_goal_items.salary_signal END,
+                    salary_monthly_min_php = COALESCE(
+                        excluded.salary_monthly_min_php,
+                        application_goal_items.salary_monthly_min_php
+                    ),
+                    salary_monthly_max_php = COALESCE(
+                        excluded.salary_monthly_max_php,
+                        application_goal_items.salary_monthly_max_php
+                    ),
+                    salary_band = CASE
+                        WHEN excluded.salary_band IN ('unknown', 'legacy_unclassified')
+                             AND application_goal_items.salary_band NOT IN ('unknown', 'legacy_unclassified')
+                        THEN application_goal_items.salary_band ELSE excluded.salary_band END,
+                    job_level = CASE
+                        WHEN excluded.job_level = 'unknown'
+                             AND application_goal_items.job_level != 'unknown'
+                        THEN application_goal_items.job_level ELSE excluded.job_level END,
                     updated_at = excluded.updated_at
                 """,
-                (goal_id, task_id, site, company, job_title, state.value, detail[:500], now),
+                (
+                    goal_id,
+                    task_id,
+                    site,
+                    company,
+                    job_title,
+                    state.value,
+                    salary_signal[:300],
+                    salary_monthly_min_php,
+                    salary_monthly_max_php,
+                    SalaryBand(salary_band).value,
+                    JobLevel(job_level).value,
+                    detail[:500],
+                    now,
+                ),
             )
         return self.item(goal_id, task_id)
 
@@ -219,7 +308,26 @@ class ApplicationGoalStore:
                 return True
             if goal["status"] == ApplicationGoalStatus.TARGET_REACHED.value:
                 return False
+            band = SalaryBand(item["salary_band"])
+            if band == SalaryBand.UNKNOWN:
+                return False
             if int(goal["confirmed"]) + int(goal["reserved"]) >= int(goal["target"]):
+                return False
+            targets = _decode_mapping(goal["salary_targets"])
+            band_target = int(targets.get(band.value, 0))
+            band_used = connection.execute(
+                """
+                SELECT COUNT(*) FROM application_goal_items
+                WHERE goal_id = ? AND salary_band = ? AND state IN (?, ?)
+                """,
+                (
+                    goal_id,
+                    band.value,
+                    GoalItemState.RESERVED.value,
+                    GoalItemState.CONFIRMED.value,
+                ),
+            ).fetchone()[0]
+            if band != SalaryBand.LEGACY and int(band_used) >= band_target:
                 return False
             connection.execute(
                 "UPDATE application_goal_items SET state = ?, updated_at = ? "
@@ -248,28 +356,50 @@ class ApplicationGoalStore:
                 raise KeyError(f"unknown goal item {goal_id}/{task_id}")
             if item["state"] == GoalItemState.CONFIRMED.value:
                 return self._goal(goal)
-            if int(goal["confirmed"]) >= int(goal["target"]):
+            band = SalaryBand(item["salary_band"])
+            counts_toward_target = band != SalaryBand.UNKNOWN
+            if counts_toward_target and band != SalaryBand.LEGACY:
+                targets = _decode_mapping(goal["salary_targets"])
+                used = connection.execute(
+                    """
+                    SELECT COUNT(*) FROM application_goal_items
+                    WHERE goal_id = ? AND salary_band = ? AND state = ?
+                    """,
+                    (goal_id, band.value, GoalItemState.CONFIRMED.value),
+                ).fetchone()[0]
+                if int(used) >= int(targets.get(band.value, 0)):
+                    raise ValueError(f"salary quota is already full for {band.value}")
+            if counts_toward_target and int(goal["confirmed"]) >= int(goal["target"]):
                 raise ValueError("application goal is already satisfied")
             was_reserved = item["state"] == GoalItemState.RESERVED.value
             connection.execute(
                 """
                 UPDATE application_goal_items
-                SET state = ?, counts_toward_target = 1, detail = ?, updated_at = ?
+                SET state = ?, counts_toward_target = ?, detail = ?, updated_at = ?
                 WHERE goal_id = ? AND task_id = ?
                 """,
-                (GoalItemState.CONFIRMED.value, detail[:500], now, goal_id, task_id),
+                (
+                    GoalItemState.CONFIRMED.value,
+                    int(counts_toward_target),
+                    detail[:500],
+                    now,
+                    goal_id,
+                    task_id,
+                ),
             )
             connection.execute(
                 """
                 UPDATE application_goals
-                SET confirmed = confirmed + 1,
+                SET confirmed = confirmed + ?,
                     reserved = MAX(0, reserved - ?),
-                    status = CASE WHEN confirmed + 1 >= target THEN ? ELSE ? END,
+                    status = CASE WHEN confirmed + ? >= target THEN ? ELSE ? END,
                     updated_at = ?
                 WHERE id = ?
                 """,
                 (
+                    int(counts_toward_target),
                     int(was_reserved),
+                    int(counts_toward_target),
                     ApplicationGoalStatus.TARGET_REACHED.value,
                     ApplicationGoalStatus.ACTIVE.value,
                     now,
@@ -365,6 +495,11 @@ class ApplicationGoalStore:
                     target_countries TEXT NOT NULL,
                     work_mode TEXT NOT NULL,
                     employment_type TEXT NOT NULL,
+                    employment_types TEXT NOT NULL DEFAULT '["contract"]',
+                    job_levels TEXT NOT NULL DEFAULT '["junior","intern"]',
+                    salary_target_mix TEXT NOT NULL DEFAULT '{"below_20k":35,"php_20k_40k":50,"php_40k_80k":10,"php_80k_plus":5}',
+                    salary_targets TEXT NOT NULL DEFAULT '{}',
+                    unknown_salary_policy TEXT NOT NULL DEFAULT 'review_only',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     CHECK(confirmed + reserved <= target)
@@ -377,6 +512,11 @@ class ApplicationGoalStore:
                     job_title TEXT NOT NULL,
                     state TEXT NOT NULL,
                     counts_toward_target INTEGER NOT NULL DEFAULT 0,
+                    salary_signal TEXT NOT NULL DEFAULT '',
+                    salary_monthly_min_php INTEGER,
+                    salary_monthly_max_php INTEGER,
+                    salary_band TEXT NOT NULL DEFAULT 'unknown',
+                    job_level TEXT NOT NULL DEFAULT 'unknown',
                     detail TEXT NOT NULL DEFAULT '',
                     updated_at TEXT NOT NULL,
                     PRIMARY KEY(goal_id, task_id)
@@ -385,12 +525,38 @@ class ApplicationGoalStore:
                     ON application_goal_items(goal_id, state, updated_at);
                 """
             )
+            _ensure_columns(
+                connection,
+                "application_goals",
+                {
+                    "employment_types": "TEXT NOT NULL DEFAULT '[\"contract\"]'",
+                    "job_levels": 'TEXT NOT NULL DEFAULT \'["junior","intern"]\'',
+                    "salary_target_mix": 'TEXT NOT NULL DEFAULT \'{"below_20k":35,"php_20k_40k":50,"php_40k_80k":10,"php_80k_plus":5}\'',
+                    "salary_targets": "TEXT NOT NULL DEFAULT '{}'",
+                    "unknown_salary_policy": "TEXT NOT NULL DEFAULT 'review_only'",
+                },
+            )
+            _ensure_columns(
+                connection,
+                "application_goal_items",
+                {
+                    "salary_signal": "TEXT NOT NULL DEFAULT ''",
+                    "salary_monthly_min_php": "INTEGER",
+                    "salary_monthly_max_php": "INTEGER",
+                    "salary_band": "TEXT NOT NULL DEFAULT 'unknown'",
+                    "job_level": "TEXT NOT NULL DEFAULT 'unknown'",
+                },
+            )
 
     @staticmethod
     def _goal(row: sqlite3.Row) -> ApplicationGoal:
         value = dict(row)
         value["sites"] = _decode(value["sites"])
         value["target_countries"] = _decode(value["target_countries"])
+        value["employment_types"] = _decode(value.get("employment_types") or '["contract"]')
+        value["job_levels"] = _decode(value.get("job_levels") or '["junior","intern"]')
+        value["salary_target_mix"] = _decode_mapping(value.get("salary_target_mix") or "{}")
+        value["salary_targets"] = _decode_mapping(value.get("salary_targets") or "{}")
         return ApplicationGoal.model_validate(value)
 
 
@@ -409,3 +575,29 @@ def _decode(value: str) -> list[str]:
 
     loaded = json.loads(value)
     return [str(item) for item in loaded]
+
+
+def _encode_mapping(values: dict[SalaryBand | str, int]) -> str:
+    import json
+
+    return json.dumps(
+        {
+            (key.value if isinstance(key, SalaryBand) else str(key)): int(value)
+            for key, value in values.items()
+        },
+        separators=(",", ":"),
+    )
+
+
+def _decode_mapping(value: str) -> dict[str, int]:
+    import json
+
+    loaded = json.loads(value)
+    return {str(key): int(item) for key, item in loaded.items()}
+
+
+def _ensure_columns(connection: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+    existing = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+    for name, declaration in columns.items():
+        if name not in existing:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")

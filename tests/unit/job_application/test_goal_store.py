@@ -6,6 +6,7 @@ from resume_builder.job_application import (
     ApplicationGoalStatus,
     ApplicationGoalStore,
     GoalItemState,
+    SalaryBand,
 )
 
 
@@ -93,3 +94,69 @@ def test_target_must_be_positive(tmp_path):
 
     with pytest.raises(ValueError, match="at least 1"):
         store.create(target=0)
+
+
+def test_salary_band_reservations_enforce_quota_and_unknown_is_review_only(tmp_path):
+    store = ApplicationGoalStore(tmp_path / "history.sqlite3")
+    goal = store.create(target=20)
+    tasks = []
+    for index in range(11):
+        task_id = f"salary-{index}"
+        store.observe(
+            goal.id,
+            task_id=task_id,
+            site="indeed",
+            company="Example",
+            job_title=f"Junior Python Developer {index}",
+            salary_band=SalaryBand.PHP_20K_40K,
+            job_level="junior",
+        )
+        tasks.append(task_id)
+    for task_id in tasks[:10]:
+        assert store.reserve(goal.id, task_id) is True
+    assert store.reserve(goal.id, tasks[10]) is False
+
+    store.observe(
+        goal.id,
+        task_id="unknown-salary",
+        site="indeed",
+        company="Unknown",
+        job_title="Software Engineering Intern",
+        salary_band=SalaryBand.UNKNOWN,
+        job_level="intern",
+    )
+    assert store.reserve(goal.id, "unknown-salary") is False
+    confirmed = store.confirm(goal.id, "unknown-salary", detail="manual review")
+    assert confirmed.confirmed == 0
+    assert store.item(goal.id, "unknown-salary").counts_toward_target is False
+
+
+def test_retry_observation_does_not_erase_verified_salary_or_level(tmp_path):
+    store = ApplicationGoalStore(tmp_path / "history.sqlite3")
+    goal = store.create(target=20)
+    store.observe(
+        goal.id,
+        task_id="verified",
+        site="indeed",
+        company="Example",
+        job_title="Junior Developer",
+        salary_signal="PHP 30,000 monthly",
+        salary_monthly_min_php=30_000,
+        salary_monthly_max_php=30_000,
+        salary_band=SalaryBand.PHP_20K_40K,
+        job_level="junior",
+    )
+
+    store.observe(
+        goal.id,
+        task_id="verified",
+        site="indeed",
+        company="Example",
+        job_title="Junior Developer",
+        detail="replay queued",
+    )
+
+    item = store.item(goal.id, "verified")
+    assert item.salary_band == SalaryBand.PHP_20K_40K
+    assert item.salary_monthly_min_php == 30_000
+    assert item.job_level.value == "junior"

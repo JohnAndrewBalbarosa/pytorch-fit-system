@@ -44,8 +44,8 @@ class IndeedRuntimeAdapter:
             request.cdp_url,
             "--database",
             str(request.database),
-            "--employment-type",
-            request.goal.employment_type,
+            "--goal-id",
+            request.goal.id,
             "--max-candidates",
             str(request.candidate_limit),
             "--exclude-task-ids",
@@ -53,6 +53,10 @@ class IndeedRuntimeAdapter:
             "--output",
             str(request.manifest_path),
         ]
+        for employment_type in request.goal.employment_types:
+            command.extend(["--employment-type", employment_type])
+        for job_level in request.goal.job_levels:
+            command.extend(["--job-level", job_level.value])
         for country in request.goal.target_countries:
             command.extend(["--target-country", country])
         return command
@@ -96,7 +100,9 @@ class SiteRuntimeRegistry:
         try:
             return self._adapters[site_id]
         except KeyError:
-            raise ValueError(f"no application runtime adapter is registered for {site_id!r}") from None
+            raise ValueError(
+                f"no application runtime adapter is registered for {site_id!r}"
+            ) from None
 
 
 DEFAULT_SITE_RUNTIME_REGISTRY = SiteRuntimeRegistry((IndeedRuntimeAdapter(),))

@@ -83,7 +83,9 @@ def assess_fit(
         )
         for item in demands.constraints
     ]
-    mandatory = [item for item, result in zip(demands.constraints, constraint_results) if item.mandatory]
+    mandatory = [
+        item for item, result in zip(demands.constraints, constraint_results) if item.mandatory
+    ]
     mandatory_results = [
         result for item, result in zip(demands.constraints, constraint_results) if item.mandatory
     ]
@@ -111,7 +113,9 @@ def assess_fit(
         needs = FitLevel.MIXED
     else:
         needs = FitLevel.ALIGNED if preference_results else FitLevel.UNKNOWN
-    unknowns = [item.constraint_id for item in constraint_results if item.status == FitLevel.UNKNOWN]
+    unknowns = [
+        item.constraint_id for item in constraint_results if item.status == FitLevel.UNKNOWN
+    ]
     return FitAssessment(
         opportunity_id=opportunity.id,
         eligibility=eligibility,
@@ -142,7 +146,10 @@ def _assess_constraint(
     rationale = "No deterministic candidate fact can resolve this constraint."
     if kind in {ConstraintKind.DEGREE, ConstraintKind.GRADUATION}:
         requires_completed = any(term in normalized for term in ("bachelor", "degree", "graduate"))
-        if requires_completed and campaign.graduation_status.casefold() in {"student", "undergraduate"}:
+        if requires_completed and campaign.graduation_status.casefold() in {
+            "student",
+            "undergraduate",
+        }:
             status = FitLevel.CONFLICT if mandatory else FitLevel.MIXED
             rationale = "Posting requires completed education while candidate status is student."
         else:
@@ -155,7 +162,9 @@ def _assess_constraint(
             status = (
                 FitLevel.PASS
                 if campaign.professional_experience_years >= required
-                else FitLevel.CONFLICT if mandatory else FitLevel.MIXED
+                else FitLevel.CONFLICT
+                if mandatory
+                else FitLevel.MIXED
             )
             rationale = (
                 f"Candidate has {campaign.professional_experience_years:g} verified professional "
@@ -165,7 +174,10 @@ def _assess_constraint(
         if campaign.preferred_work_mode == "any" or campaign.preferred_work_mode in normalized:
             status, rationale = FitLevel.PASS, "Work mode matches the configured preference."
         elif normalized:
-            status, rationale = FitLevel.CONFLICT, "Work mode conflicts with the configured preference."
+            status, rationale = (
+                FitLevel.CONFLICT,
+                "Work mode conflicts with the configured preference.",
+            )
     elif kind == ConstraintKind.COUNTRY:
         countries = [country.casefold() for country in campaign.target_countries]
         if any(country in normalized for country in countries):
@@ -175,7 +187,10 @@ def _assess_constraint(
     elif kind == ConstraintKind.WORK_AUTHORIZATION:
         authorized = [country.casefold() for country in campaign.authorized_countries]
         if authorized and any(country in normalized for country in authorized):
-            status, rationale = FitLevel.PASS, "Authorization is explicitly configured for this country."
+            status, rationale = (
+                FitLevel.PASS,
+                "Authorization is explicitly configured for this country.",
+            )
     elif kind == ConstraintKind.EMPLOYMENT_TYPE:
         expected = {
             MarketTrack.FULL_TIME: ("full-time", "full time", "permanent"),
@@ -184,7 +199,10 @@ def _assess_constraint(
         }
         terms = expected[opportunity_track]
         if any(term in normalized for term in terms):
-            status, rationale = FitLevel.PASS, "Employment type matches the assigned campaign track."
+            status, rationale = (
+                FitLevel.PASS,
+                "Employment type matches the assigned campaign track.",
+            )
         elif normalized:
             status = FitLevel.CONFLICT if mandatory else FitLevel.MIXED
             rationale = "Employment type conflicts with the assigned campaign track."
@@ -237,9 +255,9 @@ def build_analytics(
     conversions = _conversion_metrics(campaign, list(stage_sets.values()))
     track_counts = Counter(item.track.value for item in opportunities)
     mode_counts = Counter(item.application_mode.value for item in opportunities)
-    stage_counts = Counter(
-        stage.value for stages in stage_sets.values() for stage in stages
-    )
+    salary_counts = Counter(item.salary_band.value for item in opportunities)
+    level_counts = Counter(item.job_level.value for item in opportunities)
+    stage_counts = Counter(stage.value for stages in stage_sets.values() for stage in stages)
     stale_count = sum(FunnelStage.GHOSTED in stages for stages in stage_sets.values())
     recommendations = []
     insufficient = [item.name for item in conversions if not item.sufficient_sample]
@@ -257,6 +275,8 @@ def build_analytics(
         keys = [
             f"track:{opportunity.track.value}",
             f"mode:{opportunity.application_mode.value}",
+            f"salary:{opportunity.salary_band.value}",
+            f"level:{opportunity.job_level.value}",
         ]
         if opportunity.fit_assessment is not None:
             fit = opportunity.fit_assessment
@@ -273,6 +293,8 @@ def build_analytics(
         total_opportunities=len(opportunities),
         track_counts=dict(track_counts),
         application_mode_counts=dict(mode_counts),
+        salary_band_counts=dict(salary_counts),
+        job_level_counts=dict(level_counts),
         stage_counts=dict(stage_counts),
         conversions=conversions,
         conversion_segments=segments,
@@ -302,15 +324,25 @@ def _conversion_metrics(
 
     transitions = [
         ("Application → recruiter response", FunnelStage.APPLIED, FunnelStage.RECRUITER_RESPONSE),
-        ("Recruiter response → HR interview", FunnelStage.RECRUITER_RESPONSE, FunnelStage.HR_INTERVIEW),
-        ("HR interview → technical interview", FunnelStage.HR_INTERVIEW, FunnelStage.TECHNICAL_INTERVIEW),
+        (
+            "Recruiter response → HR interview",
+            FunnelStage.RECRUITER_RESPONSE,
+            FunnelStage.HR_INTERVIEW,
+        ),
+        (
+            "HR interview → technical interview",
+            FunnelStage.HR_INTERVIEW,
+            FunnelStage.TECHNICAL_INTERVIEW,
+        ),
         ("Technical interview → offer", FunnelStage.TECHNICAL_INTERVIEW, FunnelStage.OFFER),
     ]
     metrics = []
     for name, source, target in transitions:
         source_items = [stages for stages in stage_sets if reached(stages, source)]
         successes = sum(reached(stages, target) for stages in source_items)
-        failures = sum(bool(stages & terminal) and not reached(stages, target) for stages in source_items)
+        failures = sum(
+            bool(stages & terminal) and not reached(stages, target) for stages in source_items
+        )
         metrics.append(
             conversion_metric(
                 name,

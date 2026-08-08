@@ -16,6 +16,7 @@
     ["other", "Other manual work"],
   ];
   const preferenceKey = "jobFinder.disconnectPreference";
+  const VALID_VIEWS = new Set(["overview", "automation", "analytics", "opportunities", "resumes", "connections"]);
   const sessionsNode = document.querySelector("[data-sessions]");
   const automaticNode = document.querySelector("[data-automatic-list]");
   const interventionsNode = document.querySelector("[data-intervention-groups]");
@@ -39,7 +40,17 @@
   let marketSignature = "";
   let autoStartInFlight = false;
   let autoStartSettled = false;
+  let latestState = {};
   const autoRecheckedAt = new Map();
+
+  document.querySelectorAll("[data-view-link]").forEach((button) => {
+    button.addEventListener("click", () => navigateView(button.dataset.viewLink));
+  });
+  document.querySelector("[data-view-back]").addEventListener("click", () => {
+    if (window.history.length > 1) window.history.back();
+    else navigateView("overview", "", true);
+  });
+  window.addEventListener("popstate", applyLocationView);
 
   document.querySelectorAll("[data-tab]").forEach((button) => {
     button.addEventListener("click", () => selectTab(button.dataset.tab));
@@ -75,6 +86,36 @@
       panel.classList.toggle("active", active);
       panel.hidden = !active;
     });
+  }
+
+  function locationView() {
+    const value = new URLSearchParams(window.location.search).get("view") || "overview";
+    return VALID_VIEWS.has(value) ? value : "overview";
+  }
+
+  function navigateView(view, segment = "", replace = false) {
+    const url = new URL(window.location.href);
+    if (view === "overview") url.searchParams.delete("view");
+    else url.searchParams.set("view", view);
+    if (segment) url.searchParams.set("segment", segment);
+    else url.searchParams.delete("segment");
+    window.history[replace ? "replaceState" : "pushState"]({ view, segment }, "", url);
+    applyLocationView();
+  }
+
+  function applyLocationView() {
+    const view = locationView();
+    document.querySelectorAll("[data-view]").forEach((node) => {
+      const active = node.dataset.view === view;
+      node.classList.toggle("active", active);
+      node.hidden = !active;
+    });
+    document.querySelectorAll("[data-view-link]").forEach((node) => {
+      node.classList.toggle("active", node.dataset.viewLink === view);
+    });
+    document.querySelector("[data-view-back]").hidden = view === "overview";
+    if (view === "analytics") renderAnalyticsDetail(latestState);
+    window.scrollTo({ top: 0, behavior: "instant" });
   }
 
   async function refresh() {
@@ -150,6 +191,8 @@
     );
     const conversions = document.querySelector("[data-market-conversions]");
     conversions.replaceChildren(...(analytics.conversions || []).map(conversionCard));
+    const analyticsConversions = document.querySelector("[data-analytics-conversions]");
+    analyticsConversions.replaceChildren(...(analytics.conversions || []).map(conversionCard));
     const segments = document.querySelector("[data-market-segments]");
     segments.replaceChildren(...Object.entries(analytics.conversion_segments || {}).map(([key, metrics]) => {
       const first = metrics[0] || {};
@@ -401,6 +444,7 @@
   }
 
   function render(state) {
+    latestState = state;
     const counts = state.counts || {};
     setText("[data-count-automatic]", counts.automatic || 0);
     setText("[data-count-interventions]", counts.interventions || 0);
@@ -419,6 +463,7 @@
       `${site}: ${counts.confirmed} confirmed · ${counts.reserved} reserved · ${counts.human} human · ${counts.skipped} skipped`,
     ).join(" | ");
     setText("[data-site-counts]", siteSummary);
+    renderSalaryAnalytics(goal, state.goal_items || []);
     setText(
       "[data-run-detail]",
       state.run?.error || state.run?.artifact || "No run artifact yet.",
@@ -442,6 +487,77 @@
     );
   }
 
+  function renderSalaryAnalytics(goal, items) {
+    const grid = document.querySelector("[data-salary-analytics]");
+    const bands = goal.salary_analytics || [];
+    if (!bands.length) {
+      grid.replaceChildren(element("div", "empty", "Start the 20-application goal to activate salary analytics."));
+    } else {
+      grid.replaceChildren(...bands.map((band) => {
+        const card = element("button", `salary-card band-${band.band}`);
+        card.type = "button";
+        card.dataset.salaryBand = band.band;
+        card.append(element("span", "salary-label", band.label));
+        card.append(element("strong", "salary-progress", band.band === "unknown"
+          ? `${band.discovered} found`
+          : `${band.confirmed + band.reserved} / ${band.target}`));
+        card.append(element("p", "", band.band === "unknown"
+          ? "Review only · does not count"
+          : `${band.mix_percent}% target · ${band.remaining} slots open`));
+        const progress = element("span", "progress-track");
+        const fill = element("i", "progress-fill");
+        fill.style.width = `${band.target ? Math.min(100, ((band.confirmed + band.reserved) / band.target) * 100) : 0}%`;
+        progress.append(fill);
+        card.append(progress, element("small", "", `${band.confirmed} confirmed · ${band.reserved} reserved · ${band.discovered} discovered`));
+        card.addEventListener("click", () => navigateView("analytics", band.band));
+        return card;
+      }));
+    }
+    const levels = goal.job_level_counts || {};
+    const levelNode = document.querySelector("[data-level-analytics]");
+    levelNode.replaceChildren(
+      levelCard("Junior / entry-level", levels.junior || 0),
+      levelCard("Internship", levels.intern || 0),
+      levelCard("Needs level review", levels.unknown || 0),
+    );
+    renderAnalyticsDetail({ goal, goal_items: items });
+  }
+
+  function levelCard(label, count) {
+    const card = element("article", "metric-card");
+    card.append(element("strong", "", count), element("span", "", label));
+    return card;
+  }
+
+  function renderAnalyticsDetail(state) {
+    const node = document.querySelector("[data-analytics-detail]");
+    if (!node) return;
+    const segment = new URLSearchParams(window.location.search).get("segment") || "";
+    if (!segment) {
+      node.replaceChildren(element("div", "empty", "Select a salary band to inspect its jobs and funnel state."));
+      return;
+    }
+    const band = (state.goal?.salary_analytics || []).find((item) => item.band === segment);
+    const matches = (state.goal_items || []).filter((item) => {
+      const itemBand = item.salary_band === "legacy_unclassified" ? "unknown" : item.salary_band;
+      return itemBand === segment;
+    });
+    const heading = element("div", "section-heading compact");
+    const title = element("div");
+    title.append(element("p", "eyebrow", "Salary sub-analytics"), element("h2", "", band?.label || segment));
+    heading.append(title, element("small", "", band ? `${band.confirmed} confirmed · ${band.remaining} quota slots remaining` : "Review segment"));
+    const list = element("div", "work-list");
+    list.replaceChildren(...(matches.length ? matches.map((item) => {
+      const card = element("article", "work-card");
+      const body = element("div");
+      body.append(element("h3", "", item.job_title), element("p", "", `${item.company} · ${String(item.job_level || "unknown").replaceAll("_", " ")}`));
+      body.append(element("p", "detail", item.salary_signal || "No reliable PHP salary evidence."));
+      card.append(body, element("span", `pill ${item.state}`, String(item.state).replaceAll("_", " ")));
+      return card;
+    }) : [element("div", "empty", "No jobs have been classified in this salary band yet.")]));
+    node.replaceChildren(heading, list);
+  }
+
   async function startGoal(event) {
     event.preventDefault();
     const target = Number(document.querySelector("[data-goal-input]").value);
@@ -451,7 +567,16 @@
         target,
         target_countries: targetCountries,
         work_mode: "remote",
-        employment_type: "contract",
+        employment_type: "full_time",
+        employment_types: ["full_time", "contract", "internship"],
+        job_levels: ["junior", "intern"],
+        salary_target_mix: {
+          below_20k: 35,
+          php_20k_40k: 50,
+          php_40k_80k: 10,
+          php_80k_plus: 5,
+        },
+        unknown_salary_policy: "review_only",
       });
       showToast(`Started a goal for ${target} confirmed applications.`);
       refresh();
@@ -854,6 +979,7 @@
     toastTimer = window.setTimeout(() => toastNode.classList.remove("show"), 3500);
   }
 
+  applyLocationView();
   post("/api/job-finder/market-fit/refresh").catch(() => {}).finally(refresh);
   window.setInterval(() => {
     if (!document.hidden) refresh();

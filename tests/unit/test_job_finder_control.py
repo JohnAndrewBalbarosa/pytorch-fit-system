@@ -28,6 +28,8 @@ def test_job_finder_control_page_is_standalone(monkeypatch):
     assert "Job Finder Control Center" in response.text
     assert "Automatic Work" in response.text
     assert "Needs Human Intervention" in response.text
+    assert "Salary &amp; Funnel Analytics" in response.text
+    assert 'data-view-link="overview"' in response.text
     assert "/static/job_finder_control.js" in response.text
 
 
@@ -244,9 +246,7 @@ def test_external_application_can_be_explicitly_confirmed_and_resolved(
 
     repeated = job_finder_control.confirm_external_intervention(queued.id)
     assert repeated["confirmed"] is True
-    assert len(
-        ApplicationSubmissionHistory(database).recent_submissions(within_days=30)
-    ) == 1
+    assert len(ApplicationSubmissionHistory(database).recent_submissions(within_days=30)) == 1
 
 
 def test_external_confirmation_requires_structured_identity(tmp_path, monkeypatch):
@@ -272,6 +272,9 @@ def test_control_frontend_exposes_external_confirmation_action():
     assert response.status_code == 200
     assert "Confirm submitted" in response.text
     assert "confirm-submitted" in response.text
+    assert '"pushState"' in response.text
+    assert "popstate" in response.text
+    assert "salary_target_mix" in response.text
 
 
 def test_unqueued_human_outcome_remains_visible_as_grouped_fallback():

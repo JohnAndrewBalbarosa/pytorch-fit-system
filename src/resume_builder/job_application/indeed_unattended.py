@@ -12,6 +12,7 @@ from .submission_history import (
     ApplicationSubmissionHistory,
     normalize_exact_identity,
 )
+from .salary_policy import JobLevel, SalaryBand
 
 _INDEED_DETAIL_PATHS = frozenset({"/viewjob"})
 _ALLOWED_TARGET_COUNTRIES = frozenset({"Philippines", "Australia", "Canada"})
@@ -27,6 +28,12 @@ class IndeedUnattendedJob(BaseModel):
     target_country: str
     work_mode: str = "remote"
     resume_file: str = ""
+    employment_type: str = ""
+    job_level: JobLevel = JobLevel.UNKNOWN
+    salary_signal: str = ""
+    salary_monthly_min_php: int | None = None
+    salary_monthly_max_php: int | None = None
+    salary_band: SalaryBand = SalaryBand.UNKNOWN
     required_any_groups: list[list[str]] = Field(default_factory=list)
     blocked_terms: list[str] = Field(default_factory=list)
 

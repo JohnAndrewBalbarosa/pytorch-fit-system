@@ -86,8 +86,7 @@ def _latest_run() -> dict[str, Any]:
 def _resume_catalog() -> list[dict[str, Any]]:
     """Inventory generated PDFs and their deterministic job-search routes."""
     routes = {
-        route.filename: route
-        for route in ApplicationProfileStore(DEFAULT_DATABASE).resume_routes()
+        route.filename: route for route in ApplicationProfileStore(DEFAULT_DATABASE).resume_routes()
     }
     filenames = set(routes)
     if DEFAULT_ARTIFACT_DIR.is_dir():
@@ -144,8 +143,7 @@ def _resume_lookup() -> tuple[dict[str, str], dict[str, str]]:
                 continue
             task_id = str(job.get("task_id", "")).strip()
             reference = (
-                f"{str(job.get('company', '')).strip()} — "
-                f"{str(job.get('job_title', '')).strip()}"
+                f"{str(job.get('company', '')).strip()} — {str(job.get('job_title', '')).strip()}"
             ).strip(" —")
             if task_id:
                 by_task.setdefault(task_id, resume_file)
@@ -192,9 +190,7 @@ def _entry_payload(
         "instruction": _instruction(entry.action),
         "can_focus": target_is_live,
         "preview_url": (
-            f"/api/job-finder/targets/{entry.browser_target_id}/preview"
-            if target_is_live
-            else ""
+            f"/api/job-finder/targets/{entry.browser_target_id}/preview" if target_is_live else ""
         ),
     }
 
@@ -271,6 +267,11 @@ def _goal_state() -> tuple[dict[str, Any], list[dict[str, Any]]]:
         return {}, []
     items = store.items(goal.id)
     site_counts: dict[str, dict[str, int]] = {}
+    salary_counts: dict[str, dict[str, int]] = {
+        band.value: {"discovered": 0, "reserved": 0, "confirmed": 0} for band in goal.salary_targets
+    }
+    salary_counts["unknown"] = {"discovered": 0, "reserved": 0, "confirmed": 0}
+    level_counts = {"junior": 0, "intern": 0, "unknown": 0}
     for item in items:
         counts = site_counts.setdefault(
             item.site,
@@ -285,6 +286,42 @@ def _goal_state() -> tuple[dict[str, Any], list[dict[str, Any]]]:
             counts["human"] += 1
         elif item.state.value in {"skipped", "failed", "released"}:
             counts["skipped"] += 1
+        band = item.salary_band.value
+        if band == "legacy_unclassified":
+            band = "unknown"
+        salary = salary_counts.setdefault(band, {"discovered": 0, "reserved": 0, "confirmed": 0})
+        salary["discovered"] += 1
+        if item.state.value == "reserved":
+            salary["reserved"] += 1
+        elif item.state.value == "confirmed":
+            salary["confirmed"] += 1
+        level_counts[item.job_level.value] = level_counts.get(item.job_level.value, 0) + 1
+    salary_analytics = []
+    labels = {
+        "below_20k": "Below ₱20k",
+        "php_20k_40k": "₱20k–₱40k",
+        "php_40k_80k": "₱40k–₱80k",
+        "php_80k_plus": "₱80k+",
+        "unknown": "Unknown salary",
+    }
+    for band in (*goal.salary_targets, "unknown"):
+        key = band.value if hasattr(band, "value") else str(band)
+        values = salary_counts.get(key, {})
+        target = int(goal.salary_targets.get(band, 0)) if key != "unknown" else 0
+        salary_analytics.append(
+            {
+                "band": key,
+                "label": labels[key],
+                "target": target,
+                "mix_percent": int(goal.salary_target_mix.get(band, 0)) if key != "unknown" else 0,
+                "discovered": int(values.get("discovered", 0)),
+                "reserved": int(values.get("reserved", 0)),
+                "confirmed": int(values.get("confirmed", 0)),
+                "remaining": max(
+                    0, target - int(values.get("confirmed", 0)) - int(values.get("reserved", 0))
+                ),
+            }
+        )
     return (
         {
             **goal.model_dump(mode="json"),
@@ -292,6 +329,8 @@ def _goal_state() -> tuple[dict[str, Any], list[dict[str, Any]]]:
             "available": goal.available,
             "process": process_status(goal.id),
             "site_counts": site_counts,
+            "salary_analytics": salary_analytics,
+            "job_level_counts": level_counts,
         },
         [item.model_dump(mode="json") for item in items],
     )
@@ -399,9 +438,7 @@ def control_state() -> dict[str, Any]:
     targets = _targets()
     live_target_ids = {str(target.get("id", "")) for target in targets}
     pending_entries = _queue().pending()
-    pending = [
-        _entry_payload(entry, live_target_ids=live_target_ids) for entry in pending_entries
-    ]
+    pending = [_entry_payload(entry, live_target_ids=live_target_ids) for entry in pending_entries]
     goal_payload, goal_items = _goal_state()
     resume_by_task, resume_by_reference = _resume_lookup()
     for item in pending:
@@ -518,9 +555,7 @@ def capture_target_preview(target_id: str) -> bytes:
                     try:
                         info = session.send("Target.getTargetInfo")
                         if str(info.get("targetInfo", {}).get("targetId", "")) == safe_id:
-                            image = page.screenshot(
-                                type="jpeg", quality=45, animations="disabled"
-                            )
+                            image = page.screenshot(type="jpeg", quality=45, animations="disabled")
                             _PREVIEW_CACHE[safe_id] = (time.monotonic(), image)
                             return image
                     finally:

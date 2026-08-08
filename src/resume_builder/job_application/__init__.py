@@ -163,6 +163,16 @@ from resume_builder.job_application.goal_store import (
     GoalItem,
     GoalItemState,
 )
+from resume_builder.job_application.salary_policy import (
+    DEFAULT_SALARY_TARGET_MIX,
+    JobLevel,
+    SalaryBand,
+    SalaryEvidence,
+    allocate_salary_targets,
+    classify_job_level,
+    classify_monthly_salary,
+    parse_salary_signal,
+)
 from resume_builder.job_application.site_runtime import (
     ApplicationSiteRuntimeAdapter,
     DEFAULT_SITE_RUNTIME_REGISTRY,
@@ -198,6 +208,14 @@ from resume_builder.job_application.market_fit import (
 )
 
 __all__ = [
+    "DEFAULT_SALARY_TARGET_MIX",
+    "JobLevel",
+    "SalaryBand",
+    "SalaryEvidence",
+    "allocate_salary_targets",
+    "classify_job_level",
+    "classify_monthly_salary",
+    "parse_salary_signal",
     "ApplicationMode",
     "FitAssessment",
     "FitLevel",

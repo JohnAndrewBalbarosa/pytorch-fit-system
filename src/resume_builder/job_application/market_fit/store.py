@@ -88,8 +88,10 @@ class MarketFitStore:
                 """
                 INSERT INTO market_fit_opportunities (
                     id, source_application_id, company, job_title, source_url, source_domain,
-                    description, track, application_mode, resume_file, applied_at, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    description, track, application_mode, resume_file, applied_at,
+                    employment_type, job_level, salary_signal, salary_monthly_min_php,
+                    salary_monthly_max_php, salary_band, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     opportunity_id,
@@ -103,6 +105,12 @@ class MarketFitStore:
                     value.application_mode.value,
                     value.resume_file,
                     value.applied_at.isoformat() if value.applied_at else None,
+                    value.employment_type,
+                    value.job_level.value,
+                    value.salary_signal,
+                    value.salary_monthly_min_php,
+                    value.salary_monthly_max_php,
+                    value.salary_band.value,
                     timestamp.isoformat(),
                     timestamp.isoformat(),
                 ),
@@ -117,7 +125,9 @@ class MarketFitStore:
                         opportunity_id,
                         FunnelStage.APPLIED.value,
                         value.applied_at.isoformat(),
-                        "Confirmed submission imported." if source_application_id else "Application recorded.",
+                        "Confirmed submission imported."
+                        if source_application_id
+                        else "Application recorded.",
                         "submission_history" if source_application_id else "manual",
                     ),
                 )
@@ -137,8 +147,34 @@ class MarketFitStore:
                 ORDER BY applied_at
                 """
             ).fetchall()
+            goal_rows = (
+                connection.execute(
+                    """
+                SELECT company, job_title, salary_signal, salary_monthly_min_php,
+                       salary_monthly_max_php, salary_band, job_level
+                FROM application_goal_items WHERE state = 'confirmed'
+                """
+                ).fetchall()
+                if connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'application_goal_items'"
+                ).fetchone()
+                else []
+            )
+        goal_evidence = {
+            (
+                " ".join(row["company"].casefold().split()),
+                " ".join(row["job_title"].casefold().split()),
+            ): row
+            for row in goal_rows
+        }
         created = 0
         for row in rows:
+            evidence = goal_evidence.get(
+                (
+                    " ".join(row["company"].casefold().split()),
+                    " ".join(row["job_title"].casefold().split()),
+                )
+            )
             before = self._source_exists(row["id"])
             self.create_opportunity(
                 MarketOpportunityCreate(
@@ -149,6 +185,11 @@ class MarketFitStore:
                     track=MarketTrack.CONTRACT,
                     application_mode=ApplicationMode.AUTOMATED,
                     applied_at=datetime.fromisoformat(row["applied_at"]),
+                    job_level=evidence["job_level"] if evidence else "unknown",
+                    salary_signal=evidence["salary_signal"] if evidence else "",
+                    salary_monthly_min_php=evidence["salary_monthly_min_php"] if evidence else None,
+                    salary_monthly_max_php=evidence["salary_monthly_max_php"] if evidence else None,
+                    salary_band=evidence["salary_band"] if evidence else "unknown",
                 ),
                 source_application_id=row["id"],
             )
@@ -157,10 +198,13 @@ class MarketFitStore:
 
     def _source_exists(self, source_application_id: int) -> bool:
         with self._connect() as connection:
-            return connection.execute(
-                "SELECT 1 FROM market_fit_opportunities WHERE source_application_id = ?",
-                (source_application_id,),
-            ).fetchone() is not None
+            return (
+                connection.execute(
+                    "SELECT 1 FROM market_fit_opportunities WHERE source_application_id = ?",
+                    (source_application_id,),
+                ).fetchone()
+                is not None
+            )
 
     def opportunities(self) -> list[MarketOpportunity]:
         with self._connect() as connection:
@@ -176,11 +220,7 @@ class MarketFitStore:
     ) -> MarketOpportunity:
         current = self.get_opportunity(opportunity_id)
         requested = value.model_dump(exclude_none=True)
-        changes = {
-            key: item
-            for key, item in requested.items()
-            if getattr(current, key) != item
-        }
+        changes = {key: item for key, item in requested.items() if getattr(current, key) != item}
         if not changes:
             return current
         assignments = []
@@ -249,7 +289,12 @@ class MarketFitStore:
                 ON CONFLICT(opportunity_id) DO UPDATE SET
                   payload = excluded.payload, verified = excluded.verified, updated_at = excluded.updated_at
                 """,
-                (profile.opportunity_id, profile.model_dump_json(), int(profile.verified), _now().isoformat()),
+                (
+                    profile.opportunity_id,
+                    profile.model_dump_json(),
+                    int(profile.verified),
+                    _now().isoformat(),
+                ),
             )
             connection.execute(
                 "DELETE FROM market_fit_assessments WHERE opportunity_id = ?",
@@ -297,7 +342,13 @@ class MarketFitStore:
                 INSERT INTO market_fit_events (opportunity_id, stage, occurred_at, note, source)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (opportunity_id, value.stage.value, occurred.isoformat(), value.note[:1000], value.source),
+                (
+                    opportunity_id,
+                    value.stage.value,
+                    occurred.isoformat(),
+                    value.note[:1000],
+                    value.source,
+                ),
             )
             connection.execute(
                 "UPDATE market_fit_opportunities SET updated_at = ? WHERE id = ?",
@@ -318,8 +369,12 @@ class MarketFitStore:
             ).fetchall()
         return [
             FunnelEvent(
-                id=row["id"], opportunity_id=row["opportunity_id"], stage=row["stage"],
-                occurred_at=datetime.fromisoformat(row["occurred_at"]), note=row["note"], source=row["source"]
+                id=row["id"],
+                opportunity_id=row["opportunity_id"],
+                stage=row["stage"],
+                occurred_at=datetime.fromisoformat(row["occurred_at"]),
+                note=row["note"],
+                source=row["source"],
             )
             for row in rows
         ]
@@ -386,10 +441,22 @@ class MarketFitStore:
         item = self.get_opportunity(opportunity_id)
         return {
             "opportunity": item.model_dump(mode="json"),
-            "demands": (self.demands(opportunity_id).model_dump(mode="json") if self.demands(opportunity_id) else None),
-            "assessment": (self.assessment(opportunity_id).model_dump(mode="json") if self.assessment(opportunity_id) else None),
+            "demands": (
+                self.demands(opportunity_id).model_dump(mode="json")
+                if self.demands(opportunity_id)
+                else None
+            ),
+            "assessment": (
+                self.assessment(opportunity_id).model_dump(mode="json")
+                if self.assessment(opportunity_id)
+                else None
+            ),
             "events": [event.model_dump(mode="json") for event in self.events(opportunity_id)],
-            "interview_prep": (self.prep(opportunity_id).model_dump(mode="json") if self.prep(opportunity_id) else None),
+            "interview_prep": (
+                self.prep(opportunity_id).model_dump(mode="json")
+                if self.prep(opportunity_id)
+                else None
+            ),
         }
 
     def _opportunity(self, row: sqlite3.Row) -> MarketOpportunity:
@@ -400,16 +467,24 @@ class MarketFitStore:
         # A late response supersedes ghosting as the current status but keeps the audit event.
         if any(item.stage == FunnelStage.RECRUITER_RESPONSE for item in events):
             progress = [
-                stage for stage in (
-                    FunnelStage.RECRUITER_RESPONSE, FunnelStage.HR_INTERVIEW,
-                    FunnelStage.TECHNICAL_INTERVIEW, FunnelStage.OFFER,
-                ) if any(item.stage == stage for item in events)
+                stage
+                for stage in (
+                    FunnelStage.RECRUITER_RESPONSE,
+                    FunnelStage.HR_INTERVIEW,
+                    FunnelStage.TECHNICAL_INTERVIEW,
+                    FunnelStage.OFFER,
+                )
+                if any(item.stage == stage for item in events)
             ]
             terminal_after_response = [
-                item.stage for item in events
+                item.stage
+                for item in events
                 if item.stage in {FunnelStage.REJECTED, FunnelStage.WITHDRAWN}
-                and item.occurred_at >= next(
-                    event.occurred_at for event in events if event.stage == FunnelStage.RECRUITER_RESPONSE
+                and item.occurred_at
+                >= next(
+                    event.occurred_at
+                    for event in events
+                    if event.stage == FunnelStage.RECRUITER_RESPONSE
                 )
             ]
             current_stage = terminal_after_response[-1] if terminal_after_response else progress[-1]
@@ -425,6 +500,12 @@ class MarketFitStore:
             application_mode=row["application_mode"],
             resume_file=row["resume_file"],
             applied_at=datetime.fromisoformat(row["applied_at"]) if row["applied_at"] else None,
+            employment_type=row["employment_type"],
+            job_level=row["job_level"],
+            salary_signal=row["salary_signal"],
+            salary_monthly_min_php=row["salary_monthly_min_php"],
+            salary_monthly_max_php=row["salary_monthly_max_php"],
+            salary_band=row["salary_band"],
             current_stage=current_stage,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
@@ -457,6 +538,12 @@ class MarketFitStore:
                     application_mode TEXT NOT NULL,
                     resume_file TEXT NOT NULL DEFAULT '',
                     applied_at TEXT,
+                    employment_type TEXT NOT NULL DEFAULT '',
+                    job_level TEXT NOT NULL DEFAULT 'unknown',
+                    salary_signal TEXT NOT NULL DEFAULT '',
+                    salary_monthly_min_php INTEGER,
+                    salary_monthly_max_php INTEGER,
+                    salary_band TEXT NOT NULL DEFAULT 'unknown',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -492,3 +579,22 @@ class MarketFitStore:
                 );
                 """
             )
+            _ensure_columns(
+                connection,
+                "market_fit_opportunities",
+                {
+                    "employment_type": "TEXT NOT NULL DEFAULT ''",
+                    "job_level": "TEXT NOT NULL DEFAULT 'unknown'",
+                    "salary_signal": "TEXT NOT NULL DEFAULT ''",
+                    "salary_monthly_min_php": "INTEGER",
+                    "salary_monthly_max_php": "INTEGER",
+                    "salary_band": "TEXT NOT NULL DEFAULT 'unknown'",
+                },
+            )
+
+
+def _ensure_columns(connection: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+    existing = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+    for name, declaration in columns.items():
+        if name not in existing:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")

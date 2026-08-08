@@ -18,6 +18,8 @@ from ..job_application import (
     ApplicationSubmissionHistory,
     ConfirmationSource,
     GoalItemState,
+    JobLevel,
+    SalaryBand,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -54,17 +56,23 @@ def start_goal(
     target: int,
     target_countries: list[str],
     work_mode: str,
-    employment_type: str,
+    employment_type: str = "contract",
+    employment_types: list[str] | None = None,
+    job_levels: list[JobLevel | str] | None = None,
+    salary_target_mix: dict[SalaryBand | str, int] | None = None,
+    unknown_salary_policy: str = "review_only",
 ) -> ApplicationGoal:
     if work_mode != "remote":
         raise ValueError("Indeed v1 requires work_mode=remote")
-    if employment_type != "contract":
-        raise ValueError("Indeed v1 requires employment_type=contract")
+    selected_types = employment_types or [employment_type]
+    allowed_types = {"full_time", "contract", "internship"}
+    if not selected_types or not set(selected_types).issubset(allowed_types):
+        raise ValueError("Indeed employment types must be full_time, contract, and/or internship")
+    selected_levels = [JobLevel(value) for value in (job_levels or ["junior", "intern"])]
+    if not selected_levels or not set(selected_levels).issubset({JobLevel.JUNIOR, JobLevel.INTERN}):
+        raise ValueError("job_levels must contain junior and/or intern")
     selected_countries = target_countries or ["Philippines"]
-    if any(
-        country not in {"Philippines", "Australia", "Canada"}
-        for country in selected_countries
-    ):
+    if any(country not in {"Philippines", "Australia", "Canada"} for country in selected_countries):
         raise ValueError("Indeed v1 countries must be Philippines, Australia, and/or Canada")
     store = goal_store()
     previous = store.active()
@@ -75,7 +83,11 @@ def start_goal(
         sites=["indeed"],
         target_countries=selected_countries,
         work_mode=work_mode,
-        employment_type=employment_type,
+        employment_type=selected_types[0],
+        employment_types=selected_types,
+        job_levels=selected_levels,
+        salary_target_mix=salary_target_mix,
+        unknown_salary_policy=unknown_salary_policy,
     )
     launch_goal(goal.id)
     return goal
@@ -144,7 +156,11 @@ def process_status(goal_id: str) -> dict[str, object]:
         pid = int(value.get("pid", 0))
         expected_ticks = str(value.get("start_ticks", ""))
         actual_ticks = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").split()[21]
-        return {"running": bool(pid and expected_ticks == actual_ticks), "pid": pid, "exit_code": None}
+        return {
+            "running": bool(pid and expected_ticks == actual_ticks),
+            "pid": pid,
+            "exit_code": None,
+        }
     except (OSError, ValueError, IndexError, TypeError):
         return {"running": False, "pid": None, "exit_code": None}
 
@@ -219,9 +235,7 @@ def retry_resolved_intervention(application_reference: str) -> str:
     normalized_reference = " ".join(application_reference.casefold().split())
     matches = []
     for item in store.items(goal.id):
-        item_reference = " ".join(
-            f"{item.company} — {item.job_title}".casefold().split()
-        )
+        item_reference = " ".join(f"{item.company} — {item.job_title}".casefold().split())
         if item_reference == normalized_reference and item.state == GoalItemState.HUMAN_HANDOFF:
             matches.append(item)
     if not matches:

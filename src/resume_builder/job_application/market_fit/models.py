@@ -7,6 +7,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from ..salary_policy import JobLevel, SalaryBand
+
 
 class MarketTrack(str, Enum):
     FULL_TIME = "full_time"
@@ -210,6 +212,12 @@ class MarketOpportunityCreate(BaseModel):
     application_mode: ApplicationMode = ApplicationMode.AUTOMATED
     resume_file: str = ""
     applied_at: datetime | None = None
+    employment_type: str = ""
+    job_level: JobLevel = JobLevel.UNKNOWN
+    salary_signal: str = ""
+    salary_monthly_min_php: int | None = None
+    salary_monthly_max_php: int | None = None
+    salary_band: SalaryBand = SalaryBand.UNKNOWN
 
     @field_validator("company", "job_title")
     @classmethod
@@ -235,6 +243,12 @@ class MarketOpportunityUpdate(BaseModel):
     track: MarketTrack | None = None
     application_mode: ApplicationMode | None = None
     resume_file: str | None = None
+    employment_type: str | None = None
+    job_level: JobLevel | None = None
+    salary_signal: str | None = None
+    salary_monthly_min_php: int | None = None
+    salary_monthly_max_php: int | None = None
+    salary_band: SalaryBand | None = None
 
 
 class FunnelEventCreate(BaseModel):
@@ -291,6 +305,8 @@ class MarketFitAnalytics(BaseModel):
     total_opportunities: int
     track_counts: dict[str, int]
     application_mode_counts: dict[str, int]
+    salary_band_counts: dict[str, int] = Field(default_factory=dict)
+    job_level_counts: dict[str, int] = Field(default_factory=dict)
     stage_counts: dict[str, int]
     conversions: list[ConversionMetric]
     conversion_segments: dict[str, list[ConversionMetric]] = Field(default_factory=dict)

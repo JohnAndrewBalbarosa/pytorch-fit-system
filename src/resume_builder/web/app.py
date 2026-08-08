@@ -249,6 +249,15 @@ def api_job_finder_auto_start():
             target_countries=list(preferences["target_countries"]),
             work_mode=str(preferences["work_mode"]),
             employment_type=str(preferences["employment_type"]),
+            employment_types=["full_time", "contract", "internship"],
+            job_levels=["junior", "intern"],
+            salary_target_mix={
+                "below_20k": 35,
+                "php_20k_40k": 50,
+                "php_40k_80k": 10,
+                "php_80k_plus": 5,
+            },
+            unknown_salary_policy="review_only",
         )
         service.mark_auto_started(activation_key, goal.id)
         return {"started": True, "goal_id": goal.id, "mode": "safe_draft_only"}
@@ -285,7 +294,9 @@ def api_market_fit_opportunity(opportunity_id: str):
 @app.put("/api/job-finder/market-fit/opportunities/{opportunity_id}")
 def api_update_market_fit_opportunity(opportunity_id: str, request: MarketOpportunityUpdate):
     try:
-        return market_fit_store().update_opportunity(opportunity_id, request).model_dump(mode="json")
+        return (
+            market_fit_store().update_opportunity(opportunity_id, request).model_dump(mode="json")
+        )
     except KeyError:
         return JSONResponse({"error": "Unknown market-fit opportunity."}, status_code=404)
 
@@ -363,6 +374,19 @@ class JobFinderGoalRequest(BaseModel):
     target_countries: list[str] = Field(default_factory=list)
     work_mode: str = "remote"
     employment_type: str = "contract"
+    employment_types: list[str] = Field(
+        default_factory=lambda: ["full_time", "contract", "internship"]
+    )
+    job_levels: list[str] = Field(default_factory=lambda: ["junior", "intern"])
+    salary_target_mix: dict[str, int] = Field(
+        default_factory=lambda: {
+            "below_20k": 35,
+            "php_20k_40k": 50,
+            "php_40k_80k": 10,
+            "php_80k_plus": 5,
+        }
+    )
+    unknown_salary_policy: str = "review_only"
 
 
 @app.post("/api/job-finder/goals")
@@ -442,7 +466,9 @@ def api_accept_development_question_answer(response: DevelopmentQuestionResponse
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=409)
     except Exception as exc:  # noqa: BLE001 - local development dependency failures are visible
-        return JSONResponse({"error": f"Could not accept development answer: {exc}"}, status_code=503)
+        return JSONResponse(
+            {"error": f"Could not accept development answer: {exc}"}, status_code=503
+        )
     finally:
         if repository is not None:
             repository.close()
@@ -743,8 +769,7 @@ async def build_view(
         )
 
     files = [
-        {"name": p.name, "url": f"/files/{job_dir.name}/{p.name}"}
-        for p in result.output_paths
+        {"name": p.name, "url": f"/files/{job_dir.name}/{p.name}"} for p in result.output_paths
     ]
     return templates.TemplateResponse(
         request,

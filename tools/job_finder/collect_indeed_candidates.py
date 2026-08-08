@@ -17,7 +17,14 @@ from urllib.parse import parse_qs, urlsplit
 ROOT = next(path for path in Path(__file__).resolve().parents if (path / "pyproject.toml").exists())
 sys.path.insert(0, str(ROOT / "src"))
 
-from resume_builder.job_application import ApplicationSubmissionHistory  # noqa: E402
+from resume_builder.job_application import (  # noqa: E402
+    ApplicationSubmissionHistory,
+    ApplicationGoalStore,
+    JobLevel,
+    SalaryBand,
+    classify_job_level,
+    parse_salary_signal,
+)
 from resume_builder.job_application.indeed_unattended import (  # noqa: E402
     IndeedUnattendedJob,
     IndeedUnattendedManifest,
@@ -37,10 +44,12 @@ _COUNTRY_HOSTS = {
     "Canada": "ca.indeed.com",
 }
 _DEFAULT_KEYWORDS = (
-    "machine learning",
-    "data automation",
-    "backend software engineer",
+    "junior machine learning engineer",
+    "junior data automation",
+    "junior python developer",
+    "entry level backend software engineer",
     "software engineer intern",
+    "data analyst intern",
 )
 _TITLE_BLOCKERS = re.compile(
     r"\b(senior|staff|principal|architect|manager|director|head|lead|sales|"
@@ -126,6 +135,11 @@ _CONTRACT_TERMS = (
 )
 _INDEED_JOB_TYPE_BUTTON = 'button[aria-label^="Job Type filter" i]'
 _INDEED_CONTRACT_OPTION = '[role=menuitemcheckbox][aria-label="Contract"]'
+_EMPLOYMENT_LABELS = {
+    "full_time": "Full-time",
+    "contract": "Contract",
+    "internship": "Internship",
+}
 _EARLY_CAREER_TERMS = (
     "intern",
     "internship",
@@ -153,13 +167,18 @@ def candidate_from_listing(
     listing: JobListing,
     *,
     target_country: str,
-    employment_type: str = "any",
+    employment_type: str | list[str] = "any",
+    job_levels: list[str] | None = None,
 ) -> IndeedUnattendedJob | None:
     """Map one rendered card to a conservative, auditable application candidate."""
     host = _COUNTRY_HOSTS[target_country]
     title = _clean(listing.title)
     company = _clean(listing.company)
     if not title or not company or _TITLE_BLOCKERS.search(title):
+        return None
+    level = classify_job_level(title, listing.experience_level)
+    selected_levels = {JobLevel(value) for value in job_levels} if job_levels else set()
+    if selected_levels and level not in selected_levels:
         return None
     matched_profile = next(
         (
@@ -176,12 +195,21 @@ def candidate_from_listing(
         return None
     resume_file, role_terms = matched_profile
     key = parse_qs(urlsplit(listing_url).query)["jk"][0]
+    legacy_type = isinstance(employment_type, str)
+    selected_types = [employment_type] if legacy_type else employment_type
+    selected_types = [item for item in selected_types if item != "any"]
+    listing_type = _classify_employment_type(listing.employment_type, title)
+    if legacy_type and not listing_type and selected_types:
+        listing_type = selected_types[0]
+    if selected_types and listing_type and listing_type not in selected_types:
+        return None
     required_groups = [list(role_terms), list(_REMOTE_TERMS)]
-    if employment_type == "contract":
+    if listing_type == "contract":
         required_groups.append(list(_CONTRACT_TERMS))
     if re.search(r"\b(intern|internship|graduate|entry.level|student)\b", title, re.I):
         required_groups.append(list(_EARLY_CAREER_TERMS))
     slug = re.sub(r"[^a-z0-9]+", "-", f"{company}-{title}".casefold()).strip("-")[:72]
+    salary = parse_salary_signal(listing.salary_signal)
     return IndeedUnattendedJob(
         task_id=f"{slug}-{key}",
         company=company,
@@ -190,9 +218,26 @@ def candidate_from_listing(
         target_country=target_country,
         work_mode="remote",
         resume_file=resume_file,
+        employment_type=listing_type,
+        job_level=level,
+        salary_signal=salary.raw,
+        salary_monthly_min_php=salary.monthly_min_php,
+        salary_monthly_max_php=salary.monthly_max_php,
+        salary_band=salary.band,
         required_any_groups=required_groups,
         blocked_terms=list(_DESCRIPTION_BLOCKERS),
     )
+
+
+def _classify_employment_type(value: str | None, title: str) -> str:
+    evidence = f"{value or ''} {title}".casefold()
+    if re.search(r"\b(intern|internship|ojt|trainee)\b", evidence):
+        return "internship"
+    if re.search(r"\b(contract|contractor|fixed[ -]?term|temporary)\b", evidence):
+        return "contract"
+    if re.search(r"\b(full[ -]?time|permanent)\b", evidence):
+        return "full_time"
+    return ""
 
 
 def _stable_content(page, *, attempts: int = 40) -> str:
@@ -207,11 +252,13 @@ def _stable_content(page, *, attempts: int = 40) -> str:
     raise RuntimeError("rendered page content did not stabilize")
 
 
-def _apply_employment_type_filter(page, *, employment_type: str) -> bool:
+def _apply_employment_type_filter(page, *, employment_types: list[str]) -> bool:
     """Apply an observed Indeed Job Type option; return false when unavailable."""
-    if employment_type == "any":
+    selected_types = [item for item in employment_types if item != "any"]
+    if not selected_types or len(selected_types) > 1:
         return True
-    if employment_type != "contract":
+    employment_type = selected_types[0]
+    if employment_type not in _EMPLOYMENT_LABELS:
         raise ValueError(f"unsupported employment type: {employment_type}")
 
     button = page.locator(_INDEED_JOB_TYPE_BUTTON).first
@@ -221,7 +268,8 @@ def _apply_employment_type_filter(page, *, employment_type: str) -> bool:
         button.click(no_wait_after=True)
         page.wait_for_timeout(250)
 
-    option = page.locator(_INDEED_CONTRACT_OPTION).first
+    label = _EMPLOYMENT_LABELS[employment_type]
+    option = page.locator(f'[role=menuitemcheckbox][aria-label="{label}"]').first
     if not option.count() or not option.is_visible():
         page.keyboard.press("Escape")
         return False
@@ -245,15 +293,13 @@ def _apply_employment_type_filter(page, *, employment_type: str) -> bool:
 
     decision = AccessGuard().classify(url=page.url, html=_stable_content(page))
     if not decision.should_continue:
-        raise RuntimeError(
-            f"Job Type filter access gate requires human handoff: {decision.reason}"
-        )
+        raise RuntimeError(f"Job Type filter access gate requires human handoff: {decision.reason}")
     applied = page.locator(_INDEED_JOB_TYPE_BUTTON).first
     if not applied.count() or not applied.is_visible():
         raise RuntimeError("Indeed did not retain the visible Job Type filter control")
     applied.click(no_wait_after=True)
     page.wait_for_timeout(250)
-    selected = page.locator(_INDEED_CONTRACT_OPTION).first
+    selected = page.locator(f'[role=menuitemcheckbox][aria-label="{label}"]').first
     is_selected = (
         selected.count()
         and selected.is_visible()
@@ -261,7 +307,7 @@ def _apply_employment_type_filter(page, *, employment_type: str) -> bool:
     )
     page.keyboard.press("Escape")
     if not is_selected:
-        raise RuntimeError("Indeed did not visibly confirm the selected Contract Job Type option")
+        raise RuntimeError(f"Indeed did not visibly confirm the selected {label} Job Type option")
     return True
 
 
@@ -269,7 +315,7 @@ def _execute_search(
     page,
     *,
     keyword: str,
-    employment_type: str = "any",
+    employment_types: list[str] | None = None,
 ) -> list[JobListing]:
     html = _stable_content(page)
     decision = AccessGuard().classify(url=page.url, html=html)
@@ -304,7 +350,7 @@ def _execute_search(
     decision = AccessGuard().classify(url=page.url, html=html)
     if not decision.should_continue:
         raise RuntimeError(f"search result access gate requires human handoff: {decision.reason}")
-    if not _apply_employment_type_filter(page, employment_type=employment_type):
+    if not _apply_employment_type_filter(page, employment_types=employment_types or ["any"]):
         return []
     html = _stable_content(page)
     layout = INDEED_ADAPTER.build_listing_layout(page.url, html)
@@ -325,6 +371,20 @@ def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
     identities: set[tuple[str, str]] = set()
     listing_keys: set[tuple[str, str]] = set()
     excluded_task_ids: set[str] = set()
+    band_capacity: dict[SalaryBand, int] = {}
+    goal_id = str(getattr(args, "goal_id", "") or "").strip()
+    if goal_id:
+        goal_store = ApplicationGoalStore(args.database)
+        goal = goal_store.get(goal_id)
+        used = {band: 0 for band in goal.salary_targets}
+        for item in goal_store.items(goal_id):
+            if item.state.value in {"reserved", "confirmed"}:
+                used[item.salary_band] = used.get(item.salary_band, 0) + 1
+        band_capacity = {
+            band: max(0, goal.salary_targets.get(band, 0) - used.get(band, 0))
+            for band in goal.salary_targets
+        }
+    selected_by_band: dict[SalaryBand, int] = {}
     excluded_path = getattr(args, "exclude_task_ids", None)
     if excluded_path and excluded_path.is_file():
         try:
@@ -340,7 +400,17 @@ def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
             return False
         if candidate.task_id in excluded_task_ids:
             return False
-        if args.employment_type == "contract" and not any(
+        if band_capacity and candidate.salary_band != SalaryBand.UNKNOWN:
+            if selected_by_band.get(candidate.salary_band, 0) >= band_capacity.get(
+                candidate.salary_band, 0
+            ):
+                return False
+        if (
+            candidate.salary_band == SalaryBand.UNKNOWN
+            and selected_by_band.get(SalaryBand.UNKNOWN, 0) >= 3
+        ):
+            return False
+        if args.employment_type == ["contract"] and not any(
             set(map(str.casefold, group)) & set(_CONTRACT_TERMS)
             for group in candidate.required_any_groups
         ):
@@ -364,6 +434,7 @@ def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
         identities.add(identity)
         listing_keys.add(listing_identity)
         selected.append(candidate)
+        selected_by_band[candidate.salary_band] = selected_by_band.get(candidate.salary_band, 0) + 1
         return True
 
     for seed_path in getattr(args, "seed_manifest", []):
@@ -406,6 +477,7 @@ def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
                         listing,
                         target_country=allowed[host],
                         employment_type=args.employment_type,
+                        job_levels=args.job_level,
                     )
                 )
                 if len(selected) >= args.max_candidates:
@@ -449,12 +521,13 @@ def collect(args: argparse.Namespace) -> IndeedUnattendedManifest:
                     for listing in _execute_search(
                         page,
                         keyword=keyword,
-                        employment_type=args.employment_type,
+                        employment_types=args.employment_type,
                     ):
                         candidate = candidate_from_listing(
                             listing,
                             target_country=country,
                             employment_type=args.employment_type,
+                            job_levels=args.job_level,
                         )
                         if not add_candidate(candidate):
                             continue
@@ -481,6 +554,7 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=ROOT / ".cache" / "application-submissions.sqlite3",
     )
+    parser.add_argument("--goal-id", default="")
     parser.add_argument(
         "--output",
         type=Path,
@@ -495,12 +569,19 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--keyword", action="append", default=[])
     parser.add_argument(
         "--employment-type",
-        choices=("any", "contract"),
-        default="any",
+        choices=("any", "full_time", "contract", "internship"),
+        action="append",
+        default=[],
         help=(
             "Require explicit employment-type evidence in the rendered title/description; "
             "contract never falls back to permanent or unspecified work."
         ),
+    )
+    parser.add_argument(
+        "--job-level",
+        choices=("junior", "intern"),
+        action="append",
+        default=[],
     )
     parser.add_argument(
         "--seed-manifest",
@@ -528,6 +609,10 @@ def main() -> int:
     args = _parser().parse_args()
     if not args.keyword:
         args.keyword = list(_DEFAULT_KEYWORDS)
+    if not args.employment_type:
+        args.employment_type = ["any"]
+    if not args.job_level:
+        args.job_level = ["junior", "intern"]
     if not 1 <= args.max_candidates <= 24:
         raise SystemExit("--max-candidates must be between 1 and 24")
     manifest = collect(args)

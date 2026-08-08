@@ -16,13 +16,28 @@
         <p class="lede">Set one confirmed-application goal and watch every Indeed page move through the live queues.</p>
       </div>
       <div class="top-actions">
+        <button class="button ghost view-back" type="button" data-view-back hidden>← Back</button>
         <span class="connection" data-connection><i></i> Connecting</span>
         <button class="button ghost" type="button" data-open-settings>Settings</button>
         <button class="button" type="button" data-refresh>Refresh</button>
       </div>
     </header>
 
-    <section class="summary" aria-label="Job finder summary">
+    <nav class="module-nav" aria-label="Control Center modules">
+      <button class="module-link active" type="button" data-view-link="overview">Overview</button>
+      <button class="module-link" type="button" data-view-link="automation">Automation</button>
+      <button class="module-link" type="button" data-view-link="analytics">Salary &amp; Funnel Analytics</button>
+      <button class="module-link" type="button" data-view-link="opportunities">Opportunities &amp; Interviews</button>
+      <button class="module-link" type="button" data-view-link="resumes">Resumes</button>
+      <button class="module-link" type="button" data-view-link="connections">Connections &amp; Sessions</button>
+    </nav>
+
+    <section class="module-view active" data-view="overview" aria-label="Overview">
+      <div class="view-heading">
+        <div><p class="eyebrow">General overview</p><h2>Your application mission at a glance</h2></div>
+        <p>Open one focused workspace at a time. Browser Back returns here without losing goal state.</p>
+      </div>
+      <div class="summary" aria-label="Job finder summary">
       <article><span>Requested</span><strong data-goal-target>0</strong></article>
       <article><span>Confirmed</span><strong data-count-confirmed>0</strong></article>
       <article><span>Remaining</span><strong data-goal-remaining>0</strong></article>
@@ -31,9 +46,17 @@
       <article><span>Needs you</span><strong class="attention" data-count-interventions>0</strong></article>
       <article><span>Run status</span><strong class="status-text" data-run-status>Not started</strong></article>
       <article><span>Process</span><strong class="status-text" data-process-status>Stopped</strong></article>
+      </div>
+      <div class="module-launch-grid">
+        <button type="button" data-view-link="automation"><span>Run</span><strong>Automation</strong><small>Goal, live tabs, queues, and interventions</small></button>
+        <button type="button" data-view-link="analytics"><span>Measure</span><strong>Salary analytics</strong><small>Target versus actual by band and level</small></button>
+        <button type="button" data-view-link="opportunities"><span>Improve</span><strong>Market fit</strong><small>Opportunities, funnel, and interviews</small></button>
+        <button type="button" data-view-link="resumes"><span>Route</span><strong>Resumes</strong><small>Evidence-backed artifacts and matching</small></button>
+        <button type="button" data-view-link="connections"><span>Access</span><strong>Connections</strong><small>Accounts and the shared browser session</small></button>
+      </div>
     </section>
 
-    <section class="panel goal-panel">
+    <section class="panel goal-panel module-view" data-view="automation">
       <div class="section-heading">
         <div>
           <p class="eyebrow">Confirmed-application quota</p>
@@ -42,15 +65,16 @@
         <p>Skipped or blocked jobs do not reduce the target.</p>
       </div>
       <form class="goal-form" data-goal-form>
-        <label><span>Applications needed</span><input type="number" min="1" value="10" required data-goal-input></label>
+        <label><span>Applications needed</span><input type="number" min="1" value="20" required data-goal-input></label>
         <fieldset>
           <legend>Countries · defaults to Philippines when empty</legend>
-          <label><input type="checkbox" value="Philippines" data-country> Philippines</label>
+          <label><input type="checkbox" value="Philippines" data-country checked> Philippines</label>
           <label><input type="checkbox" value="Australia" data-country> Australia</label>
           <label><input type="checkbox" value="Canada" data-country> Canada</label>
         </fieldset>
         <label><span>Work mode</span><select disabled><option>Remote</option></select></label>
-        <label><span>Job type</span><select disabled><option>Contract</option></select></label>
+        <label><span>Job types</span><select disabled><option>Full-time · Contract · Internship</option></select></label>
+        <label><span>Career level</span><select disabled><option>Junior · Entry-level · Internship</option></select></label>
         <div class="goal-actions">
           <button class="button" type="submit">Start goal</button>
           <button class="button ghost" type="button" data-resume-goal>Resume</button>
@@ -61,7 +85,22 @@
       <p class="goal-id" data-site-counts></p>
     </section>
 
-    <section class="panel market-fit-panel" aria-label="Market Fit and Interviews">
+    <section class="panel analytics-panel module-view" data-view="analytics" aria-label="Salary and funnel analytics">
+      <div class="section-heading">
+        <div><p class="eyebrow">20 confirmed applications · enforced mix</p><h2>Salary &amp; Funnel Analytics</h2></div>
+        <p>Unknown salary stays visible but never fills a quota slot.</p>
+      </div>
+      <div class="salary-grid" data-salary-analytics></div>
+      <div class="analytics-split">
+        <section><p class="eyebrow">Role level</p><h3>Junior vs internship discovery</h3><div class="level-grid" data-level-analytics></div></section>
+        <section><p class="eyebrow">Funnel</p><h3>Application transitions</h3><div class="conversion-grid" data-analytics-conversions></div></section>
+      </div>
+      <section class="analytics-detail" data-analytics-detail>
+        <div class="empty">Select a salary band to inspect its jobs and funnel state.</div>
+      </section>
+    </section>
+
+    <section class="panel market-fit-panel module-view" data-view="opportunities" aria-label="Market Fit and Interviews">
       <div class="section-heading">
         <div>
           <p class="eyebrow">Research-grounded validation loop</p>
@@ -121,7 +160,7 @@
       </div>
     </section>
 
-    <section class="panel resume-routing-panel">
+    <section class="panel resume-routing-panel module-view" data-view="resumes">
       <div class="section-heading compact">
         <div>
           <p class="eyebrow">Generated artifacts · deterministic matching</p>
@@ -132,7 +171,7 @@
       <div class="resume-route-grid" data-resume-routes></div>
     </section>
 
-    <section class="panel sessions-panel">
+    <section class="panel sessions-panel module-view" data-view="connections">
       <div class="section-heading">
         <div>
           <p class="eyebrow">Accounts and browser sessions</p>
@@ -143,7 +182,7 @@
       <div class="session-grid" data-sessions aria-live="polite"></div>
     </section>
 
-    <section class="panel live-panel">
+    <section class="panel live-panel module-view" data-view="automation">
       <div class="section-heading compact">
         <div><p class="eyebrow">Chrome CDP · live previews</p><h2>Website pages</h2></div>
         <small>Click a preview to focus its real browser tab.</small>
@@ -151,7 +190,7 @@
       <div class="live-groups" data-live-pages></div>
     </section>
 
-    <section class="work-area">
+    <section class="work-area module-view" data-view="automation">
       <div class="tabs" role="tablist" aria-label="Job work queues">
         <button class="tab active" type="button" role="tab" aria-selected="true" data-tab="automatic">
           Automatic Work <span data-tab-automatic-count>0</span>
