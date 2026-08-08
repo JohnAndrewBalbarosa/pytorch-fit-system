@@ -333,7 +333,20 @@ def _execute_search(
         if step.action == "fill":
             locator.fill(step.value or "")
         elif step.action == "click":
-            locator.click(no_wait_after=True)
+            # Indeed's rendered autocomplete backdrop can remain above the verified
+            # Search button after filling What/Where. Dismiss that normal UI layer
+            # first; if the same button is still covered, submit the visible search
+            # form through its location control rather than forcing a hidden click.
+            page.keyboard.press("Escape")
+            try:
+                locator.click(no_wait_after=True, timeout=5_000)
+            except Exception as click_error:
+                location = page.locator('input[name="l"], input[aria-label*="location" i]').first
+                if not location.count() or not location.is_visible():
+                    raise RuntimeError(
+                        "Indeed search control remained obstructed and no visible location control could submit the form"
+                    ) from click_error
+                location.press("Enter")
         else:
             raise RuntimeError(f"unsupported deterministic search action: {step.action}")
     try:
