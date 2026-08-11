@@ -317,3 +317,29 @@ def test_explicit_ai_llm_answer_integrates_without_runtime_model():
 
     assert adaptive.plan.answers[0].answer == approved
     assert adaptive.plan.steps[0].value_source == "mongodb explicit application profile"
+
+
+def test_explicit_sensitive_profile_value_is_used_only_for_exact_supported_label():
+    questions = [
+        _question(
+            "gender",
+            "What is your gender?",
+            kind="radio",
+            options=["Woman", "Man", "Prefer not to say"],
+        ),
+        _question(
+            "essay",
+            "Describe how gender affects your work",
+        ),
+    ]
+
+    adaptive = build_adaptive_indeed_question_plan(
+        questions,
+        resume=_resume(),
+        verified_profile=VerifiedApplicationProfile(),
+        application_preferences={"gender": "Prefer not to say"},
+    )
+
+    assert adaptive.plan.answers[0].answer == "Prefer not to say"
+    assert adaptive.plan.answers[1].abstain is True
+    assert "gender" not in adaptive.persistable_answers

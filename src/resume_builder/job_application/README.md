@@ -329,6 +329,12 @@ python tools/job_finder/run_indeed_unattended.py \
   --autonomous-submit
 ```
 
+For the control center's assisted mode, use `--assisted-apply` instead. It allows verified profile
+and exact question-bank writes while retaining separate approvals for resume upload, resume
+Continue, and final Submit. Browser restarts do not discard access handoffs: the UI can reopen the
+exact manifest listing in Brave, reattach the new CDP target, and resume one bounded replay after
+the access gate clears.
+
 `--resource-mode auto` reads live available RAM, swap use, logical CPUs, and physical cores before
 the batch starts. It clamps `--max-parallel`, `--max-candidates`, and the calculated tab budget.
 Swap pressure of 512 MiB or more forces one browser worker. `--max-tabs 0` selects the calculated

@@ -330,6 +330,25 @@ def _explicit_profile_answer(
     """Map narrowly scoped profile answers to an observed Indeed question."""
     label = re.sub(r"\s+", " ", question.label).strip()
     context = re.sub(r"\s+", " ", question.context).strip()
+    normalized_label = re.sub(r"[^a-z0-9]+", "_", label.casefold()).strip("_")
+    for key, saved in preferences.items():
+        normalized_key = re.sub(r"[^a-z0-9]+", "_", key.casefold()).strip("_")
+        if normalized_key == normalized_label and isinstance(saved, (bool, str)):
+            return str(saved).strip()
+    sensitive_profile_keys = {
+        "gender": r"^(?:what is your |please select your )?gender(?: identity)?[?*]?$",
+        "disability_status": r"^(?:what is your |please select your )?disability status[?*]?$",
+        "ethnicity": r"^(?:what is your |please select your )?ethnicity[?*]?$",
+        "race": r"^(?:what is your |please select your )?race[?*]?$",
+        "veteran_status": r"^(?:what is your |please select your )?veteran status[?*]?$",
+        "salary_expectation": (
+            r"^(?:what is your |please enter your )?(?:expected salary|salary expectation)[?*]?$"
+        ),
+    }
+    for key, pattern in sensitive_profile_keys.items():
+        saved = preferences.get(key)
+        if re.fullmatch(pattern, label, re.IGNORECASE) and isinstance(saved, (bool, str)):
+            return str(saved).strip()
     language_match = re.fullmatch(r"language\s+([12])", label, re.IGNORECASE)
     spoken_context = re.search(
         r"\b(?:speak|spoken|native|professional|business)\b",

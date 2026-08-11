@@ -1,4 +1,4 @@
-"""Own one visible Chrome/CDP process for the local job-finder control center."""
+"""Own one visible Brave/CDP process for the local job-finder control center."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from urllib.parse import quote, urlsplit
 import requests
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_PROFILE_DIR = REPO_ROOT / ".cache" / "job-finder-chrome-profile"
+DEFAULT_PROFILE_DIR = REPO_ROOT / ".careerlens-chrome-cdp"
 _LOCK = RLock()
 _PROCESS: subprocess.Popen | None = None
 
@@ -34,10 +34,15 @@ def _debugging_port(url: str) -> int:
     return parsed.port or 80
 
 
-def _chrome_executable() -> str:
-    configured = os.environ.get("JOB_FINDER_CHROME_EXECUTABLE", "").strip()
+def _browser_executable() -> str:
+    configured = os.environ.get("JOB_FINDER_BROWSER_EXECUTABLE", "").strip()
+    legacy_configured = os.environ.get("JOB_FINDER_CHROME_EXECUTABLE", "").strip()
     candidates = [
         configured,
+        legacy_configured,
+        shutil.which("brave-browser-stable") or "",
+        shutil.which("brave-browser") or "",
+        "/opt/brave.com/brave/brave",
         shutil.which("google-chrome-stable") or "",
         shutil.which("google-chrome") or "",
         shutil.which("chromium") or "",
@@ -48,7 +53,7 @@ def _chrome_executable() -> str:
         if candidate and Path(candidate).is_file() and os.access(candidate, os.X_OK):
             return candidate
     raise RuntimeError(
-        "Chrome/Chromium is unavailable; set JOB_FINDER_CHROME_EXECUTABLE to its executable"
+        "Brave/Chrome is unavailable; set JOB_FINDER_BROWSER_EXECUTABLE to its executable"
     )
 
 
@@ -63,7 +68,7 @@ def is_ready(*, url: str | None = None) -> bool:
 
 
 def ensure_shared_browser(*, timeout: float = 10.0) -> dict[str, object]:
-    """Start the single persistent visible browser when its CDP endpoint is absent."""
+    """Start the single persistent visible Brave browser when its CDP endpoint is absent."""
     global _PROCESS
 
     url = cdp_url()
@@ -81,7 +86,7 @@ def ensure_shared_browser(*, timeout: float = 10.0) -> dict[str, object]:
             profile.mkdir(parents=True, exist_ok=True)
             _PROCESS = subprocess.Popen(
                 [
-                    _chrome_executable(),
+                    _browser_executable(),
                     "--remote-debugging-address=127.0.0.1",
                     f"--remote-debugging-port={port}",
                     f"--user-data-dir={profile}",

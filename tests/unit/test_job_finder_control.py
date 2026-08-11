@@ -196,6 +196,129 @@ def test_current_queue_accepts_live_legacy_target_but_not_inactive_goal(tmp_path
     )
 
 
+def test_current_queue_recovers_redacted_goal_id_by_task_identity(tmp_path):
+    queue = HumanVerificationQueue(tmp_path / "queue.json")
+    entry = queue.enqueue_handoff(
+        application_reference="Current Co — Junior Engineer",
+        url="https://ph.indeed.com/viewjob?jk=abc123",
+        reason="verification_required",
+        browser_target_id="closed-target",
+        task_id="current-1",
+        goal_id="other-goal",
+    )
+
+    current = job_finder_control._current_queue_entries(
+        [entry],
+        live_target_ids=set(),
+        goal={"id": "current-goal", "status": "waiting_for_human"},
+        goal_items=[
+            {
+                "task_id": "current-1",
+                "company": "Current Co",
+                "job_title": "Junior Engineer",
+                "state": "human_handoff",
+            }
+        ],
+    )
+
+    assert current == [entry]
+
+
+def test_reopen_intervention_reattaches_stale_access_target(tmp_path, monkeypatch):
+    queue_path = tmp_path / "queue.json"
+    queue = HumanVerificationQueue(queue_path)
+    entry = queue.enqueue_handoff(
+        application_reference="Current Co — Junior Engineer",
+        url="https://ph.indeed.com/viewjob?jk=abc123",
+        reason="verification_required",
+        browser_target_id="closed-target",
+        task_id="current-1",
+    )
+    monkeypatch.setattr(job_finder_control, "DEFAULT_QUEUE_PATH", queue_path)
+    monkeypatch.setattr(
+        job_finder_control,
+        "_goal_state",
+        lambda: (
+            {"id": "current-goal", "status": "waiting_for_human"},
+            [{"task_id": "current-1"}],
+        ),
+    )
+    monkeypatch.setattr(
+        job_finder_control,
+        "open_browser_url",
+        lambda url: {"target_id": "new-target", "url": url},
+    )
+    monkeypatch.setattr(
+        job_finder_control,
+        "_latest_run",
+        lambda: {
+            "jobs": [
+                {
+                    "task_id": "current-1",
+                    "listing_url": "https://ph.indeed.com/viewjob?jk=abc123",
+                }
+            ]
+        },
+    )
+
+    result = job_finder_control.reopen_intervention(entry.id)
+
+    assert result["target_id"] == "new-target"
+    assert result["url"] == "https://ph.indeed.com/viewjob?jk=abc123"
+    updated = HumanVerificationQueue(queue_path).get(entry.id)
+    assert updated is not None
+    assert updated.browser_target_id == "new-target"
+    assert updated.goal_id == "current-goal"
+
+
+def test_question_bank_state_uses_json_when_mongodb_is_offline(tmp_path, monkeypatch):
+    fallback = tmp_path / ".cache" / "binance-bap-approved-answers.json"
+    fallback.parent.mkdir()
+    fallback.write_text(
+        json.dumps({"domain": "smartapply.indeed.com", "pages": [{}, {}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(job_finder_control, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(job_finder_control, "_QUESTION_BANK_CACHE", None)
+    monkeypatch.setitem(__import__("sys").modules, "pymongo", None)
+
+    state = job_finder_control._question_bank_state()
+
+    assert state == {
+        "source": "approved JSON",
+        "pages": 2,
+        "status": "MongoDB offline; JSON fallback ready",
+    }
+
+
+def test_resume_gate_approval_requires_the_exact_live_resume_page(tmp_path, monkeypatch):
+    queue_path = tmp_path / "queue.json"
+    queue = HumanVerificationQueue(queue_path)
+    entry = queue.enqueue_handoff(
+        application_reference="Current Co — Junior Engineer",
+        url="https://smartapply.indeed.com/resume-module?token=secret",
+        reason="resume_upload",
+        action=job_finder_control.InterventionAction.RESUME_UPLOAD,
+        browser_target_id="resume-target",
+    )
+    monkeypatch.setattr(job_finder_control, "DEFAULT_QUEUE_PATH", queue_path)
+    monkeypatch.setattr(
+        job_finder_control,
+        "_targets",
+        lambda: [
+            {
+                "id": "resume-target",
+                "url": "https://smartapply.indeed.com/resume-module",
+            }
+        ],
+    )
+
+    result = job_finder_control.approve_resume_intervention(entry.id)
+
+    assert result["action"] == "resume_upload"
+    assert HumanVerificationQueue(queue_path).get(entry.id).status.value == "resolved"
+
+
 def test_resume_catalog_inventories_generated_artifacts_and_routes(tmp_path, monkeypatch):
     artifact_dir = tmp_path / "outputs"
     artifact_dir.mkdir()

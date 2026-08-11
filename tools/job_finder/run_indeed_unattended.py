@@ -621,17 +621,14 @@ def _adaptive_question_page_plan(
         questions,
         approved_questions,
     )
-    repository = MongoQuestionnaireRepository(
-        getattr(args, "mongodb_uri", DEFAULT_MONGODB_URI),
-        database=getattr(args, "mongodb_database", DEFAULT_MONGODB_DATABASE),
-    )
+    repository = _open_questionnaire_repository(args)
     try:
-        repository.ping()
-        reusable = repository.reusable_answers(
-            questions,
-            domain="smartapply.indeed.com",
+        reusable = (
+            repository.reusable_answers(questions, domain="smartapply.indeed.com")
+            if repository is not None
+            else {}
         )
-        application_preferences = repository.profile_values()
+        application_preferences = repository.profile_values() if repository is not None else {}
         profile = VerifiedApplicationProfile(
             email=resume.contact.email or "",
             phone=verified_phone,
@@ -664,14 +661,16 @@ def _adaptive_question_page_plan(
                 reusable_answers=reusable,
                 application_preferences=application_preferences,
             )
-        repository.save_observed_page(
-            questions,
-            adaptive.persistable_answers,
-            domain="smartapply.indeed.com",
-            source="validated adaptive Smart Apply question bank",
-        )
+        if repository is not None:
+            repository.save_observed_page(
+                questions,
+                adaptive.persistable_answers,
+                domain="smartapply.indeed.com",
+                source="validated adaptive Smart Apply question bank",
+            )
     finally:
-        repository.close()
+        if repository is not None:
+            repository.close()
     summary_payload = {
         **adaptive.summary.model_dump(mode="json"),
         "company": job.company,
@@ -750,16 +749,17 @@ def _application_permissions(
     args: argparse.Namespace,
 ) -> tuple[ApplicationPermissionPolicy, SmartApplyApprovals]:
     safe_draft_only = bool(getattr(args, "safe_draft_only", False))
+    assisted_apply = bool(getattr(args, "assisted_apply", False))
     return (
         ApplicationPermissionPolicy(
             autonomous_draft_writes=True,
-            autonomous_sensitive_writes=not safe_draft_only,
+            autonomous_sensitive_writes=assisted_apply or not safe_draft_only,
             autonomous_submit=getattr(args, "autonomous_submit", False),
             allowed_domains={"smartapply.indeed.com"},
         ),
         SmartApplyApprovals(
-            resume_upload=not safe_draft_only,
-            resume_continue=not safe_draft_only,
+            resume_upload=not safe_draft_only and not assisted_apply,
+            resume_continue=not safe_draft_only and not assisted_apply,
             final_submit=getattr(args, "autonomous_submit", False),
         ),
     )
@@ -808,6 +808,22 @@ def _run_application(
         identity.country_iso if identity else ""
     )
     policy, approvals = _application_permissions(args)
+    application_reference = job.batch_task().application_reference
+    upload_approval = queue.approved_action(
+        application_reference=application_reference,
+        action=InterventionAction.RESUME_UPLOAD,
+    )
+    continue_approval = queue.approved_action(
+        application_reference=application_reference,
+        action=InterventionAction.RESUME_CONTINUE,
+    )
+    if bool(getattr(args, "assisted_apply", False)):
+        approvals = approvals.model_copy(
+            update={
+                "resume_upload": upload_approval is not None,
+                "resume_continue": continue_approval is not None,
+            }
+        )
     result = None
     approved_questions = _load_approved_questions(args)
     for _ in range(8):
@@ -822,7 +838,7 @@ def _run_application(
             )
             if bool(getattr(args, "safe_draft_only", False)):
                 queue.enqueue_handoff(
-                    application_reference=job.batch_task().application_reference,
+                    application_reference=application_reference,
                     url=str(application_page.url),
                     reason="safe_draft_questionnaire_gate",
                     browser_target_id=_browser_target_id(application_page),
@@ -909,36 +925,86 @@ def _run_application(
         application_page.wait_for_timeout(2_000)
     if result is None:
         return _outcome(job, BatchApplicationStatus.FAILED, "runner produced no result")
+    if upload_approval is not None and "resume:upload" in result.actions_executed:
+        queue.consume_action(upload_approval.id)
+    if continue_approval is not None and "resume:click" in result.actions_executed:
+        queue.consume_action(continue_approval.id)
+    resume_gate = None
+    if "approval required to upload" in result.stop_reason:
+        resume_gate = InterventionAction.RESUME_UPLOAD
+    elif any(
+        marker in result.stop_reason
+        for marker in (
+            "uploaded resume preview requires human approval",
+            "stop after upload for human preview",
+        )
+    ):
+        resume_gate = InterventionAction.RESUME_CONTINUE
+    if resume_gate is not None:
+        queue.enqueue_handoff(
+            application_reference=application_reference,
+            url=str(application_page.url),
+            reason=resume_gate.value,
+            browser_target_id=_browser_target_id(application_page),
+            action=resume_gate,
+            task_id=job.task_id,
+            company=job.company,
+            job_title=job.job_title,
+            goal_id=goal_id,
+            resume_file=resume_path.name,
+        )
     return indeed_batch_outcome(job.batch_task(), result)
 
 
 def _load_approved_questions(
     args: argparse.Namespace,
 ) -> ApprovedIndeedQuestionAnswerSet | None:
-    source = getattr(args, "questionnaire_store", "")
+    source = getattr(args, "questionnaire_store", "") or "auto"
     approved_answers = getattr(args, "approved_answers", None)
-    if not source:
-        source = "json" if approved_answers else "mongodb"
     if source == "json":
-        if approved_answers is None:
+        json_path = approved_answers or getattr(args, "questionnaire_json_fallback", None)
+        if json_path is None:
             raise ValueError("--approved-answers is required for questionnaire-store=json")
-        return ApprovedIndeedQuestionAnswerSet.model_validate_json(
-            approved_answers.read_text(encoding="utf-8")
-        )
-    if source != "mongodb":
+        return _load_questionnaire_json(Path(json_path))
+    if source not in {"auto", "mongodb"}:
         raise ValueError(f"unsupported questionnaire store: {source}")
-    repository = MongoQuestionnaireRepository(
-        getattr(args, "mongodb_uri", DEFAULT_MONGODB_URI),
-        database=getattr(args, "mongodb_database", DEFAULT_MONGODB_DATABASE),
-    )
+    repository = _open_questionnaire_repository(args, required=source == "mongodb")
     try:
-        repository.ping()
-        answer_set = repository.load(domain="smartapply.indeed.com")
+        answer_set = (
+            repository.load(domain="smartapply.indeed.com") if repository is not None else None
+        )
     finally:
-        repository.close()
-    if answer_set is None:
+        if repository is not None:
+            repository.close()
+    if answer_set is not None or source == "mongodb":
+        return answer_set
+    fallback = approved_answers or getattr(args, "questionnaire_json_fallback", None)
+    return _load_questionnaire_json(Path(fallback)) if fallback and Path(fallback).is_file() else None
+
+
+def _load_questionnaire_json(path: Path) -> ApprovedIndeedQuestionAnswerSet:
+    return ApprovedIndeedQuestionAnswerSet.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def _open_questionnaire_repository(args: argparse.Namespace, *, required: bool = False):
+    repository = None
+    try:
+        repository = MongoQuestionnaireRepository(
+            getattr(args, "mongodb_uri", DEFAULT_MONGODB_URI),
+            database=getattr(args, "mongodb_database", DEFAULT_MONGODB_DATABASE),
+        )
+        repository.ping()
+        return repository
+    except Exception as exc:  # noqa: BLE001 - optional local store degrades to reviewed JSON
+        if repository is not None:
+            repository.close()
+        if required:
+            raise
+        print(
+            f"Question bank MongoDB unavailable; using approved JSON fallback: {type(exc).__name__}",
+            flush=True,
+        )
         return None
-    return answer_set
 
 
 def _retire_if_terminal(page, outcome: BatchApplicationOutcome) -> BatchApplicationOutcome:
@@ -1384,6 +1450,14 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--assisted-apply",
+        action="store_true",
+        help=(
+            "Use verified profile/question-bank writes while retaining separate resume upload, "
+            "resume Continue, and final Submit gates."
+        ),
+    )
+    parser.add_argument(
         "--verified-phone",
         default="",
         help=(
@@ -1424,9 +1498,20 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--questionnaire-store",
-        choices=("mongodb", "json"),
-        default="mongodb",
-        help="Load exact approved questionnaire documents from MongoDB by default.",
+        choices=("auto", "mongodb", "json"),
+        default="auto",
+        help="Prefer MongoDB and fall back to the reviewed local JSON in auto mode.",
+    )
+    parser.add_argument(
+        "--questionnaire-json-fallback",
+        type=Path,
+        default=Path(
+            os.environ.get(
+                "QUESTIONNAIRE_APPROVED_JSON",
+                ROOT / ".cache" / "binance-bap-approved-answers.json",
+            )
+        ),
+        help="Reviewed exact-answer JSON used when the optional MongoDB store is unavailable.",
     )
     parser.add_argument("--mongodb-uri", default=DEFAULT_MONGODB_URI)
     parser.add_argument("--mongodb-database", default=DEFAULT_MONGODB_DATABASE)
@@ -1451,6 +1536,10 @@ def main() -> int:
     args = _parser().parse_args()
     if args.safe_draft_only and args.autonomous_submit:
         raise SystemExit("--safe-draft-only cannot be combined with --autonomous-submit")
+    if args.assisted_apply and args.autonomous_submit:
+        raise SystemExit("--assisted-apply cannot be combined with --autonomous-submit")
+    if args.assisted_apply and args.safe_draft_only:
+        raise SystemExit("--assisted-apply cannot be combined with --safe-draft-only")
     if not 1 <= args.target_submissions <= 24:
         raise SystemExit("--target-submissions must be between 1 and 24")
     if not 1 <= args.max_parallel <= 5:

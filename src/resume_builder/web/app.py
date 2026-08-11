@@ -51,6 +51,7 @@ from .cdo_advisor import AdvisorAnalyzeRequest, analyze_for_injection
 from .mock_data import PROTOTYPE_DATA
 from .job_scraping_demo import current_session_artifact
 from .job_finder_control import (
+    approve_resume_intervention as approve_job_finder_resume_intervention,
     approve_question_answers,
     capture_target_preview,
     confirm_external_intervention,
@@ -58,6 +59,7 @@ from .job_finder_control import (
     disconnect_provider as disconnect_job_finder_provider,
     focus_intervention,
     focus_target as focus_job_finder_target,
+    reopen_intervention as reopen_job_finder_intervention,
     recheck_intervention,
     start_session as start_job_site_session,
 )
@@ -530,6 +532,18 @@ def api_focus_job_finder_intervention(entry_id: str):
     return {"focused": True}
 
 
+@app.post("/api/job-finder/interventions/{entry_id}/reopen")
+def api_reopen_job_finder_intervention(entry_id: str):
+    try:
+        return reopen_job_finder_intervention(entry_id)
+    except KeyError:
+        return JSONResponse({"error": "Unknown intervention."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except Exception as exc:  # noqa: BLE001 - browser launch failures are user-facing
+        return JSONResponse({"error": f"Could not reopen browser tab: {exc}"}, status_code=503)
+
+
 @app.post("/api/job-finder/interventions/{entry_id}/recheck")
 def api_recheck_job_finder_intervention(entry_id: str):
     try:
@@ -567,6 +581,23 @@ def api_approve_job_finder_question_answers(entry_id: str):
         return JSONResponse(
             {"error": f"Could not approve questionnaire answers: {exc}"}, status_code=503
         )
+
+
+@app.post("/api/job-finder/interventions/{entry_id}/approve-resume-gate")
+def api_approve_job_finder_resume_gate(entry_id: str):
+    try:
+        result = approve_job_finder_resume_intervention(entry_id)
+        retry_resolved_intervention(str(result.get("application_reference", "")))
+        from .job_finder_supervisor import goal_store, process_status
+
+        goal = goal_store().active()
+        if goal is not None and not process_status(goal.id)["running"]:
+            launch_job_finder_goal(goal.id)
+        return result
+    except KeyError:
+        return JSONResponse({"error": "Unknown intervention."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
 
 
 @app.post("/api/job-finder/sessions/{provider}/sign-in")

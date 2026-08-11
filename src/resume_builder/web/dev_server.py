@@ -35,7 +35,7 @@ def main() -> None:
     parser.add_argument(
         "--open-browser",
         action="store_true",
-        help="Open the control center as a tab in the shared visible Chrome/CDP session.",
+        help="Open the control center as a tab in the shared visible Brave/CDP session.",
     )
     args = parser.parse_args()
     loop: str | type[asyncio.AbstractEventLoop] = "auto"

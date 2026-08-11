@@ -50,7 +50,8 @@ def test_indeed_runtime_adapter_builds_a_goal_scoped_cycle(tmp_path):
     assert run[run.index("--goal-id") + 1] == goal.id
     assert run[run.index("--target-submissions") + 1] == "9"
     assert "--checkpoint-human" in run
-    assert "--safe-draft-only" in run
+    assert "--assisted-apply" in run
+    assert "--safe-draft-only" not in run
     assert run[run.index("--question-ai-provider") + 1] == "off"
     assert "--autonomous-submit" not in run
 

@@ -94,7 +94,7 @@ class IndeedRuntimeAdapter:
             "--max-candidates",
             str(request.candidate_limit),
             "--checkpoint-human",
-            "--safe-draft-only",
+            "--assisted-apply",
             "--question-ai-provider",
             "off",
         ]

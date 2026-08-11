@@ -107,6 +107,70 @@ def test_queue_preserves_browser_target_for_exact_human_resume(tmp_path):
     assert "secret" not in queue.path.read_text(encoding="utf-8")
 
 
+def test_queue_does_not_redact_numeric_looking_goal_id(tmp_path):
+    queue = HumanVerificationQueue(tmp_path / "verification.json")
+    goal_id = "100057994f244276839da9fb0793fe0e"
+
+    queued = queue.enqueue_handoff(
+        application_reference="Company — Engineer",
+        url="https://ph.indeed.com/viewjob?jk=abc123",
+        reason="verification_required",
+        goal_id=goal_id,
+        task_id="company-engineer-abc123",
+    )
+
+    assert queued.goal_id == goal_id
+    assert json.loads(queue.path.read_text(encoding="utf-8"))[queued.id]["goal_id"] == goal_id
+
+
+def test_queue_reattaches_pending_entry_to_new_browser_target(tmp_path):
+    queue = HumanVerificationQueue(tmp_path / "verification.json")
+    queued = queue.enqueue_handoff(
+        application_reference="Company — Engineer",
+        url="https://ph.indeed.com/viewjob?jk=abc123",
+        reason="verification_required",
+        browser_target_id="old-target",
+    )
+
+    updated = queue.reattach_target(
+        queued.id,
+        browser_target_id="new-target",
+        goal_id="100057994f244276839da9fb0793fe0e",
+    )
+
+    assert updated.browser_target_id == "new-target"
+    assert updated.goal_id == "100057994f244276839da9fb0793fe0e"
+
+
+def test_resume_gate_approval_is_exact_and_consumed_once(tmp_path):
+    queue = HumanVerificationQueue(tmp_path / "verification.json")
+    queued = queue.enqueue_handoff(
+        application_reference="Company — Engineer",
+        url="https://smartapply.indeed.com/resume-module",
+        reason="resume_upload",
+        action=InterventionAction.RESUME_UPLOAD,
+    )
+
+    approved = queue.approve_action(queued.id)
+
+    assert approved.status == VerificationQueueState.RESOLVED
+    assert (
+        queue.approved_action(
+            application_reference="Company — Engineer",
+            action=InterventionAction.RESUME_UPLOAD,
+        )
+        is not None
+    )
+    queue.consume_action(queued.id)
+    assert (
+        queue.approved_action(
+            application_reference="Company — Engineer",
+            action=InterventionAction.RESUME_UPLOAD,
+        )
+        is None
+    )
+
+
 def test_queue_groups_company_site_apply_as_human_intervention(tmp_path):
     queue = HumanVerificationQueue(tmp_path / "verification.json")
 

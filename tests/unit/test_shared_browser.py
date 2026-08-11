@@ -32,7 +32,7 @@ def test_open_tab_starts_one_shared_browser_then_uses_cdp_target(monkeypatch, tm
 
     monkeypatch.setenv("JOB_FINDER_CHROME_PROFILE", str(tmp_path / "profile"))
     monkeypatch.setattr(shared_browser, "_PROCESS", None)
-    monkeypatch.setattr(shared_browser, "_chrome_executable", lambda: "/chrome")
+    monkeypatch.setattr(shared_browser, "_browser_executable", lambda: "/brave")
     monkeypatch.setattr(shared_browser, "is_ready", lambda **_kwargs: next(readiness))
     monkeypatch.setattr(
         shared_browser.subprocess,
@@ -49,3 +49,15 @@ def test_open_tab_starts_one_shared_browser_then_uses_cdp_target(monkeypatch, tm
     assert "--remote-debugging-port=9222" in opened[0][0]
     assert any(argument.startswith("--user-data-dir=") for argument in opened[0][0])
     assert opened[0][1]["start_new_session"] is True
+
+
+def test_browser_executable_prefers_brave(monkeypatch):
+    monkeypatch.delenv("JOB_FINDER_BROWSER_EXECUTABLE", raising=False)
+    monkeypatch.delenv("JOB_FINDER_CHROME_EXECUTABLE", raising=False)
+    monkeypatch.setattr(
+        shared_browser.shutil,
+        "which",
+        lambda name: f"/usr/bin/{name}" if name in {"brave-browser-stable", "google-chrome"} else None,
+    )
+
+    assert shared_browser._browser_executable() == "/usr/bin/brave-browser-stable"

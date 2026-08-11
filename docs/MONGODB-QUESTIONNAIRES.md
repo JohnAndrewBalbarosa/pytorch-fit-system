@@ -48,6 +48,13 @@ Migrate an approved local profile:
   --source .cache/binance-bap-approved-answers.json
 ```
 
-The source JSON remains a recoverable migration input. Once read-after-write verification succeeds,
-the unattended runner can load the same exact answer set from MongoDB with
-`--questionnaire-store mongodb`.
+The source JSON remains a recoverable runtime fallback and migration input. The unattended runner
+defaults to `--questionnaire-store auto`: it prefers a healthy MongoDB store and otherwise loads the
+reviewed JSON selected by `QUESTIONNAIRE_APPROVED_JSON` (defaulting to the existing local approved
+artifact). `--questionnaire-store mongodb` remains the strict fail-closed option.
+
+Assisted application runs execute only fully resolved question pages. Exact saved answers,
+verified profile facts, and validated resume evidence may be filled deterministically; an unknown
+required question stops for human review. Sensitive answers are never inferred or learned from a
+page automatically, but an explicitly saved exact value may be reused when it matches the observed
+question and live option.

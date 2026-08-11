@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from threading import RLock
 from datetime import datetime, timezone
 from enum import Enum
@@ -33,6 +34,7 @@ __all__ = [
 ]
 
 _QUEUE_LOCK = RLock()
+_OPAQUE_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,200}$")
 
 
 class VerificationQueueState(str, Enum):
@@ -50,6 +52,8 @@ class InterventionAction(str, Enum):
     HUMAN_VERIFICATION = "human_verification"
     UNKNOWN_QUESTION = "unknown_question"
     SIGN_IN = "sign_in"
+    RESUME_UPLOAD = "resume_upload"
+    RESUME_CONTINUE = "resume_continue"
     EXTERNAL_APPLICATION = "external_application"
     OTHER = "other"
 
@@ -76,6 +80,8 @@ class VerificationQueueEntry(BaseModel):
     question_fingerprint: str = ""
     question_approved_at: str = ""
     question_approval_consumed_at: str = ""
+    approval_granted_at: str = ""
+    approval_consumed_at: str = ""
 
     @model_validator(mode="before")
     @classmethod
@@ -95,6 +101,10 @@ def _action_for_reason(reason: str) -> InterventionAction:
         return InterventionAction.HUMAN_VERIFICATION
     if normalized in {"signed_out", "sign_in"}:
         return InterventionAction.SIGN_IN
+    if normalized in {"resume_upload", "resume_upload_approval"}:
+        return InterventionAction.RESUME_UPLOAD
+    if normalized in {"resume_continue", "resume_continue_approval"}:
+        return InterventionAction.RESUME_CONTINUE
     if normalized in {"unknown_question", "unanswered_question"}:
         return InterventionAction.UNKNOWN_QUESTION
     if normalized == "apply_on_company_site":
@@ -108,6 +118,14 @@ def _safe_application_reference(application_reference: str, safe_url: str) -> st
     if parts.scheme and parts.netloc:
         reference = sanitize_application_url(reference)
     return redact(reference, limit=200) or safe_url
+
+
+def _safe_opaque_id(value: str, *, field: str) -> str:
+    """Validate internal identifiers without passing them through PII redaction."""
+    clean = (value or "").strip()
+    if clean and not _OPAQUE_ID.fullmatch(clean):
+        raise ValueError(f"invalid {field}")
+    return clean
 
 
 class HumanVerificationQueue:
@@ -200,13 +218,13 @@ class HumanVerificationQueue:
                     for label in (question_labels or [])[:12]
                     if redact(label, limit=240)
                 ],
-                task_id=redact(task_id, limit=160)
+                task_id=_safe_opaque_id(task_id, field="task_id")
                 or (str(existing.get("task_id", "")) if existing else ""),
                 company=redact(company, limit=160)
                 or (str(existing.get("company", "")) if existing else ""),
                 job_title=redact(job_title, limit=200)
                 or (str(existing.get("job_title", "")) if existing else ""),
-                goal_id=redact(goal_id, limit=160)
+                goal_id=_safe_opaque_id(goal_id, field="goal_id")
                 or (str(existing.get("goal_id", "")) if existing else ""),
                 resume_file=(
                     Path(resume_file).name
@@ -301,6 +319,34 @@ class HumanVerificationQueue:
             self._save(payload)
         return VerificationQueueEntry.model_validate(existing)
 
+    def reattach_target(
+        self,
+        entry_id: str,
+        *,
+        browser_target_id: str,
+        goal_id: str = "",
+    ) -> VerificationQueueEntry:
+        """Attach a pending handoff to a newly opened browser tab after browser restart."""
+        target_id = _safe_opaque_id(browser_target_id, field="browser_target_id")
+        if not target_id:
+            raise ValueError("browser_target_id is required")
+        clean_goal_id = _safe_opaque_id(goal_id, field="goal_id")
+        with _QUEUE_LOCK:
+            payload = self._load()
+            existing = payload.get(entry_id)
+            if not existing:
+                raise KeyError(entry_id)
+            entry = VerificationQueueEntry.model_validate(existing)
+            if entry.status != VerificationQueueState.PENDING:
+                raise ValueError("only pending interventions can be reattached")
+            existing["browser_target_id"] = target_id
+            if clean_goal_id:
+                existing["goal_id"] = clean_goal_id
+            existing["updated_at"] = datetime.now(timezone.utc).isoformat()
+            payload[entry_id] = existing
+            self._save(payload)
+        return VerificationQueueEntry.model_validate(existing)
+
     def resolve_matching(
         self,
         *,
@@ -354,6 +400,68 @@ class HumanVerificationQueue:
             existing["question_fingerprint"] = fingerprint
             existing["question_approved_at"] = now
             existing["question_approval_consumed_at"] = ""
+            payload[entry_id] = existing
+            self._save(payload)
+        return VerificationQueueEntry.model_validate(existing)
+
+    def approve_action(self, entry_id: str) -> VerificationQueueEntry:
+        """Grant one-use approval for an exact resume gate."""
+        with _QUEUE_LOCK:
+            payload = self._load()
+            existing = payload.get(entry_id)
+            if not existing:
+                raise KeyError(entry_id)
+            entry = VerificationQueueEntry.model_validate(existing)
+            if entry.action not in {
+                InterventionAction.RESUME_UPLOAD,
+                InterventionAction.RESUME_CONTINUE,
+            }:
+                raise ValueError("only resume gates use this approval")
+            now = datetime.now(timezone.utc).isoformat()
+            existing["status"] = VerificationQueueState.RESOLVED.value
+            existing["updated_at"] = now
+            existing["approval_granted_at"] = now
+            existing["approval_consumed_at"] = ""
+            payload[entry_id] = existing
+            self._save(payload)
+        return VerificationQueueEntry.model_validate(existing)
+
+    def approved_action(
+        self,
+        *,
+        application_reference: str,
+        action: InterventionAction,
+    ) -> VerificationQueueEntry | None:
+        reference = _safe_application_reference(application_reference, "")
+        with _QUEUE_LOCK:
+            entries = [
+                VerificationQueueEntry.model_validate(value) for value in self._load().values()
+            ]
+        return next(
+            (
+                entry
+                for entry in sorted(entries, key=lambda item: item.updated_at, reverse=True)
+                if entry.action == action
+                and entry.status == VerificationQueueState.RESOLVED
+                and entry.application_reference == reference
+                and entry.approval_granted_at
+                and not entry.approval_consumed_at
+            ),
+            None,
+        )
+
+    def consume_action(self, entry_id: str) -> VerificationQueueEntry | None:
+        with _QUEUE_LOCK:
+            payload = self._load()
+            existing = payload.get(entry_id)
+            if not existing:
+                return None
+            entry = VerificationQueueEntry.model_validate(existing)
+            if not entry.approval_granted_at or entry.approval_consumed_at:
+                return entry
+            now = datetime.now(timezone.utc).isoformat()
+            existing["updated_at"] = now
+            existing["approval_consumed_at"] = now
             payload[entry_id] = existing
             self._save(payload)
         return VerificationQueueEntry.model_validate(existing)

@@ -45,6 +45,7 @@ _WEBSITE_LOGOUT_URLS = {
 _SIGN_IN_URLS = {"indeed": "https://secure.indeed.com/auth"}
 _PREVIEW_LOCK = RLock()
 _PREVIEW_CACHE: dict[str, tuple[float, bytes]] = {}
+_QUESTION_BANK_CACHE: tuple[float, dict[str, Any]] | None = None
 _CURRENT_GOAL_STATUSES = {"active", "waiting_for_human", "waiting_for_candidates"}
 
 
@@ -123,6 +124,61 @@ def _resume_catalog() -> list[dict[str, Any]]:
     return items
 
 
+def _question_bank_state() -> dict[str, Any]:
+    """Report local answer-source readiness without exposing stored values."""
+    global _QUESTION_BANK_CACHE
+    if _QUESTION_BANK_CACHE is not None and time.monotonic() - _QUESTION_BANK_CACHE[0] < 15:
+        return dict(_QUESTION_BANK_CACHE[1])
+    fallback = Path(
+        os.environ.get(
+            "QUESTIONNAIRE_APPROVED_JSON",
+            REPO_ROOT / ".cache" / "binance-bap-approved-answers.json",
+        )
+    )
+    json_pages = 0
+    if fallback.is_file():
+        try:
+            payload = json.loads(fallback.read_text(encoding="utf-8"))
+            pages = payload.get("pages", []) if isinstance(payload, dict) else []
+            json_pages = len(pages) if isinstance(pages, list) else 0
+        except (OSError, json.JSONDecodeError):
+            pass
+    mongo_pages = 0
+    mongo_ready = False
+    try:
+        from pymongo import MongoClient
+
+        client = MongoClient(
+            os.environ.get(
+                "MONGODB_URI",
+                "mongodb://127.0.0.1:27017/?directConnection=true",
+            ),
+            serverSelectionTimeoutMS=300,
+        )
+        try:
+            mongo_ready = bool(client["admin"].command("ping").get("ok"))
+            if mongo_ready:
+                database = client[os.environ.get("MONGODB_DATABASE", "pytorch_fit")]
+                mongo_pages = int(
+                    database["indeed_question_sets"].count_documents(
+                        {"domain": "smartapply.indeed.com", "schema_version": 1}
+                    )
+                )
+        finally:
+            client.close()
+    except Exception:  # noqa: BLE001 - status degrades to the reviewed JSON source
+        mongo_ready = False
+    if mongo_ready and mongo_pages:
+        state = {"source": "MongoDB", "pages": mongo_pages, "status": "ready"}
+    elif json_pages:
+        status = "MongoDB empty; JSON fallback ready" if mongo_ready else "MongoDB offline; JSON fallback ready"
+        state = {"source": "approved JSON", "pages": json_pages, "status": status}
+    else:
+        state = {"source": "", "pages": 0, "status": "no approved question sets"}
+    _QUESTION_BANK_CACHE = (time.monotonic(), state)
+    return dict(state)
+
+
 def _resume_lookup() -> tuple[dict[str, str], dict[str, str]]:
     """Recover resume labels for current and historical queue microtasks."""
     by_task: dict[str, str] = {}
@@ -189,6 +245,10 @@ def _instruction(action: InterventionAction) -> str:
             "Save answers & continue."
         ),
         InterventionAction.SIGN_IN: "Sign in in the visible browser and complete any 2FA prompt.",
+        InterventionAction.RESUME_UPLOAD: "Review the selected resume, then approve this upload.",
+        InterventionAction.RESUME_CONTINUE: (
+            "Review the uploaded resume preview, then approve Continue."
+        ),
         InterventionAction.EXTERNAL_APPLICATION: "Complete this company-site application manually.",
         InterventionAction.OTHER: "Review the browser page and complete the requested action.",
     }[action]
@@ -236,15 +296,14 @@ def _current_queue_entries(
             bool(entry.browser_target_id) and entry.browser_target_id in live_target_ids
         )
         belongs_to_goal = bool(active_goal_id) and entry.goal_id == active_goal_id
-        legacy_goal_match = (
+        identifier_goal_match = (
             bool(active_goal_id)
-            and not entry.goal_id
             and (
                 (bool(entry.task_id) and entry.task_id in active_task_ids)
                 or entry.application_reference in active_references
             )
         )
-        if target_is_live or belongs_to_goal or legacy_goal_match:
+        if target_is_live or belongs_to_goal or identifier_goal_match:
             current.append(entry)
     return current
 
@@ -611,6 +670,7 @@ def control_state() -> dict[str, Any]:
         "goal": goal_payload,
         "goal_items": goal_items,
         "resume_catalog": _resume_catalog(),
+        "question_bank": _question_bank_state(),
         "resume_artifact_directory": str(DEFAULT_ARTIFACT_DIR),
         "development_questions": [
             {
@@ -701,6 +761,75 @@ def focus_intervention(entry_id: str) -> None:
     if not entry.browser_target_id:
         raise ValueError("intervention has no live browser target")
     focus_target(entry.browser_target_id)
+
+
+def reopen_intervention(entry_id: str) -> dict[str, str]:
+    """Reopen one stale access handoff in Brave and attach its new CDP target."""
+    queue = _queue()
+    entry = next((item for item in queue.pending() if item.id == entry_id), None)
+    if entry is None:
+        raise KeyError(entry_id)
+    if entry.action not in {
+        InterventionAction.CAPTCHA,
+        InterventionAction.HUMAN_VERIFICATION,
+        InterventionAction.SIGN_IN,
+    }:
+        raise ValueError("only access-verification handoffs can be reopened")
+    recovery_url = ""
+    run = _latest_run()
+    for job in run.get("jobs", []) if isinstance(run, dict) else []:
+        if not isinstance(job, dict) or str(job.get("task_id", "")) != entry.task_id:
+            continue
+        candidate = str(job.get("listing_url", ""))
+        parts = urlsplit(candidate)
+        host = (parts.hostname or "").casefold()
+        if (host == "indeed.com" or host.endswith(".indeed.com")) and parts.path == "/viewjob":
+            recovery_url = candidate
+            break
+    if not recovery_url:
+        raise ValueError("the exact Indeed listing URL is unavailable for this stale handoff")
+    opened = open_browser_url(recovery_url)
+    goal, items = _goal_state()
+    active_goal_id = ""
+    if str(goal.get("status", "")) in _CURRENT_GOAL_STATUSES and any(
+        str(item.get("task_id", "")) == entry.task_id for item in items
+    ):
+        active_goal_id = str(goal.get("id", ""))
+    updated = queue.reattach_target(
+        entry.id,
+        browser_target_id=opened["target_id"],
+        goal_id=active_goal_id,
+    )
+    return {
+        "entry_id": updated.id,
+        "target_id": updated.browser_target_id,
+        "url": opened["url"],
+    }
+
+
+def approve_resume_intervention(entry_id: str) -> dict[str, Any]:
+    queue = _queue()
+    entry = next((item for item in queue.pending() if item.id == entry_id), None)
+    if entry is None:
+        raise KeyError(entry_id)
+    target = next(
+        (item for item in _targets() if str(item.get("id", "")) == entry.browser_target_id),
+        None,
+    )
+    if target is None:
+        raise ValueError("the saved resume-review tab is no longer open")
+    parts = urlsplit(str(target.get("url", "")))
+    if (parts.hostname or "").casefold() != "smartapply.indeed.com" or (
+        "/resume-module" not in parts.path
+    ):
+        raise ValueError("the exact Indeed resume-review page is no longer open")
+    approved = queue.approve_action(entry_id)
+    return {
+        "approved": True,
+        "entry_id": approved.id,
+        "application_reference": approved.application_reference,
+        "action": approved.action.value,
+    }
 
 
 def confirm_external_intervention(entry_id: str) -> dict[str, Any]:

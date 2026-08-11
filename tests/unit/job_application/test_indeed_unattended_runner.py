@@ -70,6 +70,23 @@ def test_safe_draft_only_disables_sensitive_writes_and_resume_approvals():
     assert approvals.final_submit is False
 
 
+def test_assisted_apply_allows_verified_writes_but_keeps_resume_and_submit_gates():
+    policy, approvals = runner._application_permissions(
+        SimpleNamespace(
+            safe_draft_only=False,
+            assisted_apply=True,
+            autonomous_submit=False,
+        )
+    )
+
+    assert policy.autonomous_draft_writes is True
+    assert policy.autonomous_sensitive_writes is True
+    assert policy.autonomous_submit is False
+    assert approvals.resume_upload is False
+    assert approvals.resume_continue is False
+    assert approvals.final_submit is False
+
+
 def test_submitted_goal_outcome_consumes_one_token(tmp_path):
     database = tmp_path / "history.sqlite3"
     store = ApplicationGoalStore(database)
@@ -88,7 +105,7 @@ def test_submitted_goal_outcome_consumes_one_token(tmp_path):
     assert updated.remaining == 1
 
 
-def test_runner_loads_approved_questions_from_mongodb_by_default(monkeypatch):
+def test_runner_loads_approved_questions_from_mongodb_when_required(monkeypatch):
     expected = ApprovedIndeedQuestionAnswerSet(
         pages=[
             ApprovedIndeedQuestionAnswers(
@@ -132,6 +149,37 @@ def test_runner_loads_approved_questions_from_mongodb_by_default(monkeypatch):
         "domain": "smartapply.indeed.com",
         "closed": True,
     }
+
+
+def test_runner_falls_back_to_approved_json_when_mongodb_is_unavailable(
+    tmp_path, monkeypatch
+):
+    expected = ApprovedIndeedQuestionAnswerSet(
+        pages=[
+            ApprovedIndeedQuestionAnswers(
+                question_set_fingerprint="b" * 40,
+                answers={"Gender": "Prefer not to say"},
+            )
+        ]
+    )
+    fallback = tmp_path / "approved.json"
+    fallback.write_text(expected.model_dump_json(), encoding="utf-8")
+
+    monkeypatch.setattr(
+        runner,
+        "_open_questionnaire_repository",
+        lambda _args, required=False: None,
+    )
+
+    loaded = runner._load_approved_questions(
+        SimpleNamespace(
+            questionnaire_store="auto",
+            approved_answers=None,
+            questionnaire_json_fallback=fallback,
+        )
+    )
+
+    assert loaded == expected
 
 
 def test_scheduler_replenishes_skips_and_stops_at_exact_target(tmp_path):

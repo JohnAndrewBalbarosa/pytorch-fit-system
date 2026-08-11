@@ -12,6 +12,8 @@
     ["human_verification", "Are you human?"],
     ["unknown_question", "Unknown questions"],
     ["sign_in", "Sign in required"],
+    ["resume_upload", "Resume upload approvals"],
+    ["resume_continue", "Resume Continue approvals"],
     ["external_application", "External applications"],
     ["other", "Other manual work"],
   ];
@@ -488,6 +490,13 @@
       state.run?.error || state.run?.artifact || "No run artifact yet.",
     );
     renderSessions(state.sessions || {});
+    const bank = state.question_bank || {};
+    setText(
+      "[data-question-bank-status]",
+      bank.source
+        ? `Question bank: ${bank.source} · ${bank.pages || 0} exact page set(s) · ${bank.status || "ready"}`
+        : "Question bank: no approved source available",
+    );
     renderResumeRoutes(state.resume_catalog || [], state.resume_artifact_directory || "");
     renderAutomatic(state.automatic || []);
     renderInterventions(state.interventions || []);
@@ -916,10 +925,9 @@
       body.append(list);
     }
     const actions = element("div", "work-actions");
-    const focus = element("button", "button", "Open / Focus tab");
+    const focus = element("button", "button", item.can_focus ? "Focus tab" : "Reopen in Brave");
     focus.type = "button";
-    focus.disabled = !item.can_focus;
-    focus.addEventListener("click", () => interventionAction(item.id, "focus"));
+    focus.addEventListener("click", () => interventionAction(item.id, item.can_focus ? "focus" : "reopen"));
     const recheck = element("button", "button ghost", "Recheck");
     recheck.type = "button";
     recheck.disabled = !item.can_focus;
@@ -930,6 +938,16 @@
       approve.type = "button";
       approve.disabled = !item.can_focus;
       approve.addEventListener("click", () => approveQuestionAnswers(item.id));
+      actions.append(approve);
+    } else if (["resume_upload", "resume_continue"].includes(item.action)) {
+      const approve = element(
+        "button",
+        "button",
+        item.action === "resume_upload" ? "Approve resume upload" : "Approve resume Continue",
+      );
+      approve.type = "button";
+      approve.disabled = !item.can_focus;
+      approve.addEventListener("click", () => approveResumeGate(item.id));
       actions.append(approve);
     } else if (item.action === "external_application") {
       const confirm = element("button", "button", "Confirm submitted");
@@ -975,10 +993,26 @@
     }
   }
 
+  async function approveResumeGate(id) {
+    try {
+      const result = await post(`/api/job-finder/interventions/${encodeURIComponent(id)}/approve-resume-gate`);
+      showToast(`${String(result.action || "resume").replaceAll("_", " ")} approved; replay started.`);
+      refresh();
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
+
   async function interventionAction(id, action) {
     try {
       const result = await post(`/api/job-finder/interventions/${encodeURIComponent(id)}/${action}`);
-      showToast(action === "focus" ? "Browser tab focused." : result.reason || "Intervention rechecked.");
+      showToast(
+        action === "focus"
+          ? "Browser tab focused."
+          : action === "reopen"
+            ? "Verification page reopened in Brave."
+            : result.reason || "Intervention rechecked.",
+      );
       window.setTimeout(refresh, 600);
     } catch (error) {
       showToast(error.message);
