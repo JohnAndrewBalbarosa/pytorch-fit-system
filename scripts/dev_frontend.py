@@ -20,6 +20,7 @@ def main() -> int:
     environment.setdefault("PYTORCH_FIT_API_URL", "http://127.0.0.1:8000")
     environment.setdefault("PYTORCH_FIT_FRONTEND_URL", "http://127.0.0.1:3000")
     environment.setdefault("PYTORCH_FIT_DEV_ACCESS", "1")
+    environment.setdefault("PYTORCH_FIT_DEV_BYPASS_SIGN_IN", "1")
     environment.setdefault("PYTORCH_FIT_DEV_API_TOKEN", secrets.token_urlsafe(32))
     npm = "npm.cmd" if os.name == "nt" else "npm"
     processes = [
@@ -49,7 +50,7 @@ def main() -> int:
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, stop)
     time.sleep(2)
-    webbrowser.open("http://127.0.0.1:3000/login")
+    webbrowser.open("http://127.0.0.1:3000/dashboard")
     try:
         return max(process.wait() for process in processes)
     finally:

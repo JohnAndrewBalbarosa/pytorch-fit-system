@@ -23,6 +23,9 @@ the developer token server-side.
 
 - Product routes live in `app/` and use `AppShell` plus shared UI components.
 - Next.js route handlers proxy only allowlisted FastAPI endpoints to a fixed loopback base URL.
+- `scripts/dev_frontend.py` enables the explicit development-only sign-in bypass and opens the
+  dashboard directly. The bypass requires both `PYTORCH_FIT_DEV_ACCESS=1` and
+  `PYTORCH_FIT_DEV_BYPASS_SIGN_IN=1`, and is always disabled when `NODE_ENV=production`.
 - FastAPI owns ingestion, persistent snapshots, job automation, and permission enforcement.
 - `/developer/*` visualizers remain separate development aids and are never embedded as product UI.
 - Job analytics labels live, cached, and synthetic data distinctly and always exposes provenance,
