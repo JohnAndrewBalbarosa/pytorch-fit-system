@@ -35,7 +35,7 @@ const sections = [
 export default function SettingsPage() {
   return (
     <AppShell>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3" data-tour="settings-heading">
         <div>
           <h1 className="text-3xl font-bold tracking-[-0.02em]">Node System Settings</h1>
           <p className="mt-2 text-muted">Account, credential, notification, and privacy controls for the campus node.</p>
@@ -43,11 +43,11 @@ export default function SettingsPage() {
         <Badge variant="orange">Privacy by default</Badge>
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-4 lg:grid-cols-2" data-tour="settings-grid">
         {sections.map((section) => {
           const Icon = section.icon;
           return (
-            <Card className="bg-surface" key={section.title}>
+            <Card className="bg-surface" data-tour={section.title === "Privacy parameters" ? "settings-privacy" : undefined} key={section.title}>
               <CardHeader>
                 <div>
                   <CardTitle>{section.title}</CardTitle>

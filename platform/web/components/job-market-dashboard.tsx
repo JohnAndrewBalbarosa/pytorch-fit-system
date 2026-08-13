@@ -26,16 +26,21 @@ export function JobMarketDashboard() {
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
-    fetch(`/api/job-market/summary?${query}`, { signal: controller.signal })
+    void fetch(`/api/job-market/summary?${query}`, { signal: controller.signal })
       .then((response) => response.json())
       .then(setData)
-      .finally(() => setLoading(false));
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) throw error;
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
     return () => controller.abort();
   }, [query, revision]);
 
   return (
     <AppShell>
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4" data-tour="analytics-heading">
         <div>
           <div className="data-label mb-2 text-xs uppercase tracking-widest text-accent">Evidence-backed market view</div>
           <h1 className="text-3xl font-bold tracking-[-0.02em]">Job Market Analytics</h1>
@@ -46,7 +51,7 @@ export function JobMarketDashboard() {
         </Badge>
       </header>
 
-      <Card className="mb-4 bg-surface">
+      <Card className="mb-4 bg-surface" data-tour="analytics-filters">
         <div className="grid gap-3 md:grid-cols-5">
           <label className="text-sm text-muted">Country<select className="mt-2 w-full rounded-lg border border-border bg-elevated p-2.5 text-ink" value={country} onChange={(e) => setCountry(e.target.value)}>{countries.map((value) => <option key={value}>{value}</option>)}</select></label>
           <label className="text-sm text-muted">Compare with<select className="mt-2 w-full rounded-lg border border-border bg-elevated p-2.5 text-ink" value={compareCountry} onChange={(e) => setCompareCountry(e.target.value)}><option value="">No comparison</option>{countries.filter((value) => value !== country).map((value) => <option key={value}>{value}</option>)}</select></label>
@@ -70,7 +75,7 @@ export function JobMarketDashboard() {
           <Metric label="Evidence matches" value={data.skill_demand.filter((item) => item.evidenced).length} detail="Top-demand skills in verified profile" />
         </section>
 
-        <section className="mt-4 grid gap-4 xl:grid-cols-2">
+        <section className="mt-4 grid gap-4 xl:grid-cols-2" data-tour="analytics-market">
           <Card className="bg-surface">
             <CardHeader><div><CardTitle>Active hiring vs. layoffs</CardTitle><CardDescription>Separate descriptive series; coverage and geography must match before comparison.</CardDescription></div><Database className="text-accent" size={20} /></CardHeader>
             <div className="grid gap-3 sm:grid-cols-2">{data.hiring_layoff_series.map((item, index) => <div className="contents" key={`${item.period}-${index}`}><div className="rounded-lg border border-border bg-elevated p-4"><p className="text-sm text-muted">Active postings</p><p className="mt-2 text-3xl font-bold">{item.active_postings ?? "—"}</p><p className="mt-2 text-xs text-muted">{item.geography} · {item.period}</p></div><div className="rounded-lg border border-dashed border-border bg-elevated p-4"><p className="text-sm text-muted">Layoffs / discharges</p><p className="mt-2 text-3xl font-bold">{item.layoffs ?? "Unavailable"}</p><p className="mt-2 text-xs text-muted">Configure a compatible official or imported series.</p></div></div>)}</div>
@@ -92,10 +97,10 @@ export function JobMarketDashboard() {
 
         <section className="mt-4 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
           <Card className="bg-surface"><CardHeader><div><CardTitle>Geography and work mode</CardTitle><CardDescription>Ratios remain scoped to each observed country label.</CardDescription></div><Globe2 className="text-accent" size={20} /></CardHeader><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-muted"><tr><th className="pb-3">Country / eligibility</th><th className="pb-3">Mode</th><th className="pb-3">Count</th><th className="pb-3">Ratio</th></tr></thead><tbody>{data.geography_ratios.map((item) => <tr className="border-t border-border" key={`${item.country}-${item.mode}`}><td className="py-3">{item.country}</td><td className="capitalize">{item.mode}</td><td>{item.count}</td><td>{item.percent}%</td></tr>)}</tbody></table></div></Card>
-          <Card className="bg-elevated"><CardHeader><div><CardTitle>Evidence comparison</CardTitle><CardDescription>Only normalized, evidenced skills are marked present.</CardDescription></div></CardHeader><div className="space-y-2">{data.skill_demand.map((item) => <div className="flex items-center justify-between rounded-lg border border-border bg-surface p-3" key={item.skill}><span>{item.skill}</span>{item.evidenced ? <Badge variant="success"><CheckCircle2 size={13} /> Evidenced</Badge> : <Badge>Gap to review</Badge>}</div>)}</div></Card>
+          <Card className="bg-elevated" data-tour="analytics-evidence"><CardHeader><div><CardTitle>Evidence comparison</CardTitle><CardDescription>Only normalized, evidenced skills are marked present.</CardDescription></div></CardHeader><div className="space-y-2">{data.skill_demand.map((item) => <div className="flex items-center justify-between rounded-lg border border-border bg-surface p-3" key={item.skill}><span>{item.skill}</span>{item.evidenced ? <Badge variant="success"><CheckCircle2 size={13} /> Evidenced</Badge> : <Badge>Gap to review</Badge>}</div>)}</div></Card>
         </section>
 
-        <Card className="mt-4 bg-surface"><CardHeader><div><CardTitle>Sources and limitations</CardTitle><CardDescription>Provenance is part of every interpretation.</CardDescription></div></CardHeader><div className="grid gap-3 lg:grid-cols-2">{data.sources.map((source) => { const content = <><div className="flex items-center justify-between gap-3"><strong>{source.label}</strong><Badge variant={source.configured ? "success" : undefined}>{source.configured ? "Available" : "Not configured"}</Badge></div><p className="mt-2 text-sm text-muted">{source.geography} · {source.freshness}</p></>; return source.attribution_url ? <a className="focus-ring rounded-lg border border-border bg-elevated p-4 hover:border-accent" href={source.attribution_url} key={source.id} rel="noreferrer" target="_blank">{content}</a> : <div className="rounded-lg border border-border bg-elevated p-4" key={source.id}>{content}</div>; })}</div><div className="mt-4 space-y-2 border-t border-border pt-4">{data.warnings.map((warning) => <p className="flex gap-2 text-sm text-muted" key={warning}><AlertTriangle className="mt-0.5 flex-none text-accent" size={15} />{warning}</p>)}</div></Card>
+        <Card className="mt-4 bg-surface" data-tour="analytics-sources"><CardHeader><div><CardTitle>Sources and limitations</CardTitle><CardDescription>Provenance is part of every interpretation.</CardDescription></div></CardHeader><div className="grid gap-3 lg:grid-cols-2">{data.sources.map((source) => { const content = <><div className="flex items-center justify-between gap-3"><strong>{source.label}</strong><Badge variant={source.configured ? "success" : undefined}>{source.configured ? "Available" : "Not configured"}</Badge></div><p className="mt-2 text-sm text-muted">{source.geography} · {source.freshness}</p></>; return source.attribution_url ? <a className="focus-ring rounded-lg border border-border bg-elevated p-4 hover:border-accent" href={source.attribution_url} key={source.id} rel="noreferrer" target="_blank">{content}</a> : <div className="rounded-lg border border-border bg-elevated p-4" key={source.id}>{content}</div>; })}</div><div className="mt-4 space-y-2 border-t border-border pt-4">{data.warnings.map((warning) => <p className="flex gap-2 text-sm text-muted" key={warning}><AlertTriangle className="mt-0.5 flex-none text-accent" size={15} />{warning}</p>)}</div></Card>
       </>}
     </AppShell>
   );

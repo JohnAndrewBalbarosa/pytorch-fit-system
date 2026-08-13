@@ -7,6 +7,7 @@ import {
   Bot,
   BriefcaseBusiness,
   CalendarDays,
+  CircleHelp,
   Flame,
   Home,
   LayoutDashboard,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { ProductTourController, requestProductTour } from "./product-tour";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 
@@ -96,6 +98,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <p className="text-xs leading-5 text-[#FFF7ED]/45">Mock visibility only. Supabase policies own production access.</p>
       </div>
+      <Button
+        className="mt-3 w-full justify-start gap-3"
+        data-tour="tour-help"
+        onClick={requestProductTour}
+        type="button"
+        variant="ghost"
+      >
+        <CircleHelp size={18} /> Help / Tour
+      </Button>
     </aside>
   );
 
@@ -106,8 +117,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Menu size={18} />
         </Button>
         <Badge variant="orange">Prototype UI</Badge>
-        <Button aria-label="Search" size="icon" type="button" variant="secondary">
-          <Search size={18} />
+        <Button aria-label="Replay page tour" data-tour="tour-help" onClick={requestProductTour} size="icon" type="button" variant="secondary">
+          <CircleHelp size={18} />
         </Button>
       </header>
       <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:block">{sidebar}</div>
@@ -120,6 +131,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main className="lg:pl-72">
         <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">{children}</div>
       </main>
+      <ProductTourController />
     </div>
   );
 }

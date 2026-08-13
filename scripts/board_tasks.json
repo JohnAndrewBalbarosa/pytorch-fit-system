@@ -1894,6 +1894,22 @@
       "worst_case": "2026-08-20",
       "assignee": "JohnAndrewBalbarosa",
       "body": "🤖 AI-built this session — needs human review.\n✅ Adds global configurable job analytics for active postings, layoff-series availability, skill demand, degree/experience barriers, geography/work mode, salary bands, application funnel, and normalized personal evidence comparison. Unknown requirements remain unknown.\n✅ Adds provider-neutral Adzuna and Remotive adapters, versioned SQLite snapshots, JSON/CSV imports, provenance/freshness/sample labels, and explicit cached or synthetic-demo fallbacks.\nWhere: src/resume_builder/job_market, src/resume_builder/web/job_market_api.py, platform/web/app/jobs/analytics.\nTests: 39 focused tests passed; full suite 804 passed, 2 skipped, with 1 unrelated pre-existing failure in stale intervention recovery. Commit: 5770d83."
+    },
+    {
+      "title": "WEB.3 Route-aware guided product tours",
+      "stage": "In Review",
+      "role": "Frontend",
+      "group": "Foundation",
+      "department": "Frontend",
+      "hitl": "Yes",
+      "priority": "P1",
+      "estimate": 2,
+      "milestone": "Foundation — Wk1",
+      "start": "2026-08-13",
+      "target": "2026-08-13",
+      "worst_case": "2026-08-20",
+      "assignee": "JohnAndrewBalbarosa",
+      "body": "🤖 AI-built this session — needs human review.\n✅ React Joyride v3 now provides 3–5 contextual steps on all 10 canonical navigation routes, including Job Analytics.\n✅ Each versioned route tour auto-runs once, stores dismissal locally, and can be replayed from the desktop or mobile Help control.\n✅ Tours are read-only, keyboard-dismissible, responsive, and retain the existing SPA origin while navigating.\nTests: TypeScript and production build passed; Playwright smoke test passed all 10 routes, persistence, replay, Escape dismissal, and 390px mobile overflow.\n👤 HITL: visually review tour copy, target order, and pacing before moving to Done."
     }
   ],
   "date_fields": [

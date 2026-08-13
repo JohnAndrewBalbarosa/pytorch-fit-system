@@ -22,15 +22,15 @@ export default function EventsPage() {
 
   return (
     <AppShell>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3" data-tour="events-heading">
         <div>
           <h1 className="text-3xl font-bold tracking-[-0.02em]">Unified Events Matrix</h1>
           <p className="mt-2 text-muted">Upcoming workshops, clinics, hackathons, and chapter activities.</p>
         </div>
-        <SegmentedTabs items={roleTabs} onChange={setTier} value={tier} />
+        <div data-tour="events-role"><SegmentedTabs items={roleTabs} onChange={setTier} value={tier} /></div>
       </div>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" data-tour="events-grid">
         {events.map((event) => (
           <Card className="bg-surface" key={event.title}>
             <div className="mb-4 flex items-start justify-between gap-3">

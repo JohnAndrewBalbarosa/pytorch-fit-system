@@ -24,7 +24,7 @@ const metricIcons = [Users, Activity, AlertTriangle, CalendarCheck];
 
 function MetricRibbon() {
   return (
-    <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" data-tour="dashboard-metrics">
       {metrics.map((metric, index) => {
         const Icon = metricIcons[index];
         const positive = metric.trend === "up";
@@ -49,7 +49,7 @@ function MetricRibbon() {
 
 function HealthRail() {
   return (
-    <Card className="border-white/10 bg-[#141416]">
+    <Card className="border-white/10 bg-[#141416]" data-tour="dashboard-trust">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 className="font-bold tracking-[-0.02em] text-[#FFF7ED]">Trust boundary</h2>
@@ -81,7 +81,7 @@ function HealthRail() {
 
 function ApprovalQueue() {
   return (
-    <Card className="border-white/10 bg-[#141416]">
+    <Card className="border-white/10 bg-[#141416]" data-tour="dashboard-approvals">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 className="font-bold tracking-[-0.02em] text-[#FFF7ED]">Approval middleman</h2>
@@ -142,7 +142,7 @@ function LeaderboardPanel() {
 
 function OperationsHero() {
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#141416] p-5 lg:p-6">
+    <section className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#141416] p-5 lg:p-6" data-tour="dashboard-overview">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_0%,rgba(232,89,12,0.22),transparent_32%)]" />
       <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
         <div>
@@ -181,7 +181,7 @@ export function DashboardCommandCenter() {
         <MetricRibbon />
 
         <section className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
-          <Card className="border-white/10 bg-[#141416]">
+          <Card className="border-white/10 bg-[#141416]" data-tour="dashboard-activity">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="font-bold tracking-[-0.02em] text-[#FFF7ED]">Weekly activity pulse</h2>

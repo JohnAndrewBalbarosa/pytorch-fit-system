@@ -27,15 +27,15 @@ export default function LeaderboardsPage() {
 
   return (
     <AppShell>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3" data-tour="leaderboards-heading">
         <div>
           <h1 className="text-3xl font-bold tracking-[-0.02em]">Categorized Leaderboards Browser</h1>
           <p className="mt-2 text-muted">Public-safe ranking from event streaks and reviewed activity signals.</p>
         </div>
-        <SegmentedTabs items={tabs} onChange={setBoard} value={board} />
+        <div data-tour="leaderboards-tabs"><SegmentedTabs items={tabs} onChange={setBoard} value={board} /></div>
       </div>
 
-      <Card className="overflow-hidden bg-surface p-0">
+      <Card className="overflow-hidden bg-surface p-0" data-tour="leaderboards-table">
         <div className="flex items-center justify-between border-b border-border p-4">
           <div className="flex items-center gap-2">
             <Trophy className="text-accent" size={20} />
