@@ -1,0 +1,2 @@
+import { ServiceWorkspace } from "@/components/service-workspace";
+export default function Page() { return <ServiceWorkspace eyebrow="Access and identity" title="Connections & Sessions" description="Inspect identity providers and approved local browser sessions without exposing credentials or cookie values." endpoint="/api/backend/auth/status" safety="Login walls, expired sessions, CAPTCHA, and verification requirements always stop for human completion." />; }

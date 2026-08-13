@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "PyTorch FEU Tech Campus Platform",
-  description: "Community intelligence hub prototype for PyTorch FEU Tech Campus."
+  title: "PyTorch FIT Career Intelligence",
+  description: "The canonical PyTorch FIT frontend for career evidence, job-market analytics, and chapter operations."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark" data-scroll-behavior="smooth">
       <body>{children}</body>
     </html>
   );

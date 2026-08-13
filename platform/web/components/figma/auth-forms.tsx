@@ -7,6 +7,7 @@ import { AlertCircle, ArrowRight, CheckCircle2, Lock, Mail, User as UserIcon } f
 import { useMemo, useState } from "react";
 import { AuthShell } from "./auth-shell";
 import { isSchoolEmail } from "@/lib/permissions";
+import { DevAccess } from "@/components/dev-access";
 
 type FieldProps = InputHTMLAttributes<HTMLInputElement> & {
   icon: ComponentType<{ size?: number; className?: string }>;
@@ -78,6 +79,7 @@ export function LoginForm() {
       <div className="mt-8 text-center text-sm text-[#FFF7ED]/50">
         New to the chapter? <Link className="text-[#e8590c] hover:underline" href="/register">Register</Link>
       </div>
+      <DevAccess />
     </AuthShell>
   );
 }

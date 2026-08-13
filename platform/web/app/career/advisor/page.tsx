@@ -1,0 +1,2 @@
+import { ServiceWorkspace } from "@/components/service-workspace";
+export default function Page() { return <ServiceWorkspace eyebrow="Human-approved AI" title="Career Advisor" description="Inspect verified evidence readiness before requesting grounded recommendations." endpoint="/api/backend/onboarding/state" safety="Recommendations may cite only available career evidence and must abstain when support is missing." />; }

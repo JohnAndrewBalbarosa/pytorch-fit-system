@@ -84,6 +84,7 @@ from .market_fit_control import (
     store as market_fit_store,
     update_campaign as update_market_fit_campaign,
 )
+from .job_market_api import router as job_market_router
 from .onboarding import OnboardingService
 from ..job_finder import JobScrapeArtifactStore, render_rule_overlay
 from ..job_application import (
@@ -104,6 +105,7 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 app = FastAPI(title="resume-build-chopper")
+app.include_router(job_market_router)
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -129,14 +131,27 @@ def _onboarding_service() -> OnboardingService:
     return OnboardingService(artifact_dir=DEFAULT_ARTIFACT_DIR, database=DEFAULT_DATABASE)
 
 
+def _canonical_frontend(path: str) -> RedirectResponse | None:
+    base = os.environ.get("PYTORCH_FIT_FRONTEND_URL", "").strip().rstrip("/")
+    if not base:
+        return None
+    return RedirectResponse(f"{base}{path}", status_code=307)
+
+
 @app.get("/")
 def main_entry() -> RedirectResponse:
+    frontend = _canonical_frontend("/login")
+    if frontend:
+        return frontend
     state = _onboarding_service().state()
     return RedirectResponse(state["next_url"], status_code=303)
 
 
 @app.get("/prototype", response_class=HTMLResponse)
 def prototype(request: Request) -> HTMLResponse:
+    frontend = _canonical_frontend("/dashboard")
+    if frontend:
+        return frontend
     return templates.TemplateResponse(
         request,
         "prototype.html",
@@ -180,6 +195,9 @@ def setup(request: Request) -> HTMLResponse:
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
+    frontend = _canonical_frontend("/jobs/automation")
+    if frontend:
+        return frontend
     if not _onboarding_service().state()["ready"]:
         return RedirectResponse("/setup", status_code=303)
     return templates.TemplateResponse(request, "job_finder_control.html", {})

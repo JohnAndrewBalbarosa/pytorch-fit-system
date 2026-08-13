@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  Bot,
+  BriefcaseBusiness,
   CalendarDays,
   Flame,
   Home,
@@ -13,6 +15,7 @@ import {
   Settings,
   Shield,
   Trophy,
+  Unplug,
   UserRound,
   X
 } from "lucide-react";
@@ -22,12 +25,16 @@ import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 
 const navItems = [
-  { href: "/", label: "Landing", icon: Home },
   { href: "/dashboard", label: "Command Center", icon: LayoutDashboard },
-  { href: "/dashboard/profile", label: "Personal Hub", icon: UserRound },
+  { href: "/career/evidence", label: "Career Evidence", icon: UserRound },
+  { href: "/career/resumes", label: "Resume Studio", icon: BarChart3 },
+  { href: "/jobs/analytics", label: "Job Analytics", icon: Search },
+  { href: "/jobs/automation", label: "Job Automation", icon: Bot },
+  { href: "/jobs/opportunities", label: "Opportunities", icon: BriefcaseBusiness },
+  { href: "/connections", label: "Connections", icon: Unplug },
+  { href: "/events", label: "Chapter Events", icon: CalendarDays },
   { href: "/leaderboards", label: "Leaderboards", icon: Trophy },
-  { href: "/events", label: "Events Matrix", icon: CalendarDays },
-  { href: "/settings", label: "Node Settings", icon: Settings }
+  { href: "/settings", label: "Settings", icon: Settings }
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -54,7 +61,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       <nav className="space-y-1">
         {navItems.map((item) => {
-          const active = pathname === item.href;
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
           const Icon = item.icon;
           return (
             <Link

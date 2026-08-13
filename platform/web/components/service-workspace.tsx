@@ -1,0 +1,26 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { AlertTriangle, CheckCircle2, Server, ShieldCheck } from "lucide-react";
+import { AppShell } from "@/components/app-shell";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
+export function ServiceWorkspace({ title, eyebrow, description, endpoint, safety }: { title: string; eyebrow: string; description: string; endpoint: string; safety: string }) {
+  const [payload, setPayload] = useState<Record<string, unknown> | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    fetch(endpoint).then(async (response) => {
+      const value = await response.json();
+      if (!response.ok) throw new Error(String(value.error || "Service request failed"));
+      setPayload(value);
+    }).catch((reason) => setError(String(reason.message || reason)));
+  }, [endpoint]);
+  const entries = payload ? Object.entries(payload).slice(0, 8) : [];
+  return <AppShell>
+    <header className="mb-6 flex flex-wrap items-start justify-between gap-4"><div><p className="data-label mb-2 text-xs uppercase tracking-widest text-accent">{eyebrow}</p><h1 className="text-3xl font-bold tracking-[-0.02em]">{title}</h1><p className="mt-2 max-w-3xl text-muted">{description}</p></div><Badge variant={payload ? "success" : "orange"}>{payload ? <CheckCircle2 size={14} /> : <Server size={14} />}{payload ? "Service connected" : "Checking service"}</Badge></header>
+    <Card className="mb-4 border-accent/25 bg-accentSoft"><div className="flex gap-3"><ShieldCheck className="mt-0.5 flex-none text-accent" size={20} /><div><strong>Permission boundary</strong><p className="mt-1 text-sm text-muted">{safety}</p></div></div></Card>
+    {error ? <Card className="bg-surface"><div className="flex gap-3"><AlertTriangle className="flex-none text-accent" /><div><CardTitle>Local service unavailable</CardTitle><p className="mt-2 text-sm text-muted">{error} Start the FastAPI service to load persisted workflow state.</p></div></div></Card> :
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{entries.map(([key, value]) => <Card className="bg-surface" key={key}><CardHeader><div><CardTitle className="capitalize">{key.replaceAll("_", " ")}</CardTitle><CardDescription>Live service contract</CardDescription></div></CardHeader><pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-elevated p-3 font-mono text-xs text-muted">{JSON.stringify(value, null, 2)}</pre></Card>)}</section>}
+  </AppShell>;
+}

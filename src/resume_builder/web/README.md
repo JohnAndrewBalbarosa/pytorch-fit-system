@@ -1,7 +1,12 @@
-# `web/` — FastAPI "CareerLens" Prototype
+# `web/` — FastAPI service and legacy CareerLens UI
 
-The browser-facing prototype that wraps the CLI pipeline in a UI, with OAuth identity and
-assisted social-login. **Department 05.**
+> **Frontend ownership:** `platform/web` is the canonical product frontend. This package owns the
+> local API, automation services, and temporary legacy/developer pages. New product UI must be
+> implemented in Next.js. Set `PYTORCH_FIT_FRONTEND_URL=http://127.0.0.1:3000` during cutover so
+> legacy entry routes redirect to their canonical replacements.
+
+The service layer wraps the pipeline, OAuth identity, job automation, and analytics APIs. Jinja
+pages remain available only for incremental migration and development inspection. **Department 05.**
 
 > 📖 [Dept 05 — Web / SaaS](../../../docs/departments/05-web-saas/README.md)
 > ⚠️ Prototype: **no user DB, no billing, no rate limiting yet.**

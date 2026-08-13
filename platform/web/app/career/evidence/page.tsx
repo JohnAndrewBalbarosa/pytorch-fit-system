@@ -1,0 +1,2 @@
+import { ServiceWorkspace } from "@/components/service-workspace";
+export default function Page() { return <ServiceWorkspace eyebrow="Normalized career database" title="Career Evidence" description="Review the verified profile, source artifacts, onboarding state, and unresolved evidence blockers." endpoint="/api/backend/onboarding/state" safety="Resume artifacts and normalized evidence remain the source inputs; generated displays never overwrite source evidence." />; }
