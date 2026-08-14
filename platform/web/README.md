@@ -32,6 +32,8 @@ the developer token server-side.
 - React never queries storage tables directly. `/api/product/*` returns stable visual view models.
 - `PYTORCH_FIT_DEMO_DATA=1` enables labeled prototype fallback only when the active provider fails.
   A successful empty response remains empty. The flag is disabled by default.
+- Command Center analytics keep fixed chart/card dimensions when a series is missing and render a
+  centered `Data unavailable` watermark; unavailable data is never replaced with fixture values.
 - Supabase Auth uses cookie-backed server sessions. Production ignores the local sign-in bypass.
 - The canonical browser UI reads a sanitized development capability manifest. Missing provider
   sessions or artifacts stay visible but locked; analytics filters read existing snapshots only.

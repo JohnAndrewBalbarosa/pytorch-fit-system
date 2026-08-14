@@ -8,6 +8,9 @@ import {
   CartesianGrid,
   Line,
   LineChart,
+  Pie,
+  PieChart,
+  Cell,
   PolarAngleAxis,
   PolarGrid,
   Radar,
@@ -18,6 +21,7 @@ import {
   YAxis
 } from "recharts";
 import { activityTrend, barSkills, departmentLoad, skillRadar } from "@/lib/mock-data";
+import type { AnalyticsState } from "@/lib/product/contracts";
 
 const tooltipStyle = {
   background: "var(--surface)",
@@ -26,11 +30,22 @@ const tooltipStyle = {
   color: "var(--ink)"
 };
 
-export function SkillRadarChart() {
+function Watermark({ state }: { state?: AnalyticsState }) {
+  if (state !== "unavailable") return null;
+  return <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"><span className="rounded-full border border-white/10 bg-[#0d0d0d]/85 px-5 py-2 font-mono text-xs uppercase tracking-[0.18em] text-muted shadow-xl">Data unavailable</span></div>;
+}
+
+const emptySkills = ["Computer Vision", "NLP", "Optimization", "MLOps", "Data Ethics", "Research"].map((skill) => ({ skill, score: 0 }));
+const emptyActivity = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => ({ day, events: null, contributions: null }));
+const emptyDepartments = ["Academics", "Engineering", "External", "Research", "Creatives"].map((department) => ({ department, open: null, approved: null }));
+
+export function SkillRadarChart({ data = skillRadar, state }: { data?: Array<{ skill: string; score: number | null }>; state?: AnalyticsState } = {}) {
+  const chartData = data.length ? data : emptySkills;
   return (
-    <div className="h-72 w-full">
+    <div className="relative h-72 w-full">
+      <Watermark state={state} />
       <ResponsiveContainer>
-        <RadarChart data={skillRadar}>
+        <RadarChart data={chartData}>
           <PolarGrid stroke="rgba(122,139,158,0.35)" />
           <PolarAngleAxis dataKey="skill" tick={{ fill: "var(--muted)", fontSize: 12 }} />
           <Radar dataKey="score" fill="var(--accent)" fillOpacity={0.28} stroke="var(--accent)" strokeWidth={2} />
@@ -56,11 +71,13 @@ export function SkillBarChart() {
   );
 }
 
-export function ActivityTrendChart() {
+export function ActivityTrendChart({ data = activityTrend, state }: { data?: Array<{ day: string; events: number | null; contributions: number | null }>; state?: AnalyticsState } = {}) {
+  const chartData = data.length ? data : emptyActivity;
   return (
-    <div className="h-72 w-full">
+    <div className="relative h-72 w-full">
+      <Watermark state={state} />
       <ResponsiveContainer>
-        <AreaChart data={activityTrend}>
+        <AreaChart data={chartData}>
           <defs>
             <linearGradient id="activity-orange" x1="0" x2="0" y1="0" y2="1">
               <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.42} />
@@ -79,11 +96,13 @@ export function ActivityTrendChart() {
   );
 }
 
-export function DepartmentLoadChart() {
+export function DepartmentLoadChart({ data = departmentLoad, state }: { data?: Array<{ department: string; open: number | null; approved: number | null }>; state?: AnalyticsState } = {}) {
+  const chartData = data.length ? data : emptyDepartments;
   return (
-    <div className="h-64 w-full">
+    <div className="relative h-64 w-full">
+      <Watermark state={state} />
       <ResponsiveContainer>
-        <BarChart data={departmentLoad} layout="vertical" margin={{ left: 16 }}>
+        <BarChart data={chartData} layout="vertical" margin={{ left: 16 }}>
           <CartesianGrid horizontal={false} stroke="rgba(255,255,255,0.06)" />
           <XAxis tick={{ fill: "var(--muted)", fontSize: 12 }} type="number" />
           <YAxis dataKey="department" tick={{ fill: "var(--muted)", fontSize: 12 }} tickLine={false} type="category" width={86} />
@@ -94,4 +113,15 @@ export function DepartmentLoadChart() {
       </ResponsiveContainer>
     </div>
   );
+}
+
+const readinessColors = ["#e8590c", "#fb923c", "#60a5fa", "#4ade80"];
+
+export function CareerReadinessDonut({ segments }: { segments: Array<{ label: string; ready: boolean }> }) {
+  const ready = segments.filter((item) => item.ready).length;
+  const data = segments.map((item) => ({ name: item.label, value: 1, ready: item.ready }));
+  return <div className="relative h-64 w-full">
+    <ResponsiveContainer><PieChart><Pie data={data} dataKey="value" innerRadius={68} outerRadius={92} paddingAngle={3} stroke="transparent">{data.map((item, index) => <Cell fill={item.ready ? readinessColors[index % readinessColors.length] : "rgba(255,255,255,0.08)"} key={item.name} />)}</Pie><Tooltip contentStyle={tooltipStyle} formatter={(_value, _name, entry) => [entry.payload.ready ? "Ready" : "Needs prerequisite", entry.payload.name]} /></PieChart></ResponsiveContainer>
+    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><span className="data-label text-3xl font-bold">{ready}/{segments.length}</span><span className="mt-1 text-xs text-muted">ready</span></div>
+  </div>;
 }

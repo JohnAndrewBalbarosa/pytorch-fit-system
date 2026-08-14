@@ -1,8 +1,9 @@
 "use client";
 
 import { GripVertical } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { kanbanEvents } from "@/lib/mock-data";
+import type { AnalyticsState, DashboardAnalytics } from "@/lib/product/contracts";
 import { cn } from "@/lib/utils";
 import { Badge } from "./ui/badge";
 
@@ -15,10 +16,11 @@ const columns: Array<{ key: ColumnKey; title: string }> = [
   { key: "concluded", title: "Concluded" }
 ];
 
-export function KanbanBoard() {
-  const [board, setBoard] = useState(kanbanEvents);
+export function KanbanBoard({ data = kanbanEvents, state }: { data?: DashboardAnalytics["events"]["data"]; state?: AnalyticsState } = {}) {
+  const [board, setBoard] = useState(data);
   const [dragging, setDragging] = useState<{ id: string; column: ColumnKey } | null>(null);
   const total = useMemo(() => Object.values(board).reduce((sum, list) => sum + list.length, 0), [board]);
+  useEffect(() => setBoard(data), [data]);
 
   function moveCard(target: ColumnKey) {
     if (!dragging || dragging.column === target) return;
@@ -33,7 +35,8 @@ export function KanbanBoard() {
   }
 
   return (
-    <div>
+    <div className="relative">
+      {state === "unavailable" && <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"><span className="rounded-full border border-white/10 bg-[#0d0d0d]/85 px-5 py-2 font-mono text-xs uppercase tracking-[0.18em] text-muted shadow-xl">Data unavailable</span></div>}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold tracking-[-0.02em]">PyTorch Event Management</h2>
@@ -60,7 +63,7 @@ export function KanbanBoard() {
                     "cursor-grab rounded-lg border border-border bg-surface p-3 transition-all duration-300 ease-in-out active:cursor-grabbing",
                     dragging?.id === event.id && "opacity-60"
                   )}
-                  draggable
+                  draggable={state !== "unavailable"}
                   key={event.id}
                   onDragEnd={() => setDragging(null)}
                   onDragStart={() => setDragging({ id: event.id, column: column.key })}

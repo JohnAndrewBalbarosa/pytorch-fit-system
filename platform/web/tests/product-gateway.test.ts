@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { buildCapabilityManifest } from "../lib/capabilities";
 import { demoProductView } from "../lib/product/demo";
-import { productViews } from "../lib/product/contracts";
+import { productViews, unavailableDashboardAnalytics } from "../lib/product/contracts";
 
 test("every product view has a complete, labeled visual demo contract", () => {
   for (const view of productViews) {
@@ -16,7 +16,17 @@ test("every product view has a complete, labeled visual demo contract", () => {
     assert.ok(Array.isArray(data.resumes));
     assert.ok(Array.isArray(data.opportunities));
     assert.ok(Array.isArray(data.connections));
+    assert.ok(data.analytics);
+    assert.equal(data.analytics?.activity.state, "demo");
   }
+});
+
+test("unavailable analytics preserve every dashboard module without fixture values", () => {
+  const analytics = unavailableDashboardAnalytics();
+  assert.deepEqual(Object.keys(analytics).sort(), ["activity", "approvals", "departments", "events", "leaderboard", "metrics", "skills", "trust"]);
+  for (const module of Object.values(analytics)) assert.equal(module.state, "unavailable");
+  assert.deepEqual(analytics.activity.data, []);
+  assert.deepEqual(analytics.events.data, { planning: [], approved: [], live: [], concluded: [] });
 });
 
 test("visual demo unlocks previews but never execution capabilities", () => {

@@ -1,4 +1,5 @@
 import type { Connection, ProductRepository, ProductView, ProductViewData } from "./contracts";
+import { unavailableDashboardAnalytics } from "./contracts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -130,6 +131,7 @@ export class LocalProductRepository implements ProductRepository {
       opportunities,
       connections,
       recommendations: blockers.length ? [{ title: "Resolve the current evidence blocker", detail: blockers[0], evidenceIds: [] }] : [],
+      analytics: unavailableDashboardAnalytics(),
       ...(process.env.NODE_ENV === "development" ? { diagnostics: { onboarding, control, market } } : {}),
     };
     return data;

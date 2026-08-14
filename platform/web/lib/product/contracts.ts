@@ -11,6 +11,23 @@ export const productViews = [
 export type ProductView = (typeof productViews)[number];
 export type ProductProvider = "local" | "supabase";
 export type ProductSource = "live" | "demo";
+export type AnalyticsState = "live" | "demo" | "unavailable";
+
+export type AnalyticsModule<T> = {
+  state: AnalyticsState;
+  data: T;
+};
+
+export type DashboardAnalytics = {
+  metrics: AnalyticsModule<Array<{ label: string; value: string; delta: string; trend: "up" | "down" }>>;
+  activity: AnalyticsModule<Array<{ day: string; events: number | null; contributions: number | null }>>;
+  trust: AnalyticsModule<Array<{ label: string; value: string; tone: "good" | "warn" | "info" }>>;
+  departments: AnalyticsModule<Array<{ department: string; open: number | null; approved: number | null }>>;
+  events: AnalyticsModule<Record<"planning" | "approved" | "live" | "concluded", Array<{ id: string; title: string; owner: string; seats: number }>>>;
+  approvals: AnalyticsModule<Array<{ id: string; title: string; department: string; status: string; risk: string; age: string }>>;
+  leaderboard: AnalyticsModule<Array<{ rank: number; name: string; track: string; points: number }>>;
+  skills: AnalyticsModule<Array<{ skill: string; score: number | null }>>;
+};
 
 export type ProductMeta = {
   source: ProductSource;
@@ -85,12 +102,28 @@ export type ProductViewData = {
   opportunities?: Opportunity[];
   connections?: Connection[];
   recommendations?: Array<{ title: string; detail: string; evidenceIds: string[] }>;
+  analytics?: DashboardAnalytics;
   diagnostics?: unknown;
 };
 
 export interface ProductRepository {
   readonly provider: ProductProvider;
   read(view: ProductView, userId: string): Promise<ProductViewData>;
+}
+
+const unavailable = <T>(data: T): AnalyticsModule<T> => ({ state: "unavailable", data });
+
+export function unavailableDashboardAnalytics(): DashboardAnalytics {
+  return {
+    metrics: unavailable([]),
+    activity: unavailable([]),
+    trust: unavailable([]),
+    departments: unavailable([]),
+    events: unavailable({ planning: [], approved: [], live: [], concluded: [] }),
+    approvals: unavailable([]),
+    leaderboard: unavailable([]),
+    skills: unavailable([]),
+  };
 }
 
 export function isProductView(value: string): value is ProductView {

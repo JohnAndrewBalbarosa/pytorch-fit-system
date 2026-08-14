@@ -1,4 +1,5 @@
 import type { ProductView, ProductViewData } from "./contracts";
+import { activityTrend, approvalQueue, departmentLoad, kanbanEvents, leaderboardRows, metrics, skillRadar, systemHealth } from "../mock-data";
 
 const common = {
   evidence: {
@@ -63,6 +64,16 @@ export function demoProductView(view: ProductView): ProductViewData {
       { label: "Human gates", value: "2", detail: "Permission still required" },
     ],
     ...common,
+    analytics: {
+      metrics: { state: "demo", data: metrics.map((item) => ({ ...item, trend: item.trend === "up" ? "up" as const : "down" as const })) },
+      activity: { state: "demo", data: activityTrend },
+      trust: { state: "demo", data: systemHealth.map((item) => ({ ...item, tone: item.tone === "good" ? "good" as const : item.tone === "warn" ? "warn" as const : "info" as const })) },
+      departments: { state: "demo", data: departmentLoad },
+      events: { state: "demo", data: kanbanEvents },
+      approvals: { state: "demo", data: approvalQueue.map((item, index) => ({ id: `demo-approval-${index + 1}`, ...item })) },
+      leaderboard: { state: "demo", data: leaderboardRows },
+      skills: { state: "demo", data: skillRadar },
+    },
     recommendations: [
       { title: "Strengthen deployment evidence", detail: "Add a verified production outcome before claiming operational experience.", evidenceIds: ["demo-github"] },
       { title: "Keep role variants focused", detail: "Use the ML artifact only where the job description contains evidenced model-development requirements.", evidenceIds: ["demo-document"] },

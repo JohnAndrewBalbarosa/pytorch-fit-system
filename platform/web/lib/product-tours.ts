@@ -26,10 +26,14 @@ const serviceSteps = (purpose: string): Step[] => [
 
 export const productTours: Record<string, ProductTour> = {
   "/dashboard": {
-    version: 2,
+    version: 3,
     steps: [
-      { target: '[data-tour="dashboard-overview"]', title: "Your command center", content: "Start here for a compact view of evidence, resumes, market signals, and permission-gated automation.", placement: "bottom-start" },
-      { target: '[data-tour="dashboard-metrics"]', title: "Focused destinations", content: "Each unlocked card opens the dedicated workspace for that single concern. Locked cards explain the missing prerequisite." }
+      { target: '[data-tour="dashboard-overview"]', title: "Your command center", content: "Start here for chapter operations, analytics availability, pipeline health, and current risks.", placement: "bottom-start" },
+      { target: '[data-tour="dashboard-metrics"]', title: "Cycle metrics", content: "Live data is shown when available. Missing data keeps the same visual footprint with a clear watermark." },
+      { target: '[data-tour="dashboard-activity"]', title: "Activity pulse", content: "The line and area chart preserves its axes and dimensions even when its source is unavailable." },
+      { target: '[data-tour="dashboard-trust"]', title: "Trust boundary", content: "Safety indicators keep privacy and human review visible before work is dispatched." },
+      { target: '[data-tour="dashboard-approvals"]', title: "Approval middleman", content: "AI-assisted outputs remain human-gated; unavailable data never becomes a fabricated queue." },
+      { target: '[data-tour="dashboard-career"]', title: "Career workspace", content: "Career readiness and destination cards are appended after the original operations dashboard." }
     ]
   },
   "/career/evidence": { version: 1, steps: serviceSteps("Review the verified profile, source artifacts, and any evidence blockers before generating career outputs.") },

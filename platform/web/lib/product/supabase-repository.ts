@@ -1,4 +1,5 @@
 import type { ProductRepository, ProductView, ProductViewData } from "./contracts";
+import { unavailableDashboardAnalytics } from "./contracts";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export class SupabaseProductRepository implements ProductRepository {
@@ -13,6 +14,7 @@ export class SupabaseProductRepository implements ProductRepository {
     return {
       ...payload,
       meta: { source: "live", provider: "supabase", generatedAt: new Date().toISOString(), label: "Live Supabase data" },
+      analytics: payload.analytics || unavailableDashboardAnalytics(),
       ...(process.env.NODE_ENV === "development" ? { diagnostics: data } : { diagnostics: undefined }),
     };
   }
