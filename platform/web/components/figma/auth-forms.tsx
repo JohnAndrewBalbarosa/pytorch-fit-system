@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import { AuthShell } from "./auth-shell";
 import { isSchoolEmail } from "@/lib/permissions";
 import { DevAccess } from "@/components/dev-access";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type FieldProps = InputHTMLAttributes<HTMLInputElement> & {
   icon: ComponentType<{ size?: number; className?: string }>;
@@ -29,6 +30,8 @@ export function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const emailValid = useMemo(() => email.length === 0 || isSchoolEmail(email), [email]);
   const canSubmit = isSchoolEmail(email) && password.length >= 8;
 
@@ -36,9 +39,22 @@ export function LoginForm() {
     <AuthShell sub="// sign in" title="Welcome back, builder.">
       <form
         className="space-y-4"
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault();
-          if (canSubmit) router.push("/dashboard");
+          if (!canSubmit) return;
+          setSubmitting(true);
+          setError("");
+          try {
+            const supabase = createSupabaseBrowserClient();
+            const result = await supabase.auth.signInWithPassword({ email, password });
+            if (result.error) throw result.error;
+            router.replace("/dashboard");
+            router.refresh();
+          } catch (reason) {
+            setError(reason instanceof Error ? reason.message : "Sign in failed.");
+          } finally {
+            setSubmitting(false);
+          }
         }}
       >
         <Field
@@ -68,12 +84,13 @@ export function LoginForm() {
           </label>
           <a className="text-[#e8590c] hover:underline" href="#">Forgot?</a>
         </div>
+        {error && <div className="flex items-start gap-2 rounded-lg border border-[#e8590c]/30 bg-[#e8590c]/10 p-3 text-xs text-[#e8590c]"><AlertCircle className="mt-0.5 flex-none" size={14} />{error}</div>}
         <button
           className="focus-ring flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#e8590c] to-[#ff7a2d] py-3 text-white shadow-lg shadow-[#e8590c]/30 transition-all duration-300 hover:shadow-[#e8590c]/50 disabled:cursor-not-allowed disabled:opacity-55"
-          disabled={!canSubmit}
+          disabled={!canSubmit || submitting}
           type="submit"
         >
-          Sign in <ArrowRight size={15} />
+          {submitting ? "Signing in…" : "Sign in"} <ArrowRight size={15} />
         </button>
       </form>
       <div className="mt-8 text-center text-sm text-[#FFF7ED]/50">
@@ -90,16 +107,18 @@ export function RegisterForm() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
+  const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const emailValid = isSchoolEmail(email);
   const passwordValid = password.length >= 8;
   const confirmValid = confirm.length === 0 || confirm === password;
-  const canSubmit = emailValid && passwordValid && confirm === password;
+  const canSubmit = name.trim().length >= 2 && emailValid && passwordValid && confirm === password;
 
   return (
     <AuthShell sub="// create account" title="Join PyTorch.FIT.">
       <form
         className="space-y-4"
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault();
           if (!emailValid) {
             setError("Registration requires @fit.edu.ph or @feutech.edu.ph.");
@@ -109,10 +128,25 @@ export function RegisterForm() {
             setError("Password must be 8+ characters and match confirmation.");
             return;
           }
-          router.push("/dashboard");
+          setSubmitting(true);
+          try {
+            const supabase = createSupabaseBrowserClient();
+            const result = await supabase.auth.signUp({ email, password, options: { data: { display_name: name.trim() } } });
+            if (result.error) throw result.error;
+            if (result.data.session) {
+              router.replace("/dashboard");
+              router.refresh();
+            } else {
+              setError("Check your school email to confirm the account before signing in.");
+            }
+          } catch (reason) {
+            setError(reason instanceof Error ? reason.message : "Registration failed.");
+          } finally {
+            setSubmitting(false);
+          }
         }}
       >
-        <Field autoComplete="name" icon={UserIcon} placeholder="Full name" required />
+        <Field autoComplete="name" icon={UserIcon} onChange={(event) => setName(event.target.value)} placeholder="Full name" required value={name} />
         <Field
           aria-invalid={email.length > 0 && !emailValid}
           autoComplete="email"
@@ -164,10 +198,10 @@ export function RegisterForm() {
         </label>
         <button
           className="focus-ring flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#e8590c] to-[#ff7a2d] py-3 text-white shadow-lg shadow-[#e8590c]/30 transition-all duration-300 hover:shadow-[#e8590c]/50 disabled:cursor-not-allowed disabled:opacity-55"
-          disabled={!canSubmit}
+          disabled={!canSubmit || submitting}
           type="submit"
         >
-          Create account <ArrowRight size={15} />
+          {submitting ? "Creating account…" : "Create account"} <ArrowRight size={15} />
         </button>
       </form>
       <div className="mt-8 text-center text-sm text-[#FFF7ED]/50">

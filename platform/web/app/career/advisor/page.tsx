@@ -1,2 +1,2 @@
-import { ServiceWorkspace } from "@/components/service-workspace";
-export default function Page() { return <ServiceWorkspace capabilityKey="evidence_read" eyebrow="Human-approved AI" title="Career Advisor" description="Inspect verified evidence readiness before requesting grounded recommendations." endpoint="/api/backend/onboarding/state" safety="Recommendations may cite only middleman-normalized career evidence and must abstain when support is missing." />; }
+import { ProductWorkspace } from "@/components/product-workspace";
+export default function Page() { return <ProductWorkspace capabilityKey="evidence_read" view="advisor" safety="Recommendations may cite only middleman-normalized evidence and must abstain when support is missing." />; }

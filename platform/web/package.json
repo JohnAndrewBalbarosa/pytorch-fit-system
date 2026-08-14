@@ -8,6 +8,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:capabilities": "tsx --test tests/capabilities.test.ts",
+    "test:product": "tsx --test tests/product-gateway.test.ts",
     "test:tours:e2e": "node tests/product-tour.e2e.mjs",
     "test:grades": "tsx --test ../grades/*.test.ts",
     "grades:login": "set NODE_PATH=%CD%\\node_modules&& tsx ../grades/session-login.ts",
@@ -15,6 +16,8 @@
     "grades:inject": "set NODE_PATH=%CD%\\node_modules&& tsx ../grades/inject-run.ts"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.4",
+    "@supabase/supabase-js": "^2.112.3",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",

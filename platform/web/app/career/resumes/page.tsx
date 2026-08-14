@@ -1,2 +1,2 @@
-import { ServiceWorkspace } from "@/components/service-workspace";
-export default function Page() { return <ServiceWorkspace capabilityKey="resume_read" eyebrow="Generated outputs" title="Resume Studio" description="Browse role-specific generated artifacts derived from normalized career evidence." endpoint="/api/backend/resumes" safety="Resume selection and upload are separate actions; no artifact is uploaded or advanced without the required approval." />; }
+import { ProductWorkspace } from "@/components/product-workspace";
+export default function Page() { return <ProductWorkspace capabilityKey="resume_read" view="resumes" safety="Resume selection and upload are separate actions; no artifact advances without explicit approval." />; }

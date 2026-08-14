@@ -26,6 +26,7 @@ import type { CapabilityKey } from "@/lib/capabilities";
 import { cn } from "@/lib/utils";
 import { CapabilityProvider, useCapabilities } from "./capability-context";
 import { ProductTourController, requestProductTour } from "./product-tour";
+import { SignOutButton } from "./sign-out-button";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 
@@ -105,14 +106,14 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
         <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
           <div className="h-full w-[68%] rounded-full bg-[#e8590c]" />
         </div>
-        <p className="mt-2 text-xs text-[#FFF7ED]/45">68% event readiness across officer pipeline.</p>
+        <p className="mt-2 text-xs text-[#FFF7ED]/45">Career evidence and application readiness.</p>
       </div>
       <div className="mt-auto rounded-lg border border-white/10 bg-white/[0.035] p-3">
         <div className="mb-2 flex items-center gap-2">
           <Shield className="text-[#e8590c]" size={16} />
-          <p className="text-sm font-semibold">RLS-first prototype</p>
+          <p className="text-sm font-semibold">Protected data gateway</p>
         </div>
-        <p className="text-xs leading-5 text-[#FFF7ED]/45">Mock visibility only. Supabase policies own production access.</p>
+        <p className="text-xs leading-5 text-[#FFF7ED]/45">Local and Supabase providers share one server-side contract.</p>
       </div>
       <Button
         className="mt-3 w-full justify-start gap-3"
@@ -123,6 +124,7 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
       >
         <CircleHelp size={18} /> Help / Tour
       </Button>
+      <SignOutButton />
     </aside>
   );
 

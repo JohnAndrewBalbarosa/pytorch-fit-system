@@ -30,6 +30,7 @@ type CapabilityInputs = {
   evidenceReady: boolean;
   normalizedProfileReady: boolean;
   resumeArtifactsReady: boolean;
+  visualDemo?: boolean;
 };
 
 const locked = (reason: string, missing: string[] = []): Capability => ({ state: "locked", reason, missing });
@@ -43,6 +44,8 @@ export function buildCapabilityManifest(input: CapabilityInputs): CapabilityMani
     : ownerRequired;
   const evidenceRead = input.evidenceReady
     ? readOnly("Normalized career evidence is available for inspection.")
+    : input.visualDemo
+      ? readOnly("Read-only prototype evidence is enabled; collection and generation remain locked.")
     : locked("No normalized career evidence is available yet.", ["normalized evidence"]);
   const evidenceScrape = !input.developmentOwner
     ? ownerRequired
@@ -51,6 +54,8 @@ export function buildCapabilityManifest(input: CapabilityInputs): CapabilityMani
       : locked("Connect an approved identity or social source before collecting evidence.", ["approved source session"]);
   const resumeRead = input.resumeArtifactsReady
     ? readOnly("Existing generated resume artifacts are available for review.")
+    : input.visualDemo
+      ? readOnly("Read-only prototype resume cards are enabled; no artifact can be uploaded or used.")
     : locked("No generated resume artifact is available.", ["generated resume artifact"]);
   const resumeGenerate = !input.developmentOwner
     ? ownerRequired
@@ -61,6 +66,8 @@ export function buildCapabilityManifest(input: CapabilityInputs): CapabilityMani
     ? ownerRequired
     : input.jobSiteConnected
       ? available("The verified local job-site browser session is connected.")
+      : input.visualDemo
+        ? readOnly("Prototype opportunities are viewable; live discovery remains locked until a job-site session is verified.")
       : locked("Open and verify the approved job-site browser session first.", ["verified job-site session"]);
   const applicationDraft = !input.developmentOwner
     ? ownerRequired

@@ -1,2 +1,2 @@
-import { ServiceWorkspace } from "@/components/service-workspace";
-export default function Page() { return <ServiceWorkspace capabilityKey="job_discovery" eyebrow="Market fit" title="Opportunities & Interviews" description="Track verified job demands, fit assessments, funnel outcomes, and evidence-grounded interview preparation." endpoint="/api/backend/job-finder/market-fit" safety="Job demands and interview material remain human-reviewable; unsupported evidence must be marked unknown or omitted." />; }
+import { ProductWorkspace } from "@/components/product-workspace";
+export default function Page() { return <ProductWorkspace capabilityKey="job_discovery" view="opportunities" safety="Job demands and interview material remain human-reviewable; unsupported evidence stays unknown or omitted." />; }

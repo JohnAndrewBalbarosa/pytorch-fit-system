@@ -62,5 +62,6 @@ export async function GET() {
     evidenceReady: Boolean(onboarding.ready && source?.master_loaded),
     normalizedProfileReady: profileReady,
     resumeArtifactsReady: Boolean(source?.resumes?.some((item) => item.artifact_ready)),
+    visualDemo: developmentOwner && process.env.PYTORCH_FIT_DEMO_DATA === "1",
   }), { headers: { "Cache-Control": "no-store" } });
 }

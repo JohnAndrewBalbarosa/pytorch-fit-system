@@ -1,2 +1,2 @@
-import { ServiceWorkspace } from "@/components/service-workspace";
-export default function Page() { return <ServiceWorkspace capabilityKey="evidence_read" eyebrow="Normalized career database" title="Career Evidence" description="Review the verified profile, source artifacts, onboarding state, and unresolved evidence blockers." endpoint="/api/backend/onboarding/state" safety="All collected sources pass through the retrieval middleman; generated displays never overwrite source evidence." />; }
+import { ProductWorkspace } from "@/components/product-workspace";
+export default function Page() { return <ProductWorkspace capabilityKey="evidence_read" view="career-evidence" safety="All sources pass through the retrieval middleman; generated displays never overwrite source evidence." />; }

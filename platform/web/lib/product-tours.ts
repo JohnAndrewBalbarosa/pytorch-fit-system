@@ -13,31 +13,23 @@ const serviceSteps = (purpose: string): Step[] => [
     placement: "bottom-start"
   },
   {
-    target: '[data-tour="service-status"]',
-    title: "Live service status",
-    content: "This badge tells you whether the canonical frontend is receiving current data from the local service."
-  },
-  {
     target: '[data-tour="permission-boundary"]',
     title: "Safety comes first",
     content: "Read this boundary before acting. Developer access never removes verification or human-approval gates."
   },
   {
-    target: '[data-tour="service-data"]',
-    title: "Current system state",
-    content: "These cards expose the service contract for this workspace. Empty and error states remain visible instead of being guessed."
+    target: '[data-tour="page-content"]',
+    title: "Visual system state",
+    content: "Focused cards expose live, presentation-ready data. Empty and error states remain visible instead of being guessed."
   }
 ];
 
 export const productTours: Record<string, ProductTour> = {
   "/dashboard": {
-    version: 1,
+    version: 2,
     steps: [
-      { target: '[data-tour="dashboard-overview"]', title: "Your command center", content: "Start here for a compact view of chapter operations, pipeline health, and current risks.", placement: "bottom-start" },
-      { target: '[data-tour="dashboard-metrics"]', title: "Cycle metrics", content: "These figures summarize membership and event activity for the current cycle." },
-      { target: '[data-tour="dashboard-activity"]', title: "Activity pulse", content: "Use the weekly trend to see when events and contributions are increasing or slowing down." },
-      { target: '[data-tour="dashboard-trust"]', title: "Trust boundary", content: "Safety indicators make privacy coverage and pending human review visible before work is dispatched." },
-      { target: '[data-tour="dashboard-approvals"]', title: "Human review queue", content: "AI-assisted outputs remain here until the appropriate person reviews them." }
+      { target: '[data-tour="dashboard-overview"]', title: "Your command center", content: "Start here for a compact view of evidence, resumes, market signals, and permission-gated automation.", placement: "bottom-start" },
+      { target: '[data-tour="dashboard-metrics"]', title: "Focused destinations", content: "Each unlocked card opens the dedicated workspace for that single concern. Locked cards explain the missing prerequisite." }
     ]
   },
   "/career/evidence": { version: 1, steps: serviceSteps("Review the verified profile, source artifacts, and any evidence blockers before generating career outputs.") },

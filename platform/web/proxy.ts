@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
 const protectedPrefixes = ["/dashboard", "/career", "/jobs", "/connections", "/events", "/leaderboards", "/settings", "/admin"];
 const DEV_SESSION_COOKIE = "pytorch_fit_dev_session";
@@ -20,7 +21,7 @@ function attachDevelopmentSession(response: NextResponse) {
   return response;
 }
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
   if (pathname === "/login" && signInBypassEnabled()) {
     const requestedNext = searchParams.get("next");
@@ -33,6 +34,23 @@ export function proxy(request: NextRequest) {
   if (signInBypassEnabled()) return attachDevelopmentSession(NextResponse.next());
   const localSession = request.cookies.get(DEV_SESSION_COOKIE)?.value === "local-developer";
   if (localSession && developmentAccessEnabled()) return NextResponse.next();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (supabaseUrl && supabaseKey) {
+    let response = NextResponse.next({ request });
+    const supabase = createServerClient(supabaseUrl, supabaseKey, {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: (values) => {
+          values.forEach(({ name, value }) => request.cookies.set(name, value));
+          response = NextResponse.next({ request });
+          values.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+        },
+      },
+    });
+    const { data } = await supabase.auth.getUser();
+    if (data.user) return response;
+  }
   const login = new URL("/login", request.url);
   login.searchParams.set("next", pathname);
   return NextResponse.redirect(login);

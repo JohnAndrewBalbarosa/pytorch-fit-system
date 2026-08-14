@@ -1,8 +1,8 @@
 # Canonical PyTorch FIT frontend
 
 `platform/web` is the source of truth for all product-facing UI. It uses Next.js, the shared
-obsidian/off-white/PyTorch-orange design system, and server-side adapters to the local FastAPI
-service. Do not add new product pages to the legacy Jinja templates.
+obsidian/off-white/PyTorch-orange design system, and a provider-neutral server data gateway.
+Do not add new product pages to the legacy Jinja templates.
 
 ## Local development
 
@@ -27,6 +27,12 @@ the developer token server-side.
   dashboard directly. The bypass requires both `PYTORCH_FIT_DEV_ACCESS=1` and
   `PYTORCH_FIT_DEV_BYPASS_SIGN_IN=1`, and is always disabled when `NODE_ENV=production`.
 - FastAPI owns ingestion, persistent snapshots, job automation, and permission enforcement.
+- `PYTORCH_FIT_DATA_PROVIDER=local|supabase` selects exactly one provider. Local mode normalizes
+  the existing FastAPI/SQLite services; production mode uses the authenticated Supabase RPC.
+- React never queries storage tables directly. `/api/product/*` returns stable visual view models.
+- `PYTORCH_FIT_DEMO_DATA=1` enables labeled prototype fallback only when the active provider fails.
+  A successful empty response remains empty. The flag is disabled by default.
+- Supabase Auth uses cookie-backed server sessions. Production ignores the local sign-in bypass.
 - The canonical browser UI reads a sanitized development capability manifest. Missing provider
   sessions or artifacts stay visible but locked; analytics filters read existing snapshots only.
 - Career evidence enters resume and analytics processing through `RetrievalMiddleman`; analytics
