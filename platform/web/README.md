@@ -27,6 +27,10 @@ the developer token server-side.
   dashboard directly. The bypass requires both `PYTORCH_FIT_DEV_ACCESS=1` and
   `PYTORCH_FIT_DEV_BYPASS_SIGN_IN=1`, and is always disabled when `NODE_ENV=production`.
 - FastAPI owns ingestion, persistent snapshots, job automation, and permission enforcement.
+- The canonical browser UI reads a sanitized development capability manifest. Missing provider
+  sessions or artifacts stay visible but locked; analytics filters read existing snapshots only.
+- Career evidence enters resume and analytics processing through `RetrievalMiddleman`; analytics
+  reads its normalized `user_profile.json`, never a generated resume as source evidence.
 - `/developer/*` visualizers remain separate development aids and are never embedded as product UI.
 - Job analytics labels live, cached, and synthetic data distinctly and always exposes provenance,
   geography, freshness, unknown coverage, and sample size.

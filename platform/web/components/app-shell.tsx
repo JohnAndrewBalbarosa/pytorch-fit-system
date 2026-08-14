@@ -11,6 +11,7 @@ import {
   Flame,
   Home,
   LayoutDashboard,
+  LockKeyhole,
   Menu,
   Search,
   Settings,
@@ -21,27 +22,30 @@ import {
   X
 } from "lucide-react";
 import { useState } from "react";
+import type { CapabilityKey } from "@/lib/capabilities";
 import { cn } from "@/lib/utils";
+import { CapabilityProvider, useCapabilities } from "./capability-context";
 import { ProductTourController, requestProductTour } from "./product-tour";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 
-const navItems = [
+const navItems: Array<{ href: string; label: string; icon: typeof LayoutDashboard; capability?: CapabilityKey }> = [
   { href: "/dashboard", label: "Command Center", icon: LayoutDashboard },
-  { href: "/career/evidence", label: "Career Evidence", icon: UserRound },
-  { href: "/career/resumes", label: "Resume Studio", icon: BarChart3 },
-  { href: "/jobs/analytics", label: "Job Analytics", icon: Search },
-  { href: "/jobs/automation", label: "Job Automation", icon: Bot },
-  { href: "/jobs/opportunities", label: "Opportunities", icon: BriefcaseBusiness },
-  { href: "/connections", label: "Connections", icon: Unplug },
+  { href: "/career/evidence", label: "Career Evidence", icon: UserRound, capability: "evidence_read" },
+  { href: "/career/resumes", label: "Resume Studio", icon: BarChart3, capability: "resume_read" },
+  { href: "/jobs/analytics", label: "Job Analytics", icon: Search, capability: "analytics_read" },
+  { href: "/jobs/automation", label: "Job Automation", icon: Bot, capability: "application_draft" },
+  { href: "/jobs/opportunities", label: "Opportunities", icon: BriefcaseBusiness, capability: "job_discovery" },
+  { href: "/connections", label: "Connections", icon: Unplug, capability: "connections" },
   { href: "/events", label: "Chapter Events", icon: CalendarDays },
   { href: "/leaderboards", label: "Leaderboards", icon: Trophy },
   { href: "/settings", label: "Settings", icon: Settings }
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+function AppShellContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const manifest = useCapabilities();
 
   const sidebar = (
     <aside className="flex h-full w-72 flex-col border-r border-white/10 bg-[#0d0d0d] p-4 text-[#FFF7ED]">
@@ -65,6 +69,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {navItems.map((item) => {
           const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
           const Icon = item.icon;
+          const capability = item.capability ? manifest.capabilities[item.capability] : undefined;
+          const isLocked = capability?.state === "locked";
+          const content = <><Icon size={18} />{item.label}{isLocked && <LockKeyhole className="ml-auto" size={14} />}</>;
+          if (isLocked) return (
+            <span
+              aria-disabled="true"
+              className="flex h-10 cursor-not-allowed items-center gap-3 rounded-lg px-3 text-sm font-semibold text-[#FFF7ED]/25"
+              key={item.href}
+              title={capability.reason}
+            >
+              {content}
+            </span>
+          );
           return (
             <Link
               className={cn(
@@ -75,8 +92,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               key={item.href}
               onClick={() => setOpen(false)}
             >
-              <Icon size={18} />
-              {item.label}
+              {content}
             </Link>
           );
         })}
@@ -134,4 +150,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <ProductTourController />
     </div>
   );
+}
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  return <CapabilityProvider><AppShellContent>{children}</AppShellContent></CapabilityProvider>;
 }

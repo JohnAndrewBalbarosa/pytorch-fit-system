@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, BarChart3, CheckCircle2, Database, Globe2, RefreshCw } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, Database, Globe2, LockKeyhole } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { JobMarketSummary, WorkMode } from "@/lib/job-market";
 
@@ -18,8 +17,6 @@ export function JobMarketDashboard() {
   const [mode, setMode] = useState<WorkMode>("any");
   const [data, setData] = useState<JobMarketSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [revision, setRevision] = useState(0);
-  const [refreshError, setRefreshError] = useState("");
   const selectedCountries = useMemo(() => [country, compareCountry].filter(Boolean), [country, compareCountry]);
   const query = useMemo(() => new URLSearchParams({ countries: selectedCountries.join(","), role_family: role, work_mode: mode, days: "90" }), [selectedCountries, role, mode]);
 
@@ -36,7 +33,7 @@ export function JobMarketDashboard() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [query, revision]);
+  }, [query]);
 
   return (
     <AppShell>
@@ -46,25 +43,22 @@ export function JobMarketDashboard() {
           <h1 className="text-3xl font-bold tracking-[-0.02em]">Job Market Analytics</h1>
           <p className="mt-2 max-w-3xl text-muted">Compare hiring demand and qualification barriers with verified career evidence. Unknown requirements stay unknown.</p>
         </div>
-        <Badge variant={data?.snapshot_kind === "live" ? "success" : "orange"}>
-          <Database size={14} /> {data?.snapshot_kind.replaceAll("_", " ") ?? "Loading"}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge><LockKeyhole size={13} /> Read only</Badge>
+          <Badge variant={data?.snapshot_kind === "live" ? "success" : "orange"}>
+            <Database size={14} /> {data?.snapshot_kind.replaceAll("_", " ") ?? "Loading"}
+          </Badge>
+        </div>
       </header>
 
       <Card className="mb-4 bg-surface" data-tour="analytics-filters">
-        <div className="grid gap-3 md:grid-cols-5">
+        <div className="grid gap-3 md:grid-cols-4">
           <label className="text-sm text-muted">Country<select className="mt-2 w-full rounded-lg border border-border bg-elevated p-2.5 text-ink" value={country} onChange={(e) => setCountry(e.target.value)}>{countries.map((value) => <option key={value}>{value}</option>)}</select></label>
           <label className="text-sm text-muted">Compare with<select className="mt-2 w-full rounded-lg border border-border bg-elevated p-2.5 text-ink" value={compareCountry} onChange={(e) => setCompareCountry(e.target.value)}><option value="">No comparison</option>{countries.filter((value) => value !== country).map((value) => <option key={value}>{value}</option>)}</select></label>
           <label className="text-sm text-muted">Role family<input className="mt-2 w-full rounded-lg border border-border bg-elevated p-2.5 text-ink" value={role} onChange={(e) => setRole(e.target.value)} /></label>
           <label className="text-sm text-muted">Work mode<select className="mt-2 w-full rounded-lg border border-border bg-elevated p-2.5 text-ink" value={mode} onChange={(e) => setMode(e.target.value as WorkMode)}>{["any", "remote", "hybrid", "onsite"].map((value) => <option key={value}>{value}</option>)}</select></label>
-          <div className="flex items-end"><Button className="w-full" disabled={loading} onClick={async () => {
-            setLoading(true); setRefreshError("");
-            const response = await fetch("/api/job-market/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ countries: selectedCountries, role_family: role, work_mode: mode, days: 90 }) });
-            if (!response.ok) { const value = await response.json(); setRefreshError(String(value.error || "Refresh failed")); setLoading(false); return; }
-            setRevision((value) => value + 1);
-          }} type="button"><RefreshCw className={loading ? "animate-spin" : ""} size={16} />Refresh sources</Button></div>
         </div>
-        {refreshError && <p className="mt-3 text-sm text-accent">{refreshError}</p>}
+        <p className="mt-3 flex items-center gap-2 text-xs text-muted"><LockKeyhole size={13} />Filters query existing snapshots only. Refresh and import run through controlled backend ingestion.</p>
       </Card>
 
       {data && <>

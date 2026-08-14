@@ -9,12 +9,13 @@ Covers:
 
 from __future__ import annotations
 
+import json
+
+from resume_builder.core.models import Mode, Repo, ResumeAchievement
 from resume_builder.interpretation.normalizer import _AliasMap
 from resume_builder.llm.base import LLMProvider
 from resume_builder.llm.null_provider import NullProvider
-from resume_builder.core.models import Mode, Repo, ResumeAchievement
 from resume_builder.orchestration.pipeline import BuildIndustryInputs, Pipeline
-
 
 # ---------------------------------------------------------------------------
 # Fake LLM — deterministic, no network
@@ -201,6 +202,9 @@ def test_run_industry_auto_yields_resumes_with_projects(monkeypatch, tmp_path):
     assert any(len(r.projects) > 0 for r in result.resumes), (
         "Expected at least one resume with non-empty projects (bare-key contract)"
     )
+    profile = json.loads((tmp_path / "user_profile.json").read_text(encoding="utf-8"))
+    assert profile["skills"] == ["Python"]
+    assert profile["industries"] == ["ai"]
 
 
 def test_run_industry_auto_post_achievement_routed_via_index(monkeypatch, tmp_path):
@@ -212,16 +216,16 @@ def test_run_industry_auto_post_achievement_routed_via_index(monkeypatch, tmp_pa
     pipeline = Pipeline(mode=Mode.AI, llm=fake_llm)
 
     # Stub social so that `achievements = [achievement]` is fed to _classify_with_p3
-    from resume_builder.sources.social import CollectResult, SocialPost
-
     import datetime
+
+    from resume_builder.sources.social import CollectResult, SocialPost
 
     fake_post = SocialPost(
         vendor="facebook",
         post_id="abc123",
         url=achievement.url,
         text=achievement.snippet or achievement.title,
-        posted_at=datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc),
+        posted_at=datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC),
     )
     fake_social_result = CollectResult(posts=[fake_post], mentions=[])
 

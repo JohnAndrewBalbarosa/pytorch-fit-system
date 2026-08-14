@@ -43,6 +43,23 @@ def test_service_uses_explicit_synthetic_demo_when_providers_are_unavailable(
     assert any("synthetic demo" in warning.lower() for warning in result.warnings)
 
 
+def test_summary_read_does_not_fetch_or_persist_provider_data(tmp_path: Path, monkeypatch):
+    from resume_builder.job_market import service as module
+
+    calls: list[str] = []
+    monkeypatch.setattr(module.AdzunaProvider, "fetch", lambda *_: calls.append("adzuna"))
+    monkeypatch.setattr(module.RemotiveProvider, "fetch", lambda *_: calls.append("remotive"))
+    service = JobMarketService(tmp_path / "market.sqlite3")
+    query = JobMarketQuery(countries=["Philippines"])
+
+    result = service.summary(query)
+
+    assert calls == []
+    assert result.snapshot_kind == "synthetic_demo"
+    assert service.store.load(key=module_query_key(query), source="adzuna") is None
+    assert service.store.load(key=module_query_key(query), source="remotive") is None
+
+
 def test_imported_snapshot_is_versioned_and_round_trips(tmp_path: Path):
     service = JobMarketService(tmp_path / "market.sqlite3")
     query = JobMarketQuery(countries=["Canada"])
@@ -95,6 +112,18 @@ def module_query_key(query: JobMarketQuery) -> str:
     from resume_builder.job_market.service import _query_key
 
     return _query_key(query)
+
+
+def test_evidenced_skills_use_middleman_profile_not_generated_resume(tmp_path, monkeypatch):
+    from resume_builder.job_market import service as module
+
+    profile = tmp_path / "user_profile.json"
+    profile.write_text('{"skills": ["Python", "PyTorch"], "industries": ["AI"]}', encoding="utf-8")
+    monkeypatch.setenv("JOB_MARKET_PROFILE_JSON", str(profile))
+    assert module._evidenced_skills() == {"Python", "PyTorch"}
+
+    profile.write_text('{"skill_groups": [{"name": "JavaScript", "items": ["React"]}]}', encoding="utf-8")
+    assert module._evidenced_skills() == set()
 
 
 def test_refresh_requires_server_side_developer_token(monkeypatch, tmp_path: Path):

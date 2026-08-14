@@ -114,7 +114,7 @@ class JobMarketService:
             kinds.append("cached")
         for provider in (AdzunaProvider(), RemotiveProvider()):
             cached = self.store.load(key=key, source=provider.id)
-            if refresh or cached is None:
+            if refresh:
                 try:
                     values = provider.fetch(query)
                     payload = {"postings": [item.model_dump(mode="json") for item in values]}
@@ -129,6 +129,10 @@ class JobMarketService:
                     MarketPosting.model_validate(item) for item in cached["payload"]["postings"]
                 )
                 kinds.append("cached")
+            elif not refresh:
+                warnings.append(
+                    f"{provider.id}: no cached snapshot; controlled backend refresh required"
+                )
         if not postings:
             postings = _demo_postings(query)
             kinds.append("synthetic_demo")
@@ -280,20 +284,16 @@ def _evidenced_skills() -> set[str]:
         path = Path(configured)
     else:
         artifact_dir = Path(os.environ.get("JOB_FINDER_ARTIFACT_DIR", "out/application-resumes"))
-        path = artifact_dir / "mega-combined-resume.json"
+        path = artifact_dir / "user_profile.json"
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return set()
-    values: set[str] = set()
-    for group in payload.get("skill_groups", []):
-        if not isinstance(group, dict):
-            continue
-        name = str(group.get("name", "")).strip()
-        if name:
-            values.add(name)
-        values.update(str(item).strip() for item in group.get("items", []) if str(item).strip())
-    return values
+    return {
+        str(value).strip()
+        for value in payload.get("skills", [])
+        if isinstance(value, str) and value.strip()
+    }
 
 
 def _query_key(query: JobMarketQuery) -> str:

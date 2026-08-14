@@ -13,12 +13,6 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from ..core.config import Settings, get_settings
-from ..extractors import AIExtractor, Extractor, StaticExtractor
-from ..llm import LLMProvider, get_provider
-from ..llm.null_provider import NullProvider
-from ..metrics import load_metrics
-from ..extraction.models import CleanedSource
 from ..classification.industry import (
     IndustryClassification,
     IndustryClassifier,
@@ -27,7 +21,7 @@ from ..classification.industry import (
     WebPageInput,
     plan_industry_resumes,
 )
-from ..interpretation import RetrievedSource, interpret
+from ..core.config import Settings, get_settings
 from ..core.models import (
     Evidence,
     Mode,
@@ -39,6 +33,12 @@ from ..core.models import (
     RoleSpec,
 )
 from ..core.principles import HARVARD_PRINCIPLES
+from ..extraction.models import CleanedSource
+from ..extractors import AIExtractor, Extractor, StaticExtractor
+from ..interpretation import ProfileSink, RetrievedSource, build_user_profile, interpret
+from ..llm import LLMProvider, get_provider
+from ..llm.null_provider import NullProvider
+from ..metrics import load_metrics
 from ..renderers import get_renderer
 from ..role import AIRolePicker, RolePicker, StaticRolePicker
 from ..sources import DocumentSource, GitHubSource
@@ -384,6 +384,7 @@ class Pipeline:
             )
         else:
             classification = self._classify_with_p3(repos, achievements)
+        ProfileSink(inputs.output_dir).save(build_user_profile(classification))
         plans = plan_industry_resumes(classification, repos, achievements)
 
         resumes: list[Resume] = []
