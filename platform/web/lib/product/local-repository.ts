@@ -1,5 +1,7 @@
 import type { Connection, ProductRepository, ProductView, ProductViewData } from "./contracts";
 import { unavailableDashboardAnalytics } from "./contracts";
+import { sourcesWithConnectionState } from "./source-catalog";
+import { overlayLocalCareerState } from "./local-career-store";
 
 type JsonObject = Record<string, unknown>;
 
@@ -39,7 +41,7 @@ export class LocalProductRepository implements ProductRepository {
     return object(await response.json());
   }
 
-  async read(view: ProductView, _userId: string): Promise<ProductViewData> {
+  async read(view: ProductView, userId: string): Promise<ProductViewData> {
     const [onboarding, resumesResponse, control, market, auth] = await Promise.all([
       this.fetchJson("/api/onboarding/state"),
       this.fetchJson("/api/resumes"),
@@ -113,10 +115,7 @@ export class LocalProductRepository implements ProductRepository {
         ready: Boolean(onboarding.ready),
         phase: text(onboarding.phase, "unknown"),
         profileFacts: Object.entries(profile).filter(([, value]) => ["string", "number", "boolean"].includes(typeof value)).slice(0, 8).map(([label, value]) => ({ label: label.replaceAll("_", " "), value: String(value) })),
-        sources: [
-          { id: "master", label: text(source.label, "Normalized profile"), kind: "document", status: source.master_loaded ? "verified" : "blocked" },
-          ...resumes.map((resume) => ({ id: resume.id, label: resume.label, kind: "generated resume", status: resume.ready ? "ready" as const : "blocked" as const })),
-        ],
+        sources: sourcesWithConnectionState(connections, source.master_loaded ? 1 : 0),
         skills,
         blockers,
       },
@@ -134,7 +133,7 @@ export class LocalProductRepository implements ProductRepository {
       analytics: unavailableDashboardAnalytics(),
       ...(process.env.NODE_ENV === "development" ? { diagnostics: { onboarding, control, market } } : {}),
     };
-    return data;
+    return overlayLocalCareerState(data, userId);
   }
 
   private connection(id: string, raw: unknown, category: Connection["category"]): Connection {

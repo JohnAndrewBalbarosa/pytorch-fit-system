@@ -3,6 +3,7 @@ import path from "node:path";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { buildCapabilityManifest } from "@/lib/capabilities";
+import { currentProductUserId } from "@/lib/auth/current-user";
 
 const backend = () => process.env.PYTORCH_FIT_API_URL || "http://127.0.0.1:8000";
 
@@ -43,11 +44,12 @@ export async function GET() {
       process.env.PYTORCH_FIT_DEV_BYPASS_SIGN_IN === "1"
       || jar.get("pytorch_fit_dev_session")?.value === "local-developer"
     );
-  const [auth, onboarding, control, profileReady] = await Promise.all([
+  const [auth, onboarding, control, profileReady, productUserId] = await Promise.all([
     backendJson("/api/auth/status"),
     backendJson("/api/onboarding/state"),
     backendJson("/api/job-finder/control-state"),
     normalizedProfileReady(),
+    currentProductUserId(),
   ]);
   const identity = auth.identity as Record<string, { connected?: boolean }> | undefined;
   const social = auth.social as Record<string, { connected?: boolean }> | undefined;
@@ -56,6 +58,7 @@ export async function GET() {
 
   return NextResponse.json(buildCapabilityManifest({
     developmentOwner,
+    authenticatedUser: Boolean(productUserId),
     identityConnected: Object.values(identity || {}).some((item) => item.connected),
     socialConnected: Object.values(social || {}).some((item) => item.connected),
     jobSiteConnected: Object.values(sessions?.job_sites || {}).some((item) => item.connected),

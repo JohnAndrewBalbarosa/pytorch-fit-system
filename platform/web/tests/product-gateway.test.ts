@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { buildCapabilityManifest } from "../lib/capabilities";
 import { demoProductView } from "../lib/product/demo";
 import { productViews, unavailableDashboardAnalytics } from "../lib/product/contracts";
+import { resumeHtml, resumePdfPageCount, resumeTemplates } from "../lib/product/resume-exports";
+import { parseEvidenceProposalResponse } from "../lib/product/evidence-ai";
+import { overlayLocalCareerState, readLocalMedia, saveLocalEvidence, saveLocalMedia, saveLocalSourceState } from "../lib/product/local-career-store";
 
 test("every product view has a complete, labeled visual demo contract", () => {
   for (const view of productViews) {
@@ -56,4 +62,94 @@ test("Supabase career product policies are owner-scoped and browser read-only", 
   assert.doesNotMatch(migration, /owner_all/);
   assert.doesNotMatch(migration, /FOR (INSERT|UPDATE|DELETE) TO authenticated/);
   assert.match(migration, /requested_user_id IS DISTINCT FROM \(SELECT auth\.uid\(\)\)/);
+});
+
+test("career demo exposes clickable source metadata and photo-backed evidence", () => {
+  const data = demoProductView("career-evidence");
+  assert.ok(data.evidence?.sources.some((source) => source.id === "website" && source.maturity === "experimental"));
+  assert.ok(data.evidence?.sources.some((source) => source.id === "twitter" && source.maturity === "beta"));
+  assert.equal(data.evidence?.items?.length, 3);
+  assert.ok(data.evidence?.items?.every((item) => item.mediaUrl.startsWith("/demo/evidence/")));
+  assert.ok(data.evidence?.items?.some((item) => item.verificationState === "ai_proposed"));
+});
+
+test("all resume templates render and measure the same ATS-readable normalized snapshot", async () => {
+  const profile = demoProductView("resumes").resumeProfile;
+  assert.ok(profile);
+  assert.equal(resumeTemplates.length, 3);
+  for (const template of resumeTemplates) {
+    const html = resumeHtml(profile!, template.id);
+    assert.match(html, /Professional summary/);
+    assert.match(html, /Campus Vision Demo/);
+    assert.match(html, /PyTorch/);
+    assert.doesNotMatch(html, /grid-template-columns|<table|<img/);
+    assert.ok(await resumePdfPageCount(profile!, template.id) >= 1);
+  }
+});
+
+test("local career commands survive a new repository read", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "pytorch-fit-product-"));
+  const previous = process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH;
+  process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH = path.join(directory, "career.sqlite3");
+  try {
+    const demo = demoProductView("career-evidence");
+    const original = demo.evidence!.items![0];
+    const updated = { ...original, title: "Persisted owner edit", verificationState: "user_verified" as const };
+    saveLocalEvidence("owner-1", updated);
+    saveLocalSourceState("owner-1", { id: "website", connectionStatus: "connected", lastSyncedAt: null, configuredUrl: "https://example.test/portfolio" });
+    saveLocalMedia("owner-1", updated.id, new Uint8Array([1, 2, 3]), "image/webp");
+    const reloaded = overlayLocalCareerState(demoProductView("career-evidence"), "owner-1");
+    assert.equal(reloaded.evidence?.items?.find((item) => item.id === updated.id)?.title, "Persisted owner edit");
+    assert.equal(reloaded.evidence?.sources.find((source) => source.id === "website")?.connectionStatus, "connected");
+    assert.equal(reloaded.evidence?.sources.find((source) => source.id === "website")?.configuredUrl, "https://example.test/portfolio");
+    assert.equal(reloaded.evidence?.sources.find((source) => source.id === "website")?.lastSyncedAt, null);
+    assert.deepEqual([...readLocalMedia("owner-1", updated.id)!.bytes], [1, 2, 3]);
+  } finally {
+    if (previous === undefined) delete process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH;
+    else process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH = previous;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("local source storage upgrades databases created before configured URLs", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "pytorch-fit-product-upgrade-"));
+  const previous = process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH;
+  process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH = path.join(directory, "career.sqlite3");
+  try {
+    const legacy = new DatabaseSync(process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH);
+    legacy.exec(`CREATE TABLE product_source_states (
+      user_id TEXT NOT NULL, id TEXT NOT NULL, connection_status TEXT NOT NULL,
+      last_synced_at TEXT, updated_at TEXT NOT NULL, PRIMARY KEY (user_id, id)
+    ) STRICT;`);
+    legacy.close();
+    saveLocalSourceState("owner-1", { id: "website", connectionStatus: "connected", lastSyncedAt: null, configuredUrl: "https://example.test/legacy" });
+    const reloaded = overlayLocalCareerState(demoProductView("career-evidence"), "owner-1");
+    assert.equal(reloaded.evidence?.sources.find((source) => source.id === "website")?.configuredUrl, "https://example.test/legacy");
+  } finally {
+    if (previous === undefined) delete process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH;
+    else process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH = previous;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("provider-neutral AI parser accepts Responses HTTP output and rejects loose data", () => {
+  const proposal = { summary: "Grounded", changes: [{ field: "Description", before: "A", after: "B" }], warnings: ["Review"] };
+  assert.deepEqual(parseEvidenceProposalResponse({ output: [{ content: [{ type: "output_text", text: JSON.stringify(proposal) }] }] }), proposal);
+  assert.throws(() => parseEvidenceProposalResponse({ output_text: JSON.stringify({ summary: "bad", changes: [{ field: 4 }], warnings: [] }) }), /invalid field changes/);
+});
+
+test("SQL demo seed is deterministic, synthetic, and production-guarded", () => {
+  const seed = readFileSync("../../supabase/seed.sql", "utf8");
+  const migration = readFileSync("../../supabase/migrations/0007_career_evidence_studio.sql", "utf8");
+  const storageScript = readFileSync("scripts/seed-demo-storage.mjs", "utf8");
+  assert.match(seed, /synthetic showcase data/i);
+  assert.match(seed, /ON CONFLICT/g);
+  assert.match(seed, /REFRESH MATERIALIZED VIEW leaderboard/);
+  assert.match(storageScript, /PYTORCH_FIT_ENV !== "showcase"/);
+  assert.match(storageScript, /NODE_ENV === "production"/);
+  assert.match(migration, /connection_state connection_state/);
+  assert.match(migration, /career_evidence_revisions_owner_select/);
+  assert.match(migration, /career_evidence_storage_owner_select/);
+  assert.match(migration, /requested_user_id IS DISTINCT FROM \(SELECT auth\.uid\(\)\)/);
+  assert.doesNotMatch(migration, /FOR (INSERT|UPDATE|DELETE) TO authenticated/);
 });

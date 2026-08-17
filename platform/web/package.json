@@ -2,6 +2,9 @@
   "name": "@pytorch-fit/web",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,6 +12,9 @@
     "typecheck": "tsc --noEmit",
     "test:capabilities": "tsx --test tests/capabilities.test.ts",
     "test:product": "tsx --test tests/product-gateway.test.ts",
+    "test:career:e2e": "node tests/career-evidence.e2e.mjs",
+    "test:supabase": "tsx --test tests/supabase-migrations.test.ts",
+    "demo:seed:storage": "node scripts/seed-demo-storage.mjs",
     "test:tours:e2e": "node tests/product-tour.e2e.mjs",
     "test:grades": "tsx --test ../grades/*.test.ts",
     "grades:login": "set NODE_PATH=%CD%\\node_modules&& tsx ../grades/session-login.ts",
@@ -23,22 +29,26 @@
     "@types/react-dom": "^19.0.2",
     "autoprefixer": "^10.4.20",
     "clsx": "^2.1.1",
+    "docx": "^9.7.1",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.468.0",
-    "next": "^16.2.9",
+    "next": "^16.3.1",
     "playwright": "^1.45.0",
-    "postcss": "^8.5.10",
+    "postcss": "^8.5.26",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-joyride": "^3.2.0",
     "recharts": "^3.9.0",
+    "sharp": "^0.35.3",
     "tailwind-merge": "^2.6.0",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.5",
     "tsx": "^4.20.0"
   },
   "overrides": {
-    "postcss": "^8.5.10"
+    "postcss": "^8.5.26"
   }
 }

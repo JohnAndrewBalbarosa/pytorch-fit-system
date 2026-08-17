@@ -3,6 +3,7 @@ export type CapabilityState = "available" | "read_only" | "locked";
 export type CapabilityKey =
   | "connections"
   | "evidence_read"
+  | "evidence_write"
   | "evidence_scrape"
   | "resume_read"
   | "resume_generate"
@@ -19,11 +20,13 @@ export type Capability = {
 
 export type CapabilityManifest = {
   developmentOwner: boolean;
+  authenticatedUser?: boolean;
   capabilities: Record<CapabilityKey, Capability>;
 };
 
 type CapabilityInputs = {
   developmentOwner: boolean;
+  authenticatedUser?: boolean;
   identityConnected: boolean;
   socialConnected: boolean;
   jobSiteConnected: boolean;
@@ -38,8 +41,9 @@ const available = (reason: string): Capability => ({ state: "available", reason,
 const readOnly = (reason: string): Capability => ({ state: "read_only", reason, missing: [] });
 
 export function buildCapabilityManifest(input: CapabilityInputs): CapabilityManifest {
+  const canOwnCareerData = input.developmentOwner || input.authenticatedUser === true;
   const ownerRequired = locked("Available only in the authorized local development session.", ["development owner session"]);
-  const connections = input.developmentOwner
+  const connections = canOwnCareerData
     ? available("Local connection status is available without exposing credentials or session contents.")
     : ownerRequired;
   const evidenceRead = input.evidenceReady
@@ -52,6 +56,9 @@ export function buildCapabilityManifest(input: CapabilityInputs): CapabilityMani
     : input.identityConnected || input.socialConnected
       ? available("An approved local source session is available for evidence collection.")
       : locked("Connect an approved identity or social source before collecting evidence.", ["approved source session"]);
+  const evidenceWrite = canOwnCareerData
+    ? available("You may create and approve your own career evidence through the server gateway.")
+    : ownerRequired;
   const resumeRead = input.resumeArtifactsReady
     ? readOnly("Existing generated resume artifacts are available for review.")
     : input.visualDemo
@@ -82,6 +89,7 @@ export function buildCapabilityManifest(input: CapabilityInputs): CapabilityMani
     capabilities: {
       connections,
       evidence_read: evidenceRead,
+      evidence_write: evidenceWrite,
       evidence_scrape: evidenceScrape,
       resume_read: resumeRead,
       resume_generate: resumeGenerate,
@@ -95,6 +103,7 @@ export function buildCapabilityManifest(input: CapabilityInputs): CapabilityMani
 
 export const lockedCapabilityManifest = () => buildCapabilityManifest({
   developmentOwner: false,
+  authenticatedUser: false,
   identityConnected: false,
   socialConnected: false,
   jobSiteConnected: false,

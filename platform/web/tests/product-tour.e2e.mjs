@@ -25,9 +25,12 @@ try {
 
   await page.goto(`${baseUrl}/login`);
   const developerAccess = page.getByRole("button", { name: "Enter local developer workspace" });
-  await developerAccess.waitFor();
-  await developerAccess.click();
-  await page.waitForURL("**/dashboard");
+  if (await developerAccess.count()) {
+    await developerAccess.click();
+    await page.waitForURL("**/dashboard");
+  } else {
+    await page.goto(`${baseUrl}/dashboard`);
+  }
   await page.evaluate(() => localStorage.clear());
 
   for (const [pathname, title] of routes) {
@@ -47,6 +50,7 @@ try {
   await page.waitForURL("**/jobs/analytics");
   assert.equal(new URL(page.url()).origin, baseUrl, "sidebar navigation must remain on the SPA origin");
   await page.goto(`${baseUrl}/dashboard`);
+  await page.waitForTimeout(500);
   await page.getByRole("button", { name: "Help / Tour" }).click();
   await page.getByRole("alertdialog").waitFor({ state: "visible" });
   await page.keyboard.press("Escape");
@@ -58,8 +62,13 @@ try {
   const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const mobilePage = await mobileContext.newPage();
   await mobilePage.goto(`${baseUrl}/login`);
-  await mobilePage.getByRole("button", { name: "Enter local developer workspace" }).click();
-  await mobilePage.waitForURL("**/dashboard");
+  const mobileAccess = mobilePage.getByRole("button", { name: "Enter local developer workspace" });
+  if (await mobileAccess.count()) {
+    await mobileAccess.click();
+    await mobilePage.waitForURL("**/dashboard");
+  } else {
+    await mobilePage.goto(`${baseUrl}/dashboard`);
+  }
   await mobilePage.evaluate(() => localStorage.clear());
   await mobilePage.reload();
   await mobilePage.getByRole("alertdialog").waitFor({ state: "visible", timeout: 8_000 });

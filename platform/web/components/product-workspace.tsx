@@ -21,6 +21,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { CareerEvidenceView, ConnectionsWorkspaceView, ResumeStudioView } from "@/components/career-product-views";
 import { CapabilityGate, CapabilityStatus } from "@/components/capability-gate";
 import { useCapability } from "@/components/capability-context";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +38,7 @@ function SourceBadge({ data }: { data: ProductViewData }) {
 function Header({ data, capabilityKey }: { data: ProductViewData; capabilityKey: CapabilityKey }) {
   return <header className="mb-6 flex flex-wrap items-start justify-between gap-4" data-tour="page-heading">
     <div><p className="data-label mb-2 text-xs uppercase tracking-widest text-accent">{data.heading.eyebrow}</p><h1 className="text-3xl font-bold tracking-[-0.02em]">{data.heading.title}</h1><p className="mt-2 max-w-3xl leading-7 text-muted">{data.heading.description}</p></div>
-    <div className="flex flex-wrap gap-2"><CapabilityStatus capabilityKey={capabilityKey} /><SourceBadge data={data} /></div>
+    <div className="flex flex-wrap gap-2" data-tour="service-status"><CapabilityStatus capabilityKey={capabilityKey} /><SourceBadge data={data} /></div>
   </header>;
 }
 
@@ -99,17 +100,18 @@ function Empty({ title, detail = "The active provider returned no records for th
 
 function EmptyInline({ text }: { text: string }) { return <div className="col-span-full rounded-lg border border-dashed border-border p-5 text-center text-sm text-muted">{text}</div>; }
 
-function ViewBody({ view, data }: { view: ProductView; data: ProductViewData }) {
-  if (view === "career-evidence") return <EvidenceView data={data} />;
-  if (view === "resumes") return <ResumeView data={data} />;
+function ViewBody({ view, data, canWriteEvidence }: { view: ProductView; data: ProductViewData; canWriteEvidence: boolean }) {
+  if (view === "career-evidence") return <CareerEvidenceView canWrite={canWriteEvidence} data={data} />;
+  if (view === "resumes") return <ResumeStudioView data={data} />;
   if (view === "job-operations") return <OperationsView data={data} />;
   if (view === "opportunities") return <OpportunitiesView data={data} />;
-  if (view === "connections") return <ConnectionsView data={data} />;
+  if (view === "connections") return <ConnectionsWorkspaceView data={data} />;
   return <AdvisorView data={data} />;
 }
 
 function ProductContent({ view, capabilityKey, safety }: Props) {
   const capability = useCapability(capabilityKey);
+  const evidenceWrite = useCapability("evidence_write");
   const [data, setData] = useState<ProductViewData | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -123,9 +125,9 @@ function ProductContent({ view, capabilityKey, safety }: Props) {
     return () => controller.abort();
   }, [capability.state, view]);
   return <>
-    {data ? <Header capabilityKey={capabilityKey} data={data} /> : <header className="mb-6"><p className="data-label mb-2 text-xs uppercase tracking-widest text-accent">Product workspace</p><h1 className="text-3xl font-bold">Loading visual workspace…</h1></header>}
+    {data ? <Header capabilityKey={capabilityKey} data={data} /> : <header className="mb-6 flex items-start justify-between gap-4" data-tour="page-heading"><div><p className="data-label mb-2 text-xs uppercase tracking-widest text-accent">Product workspace</p><h1 className="text-3xl font-bold">Loading visual workspace…</h1></div><Badge data-tour="service-status">Checking access</Badge></header>}
     <Card className="mb-4 border-accent/25 bg-accentSoft" data-tour="permission-boundary"><div className="flex gap-3"><ShieldCheck className="mt-0.5 flex-none text-accent" size={20} /><div><strong>Permission boundary</strong><p className="mt-1 text-sm text-muted">{safety}</p></div></div></Card>
-    <CapabilityGate capabilityKey={capabilityKey}><div data-tour="page-content">{error ? <Card className="bg-surface"><div className="flex gap-3"><AlertTriangle className="flex-none text-accent" /><div><CardTitle>Product data unavailable</CardTitle><p className="mt-2 text-sm text-muted">{error}</p></div></div></Card> : data ? <><Stats data={data} /><ViewBody data={data} view={view} />{data.diagnostics !== undefined && <details className="mt-4 rounded-lg border border-border bg-surface p-4"><summary className="cursor-pointer text-sm font-semibold text-muted">Development diagnostics</summary><pre className="mt-4 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-elevated p-4 font-mono text-xs text-muted">{JSON.stringify(data.diagnostics, null, 2)}</pre></details>}</> : <Card className="bg-surface"><div className="flex items-center gap-3 text-muted"><Server className="animate-pulse" size={20} />Connecting to the active data provider…</div></Card>}</div></CapabilityGate>
+    <div data-tour="service-data"><CapabilityGate capabilityKey={capabilityKey}><div data-tour="page-content">{error ? <Card className="bg-surface"><div className="flex gap-3"><AlertTriangle className="flex-none text-accent" /><div><CardTitle>Product data unavailable</CardTitle><p className="mt-2 text-sm text-muted">{error}</p></div></div></Card> : data ? <><Stats data={data} /><ViewBody canWriteEvidence={evidenceWrite.state === "available"} data={data} view={view} />{data.diagnostics !== undefined && <details className="mt-4 rounded-lg border border-border bg-surface p-4"><summary className="cursor-pointer text-sm font-semibold text-muted">Development diagnostics</summary><pre className="mt-4 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-elevated p-4 font-mono text-xs text-muted">{JSON.stringify(data.diagnostics, null, 2)}</pre></details>}</> : <Card className="bg-surface"><div className="flex items-center gap-3 text-muted"><Server className="animate-pulse" size={20} />Connecting to the active data provider…</div></Card>}</div></CapabilityGate></div>
   </>;
 }
 

@@ -44,3 +44,18 @@ test("non-owner state fails closed while analytics remains read-only", () => {
   assert.equal(manifest.capabilities.analytics_read.state, "read_only");
   assert.equal(manifest.capabilities.analytics_write.state, "locked");
 });
+
+test("authenticated users may edit only their own career evidence", () => {
+  const manifest = buildCapabilityManifest({
+    developmentOwner: false,
+    authenticatedUser: true,
+    identityConnected: false,
+    socialConnected: false,
+    jobSiteConnected: false,
+    evidenceReady: true,
+    normalizedProfileReady: true,
+    resumeArtifactsReady: false,
+  });
+  assert.equal(manifest.capabilities.evidence_write.state, "available");
+  assert.equal(manifest.capabilities.application_draft.state, "locked");
+});

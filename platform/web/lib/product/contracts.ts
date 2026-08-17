@@ -41,6 +41,49 @@ export type EvidenceSource = {
   label: string;
   kind: string;
   status: "verified" | "ready" | "blocked";
+  maturity?: "available" | "beta" | "experimental";
+  connectionStatus?: "connected" | "disconnected" | "verification_required";
+  connectionMethod?: "website_session" | "url" | "upload" | "manual";
+  description?: string;
+  permissions?: string[];
+  evidenceCount?: number;
+  lastSyncedAt?: string | null;
+  configuredUrl?: string | null;
+};
+
+export type EvidenceItem = {
+  id: string;
+  sourceId: string;
+  title: string;
+  organization: string;
+  role: string;
+  dateLabel: string;
+  description: string;
+  quantitative: string[];
+  qualitative: string[];
+  skills: string[];
+  mediaUrl: string;
+  mediaAlt: string;
+  verificationState: "draft" | "ai_proposed" | "source_matched" | "user_verified";
+  confidence?: number;
+  sourceUrl?: string;
+  aiProposal?: {
+    summary: string;
+    changes: Array<{ field: string; before: string; after: string }>;
+    warnings: string[];
+  };
+};
+
+export type ResumeProfile = {
+  fullName: string;
+  headline: string;
+  email: string;
+  location: string;
+  summary: string;
+  experience: Array<{ title: string; organization: string; dateLabel: string; bullets: string[] }>;
+  projects: Array<{ title: string; summary: string; bullets: string[] }>;
+  skillGroups: Array<{ name: string; items: string[] }>;
+  education: Array<{ school: string; program: string; dateLabel: string }>;
 };
 
 export type ResumeArtifact = {
@@ -90,8 +133,10 @@ export type ProductViewData = {
     sources: EvidenceSource[];
     skills: string[];
     blockers: string[];
+    items?: EvidenceItem[];
   };
   resumes?: ResumeArtifact[];
+  resumeProfile?: ResumeProfile;
   operations?: {
     goalLabel: string;
     completed: number;
