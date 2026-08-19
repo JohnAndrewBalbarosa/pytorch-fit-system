@@ -54,6 +54,7 @@ class InterventionAction(str, Enum):
     SIGN_IN = "sign_in"
     RESUME_UPLOAD = "resume_upload"
     RESUME_CONTINUE = "resume_continue"
+    LAYOUT_REVIEW = "layout_review"
     EXTERNAL_APPLICATION = "external_application"
     OTHER = "other"
 
@@ -82,6 +83,8 @@ class VerificationQueueEntry(BaseModel):
     question_approval_consumed_at: str = ""
     approval_granted_at: str = ""
     approval_consumed_at: str = ""
+    layout_fingerprint: str = ""
+    artifact_path: str = ""
 
     @model_validator(mode="before")
     @classmethod
@@ -105,6 +108,8 @@ def _action_for_reason(reason: str) -> InterventionAction:
         return InterventionAction.RESUME_UPLOAD
     if normalized in {"resume_continue", "resume_continue_approval"}:
         return InterventionAction.RESUME_CONTINUE
+    if normalized in {"layout_review", "unknown_layout", "unknown_module"}:
+        return InterventionAction.LAYOUT_REVIEW
     if normalized in {"unknown_question", "unanswered_question"}:
         return InterventionAction.UNKNOWN_QUESTION
     if normalized == "apply_on_company_site":
@@ -148,6 +153,8 @@ class HumanVerificationQueue:
         job_title: str = "",
         goal_id: str = "",
         resume_file: str = "",
+        layout_fingerprint: str = "",
+        artifact_path: str = "",
     ) -> VerificationQueueEntry:
         if not result.blocked:
             raise ValueError("only human-required access results may be queued")
@@ -162,6 +169,8 @@ class HumanVerificationQueue:
             job_title=job_title,
             goal_id=goal_id,
             resume_file=resume_file,
+            layout_fingerprint=layout_fingerprint,
+            artifact_path=artifact_path,
         )
 
     def enqueue_handoff(
@@ -179,6 +188,8 @@ class HumanVerificationQueue:
         job_title: str = "",
         goal_id: str = "",
         resume_file: str = "",
+        layout_fingerprint: str = "",
+        artifact_path: str = "",
     ) -> VerificationQueueEntry:
         """Queue a non-access human handoff without pretending it is an access blocker."""
         with _QUEUE_LOCK:
@@ -230,6 +241,12 @@ class HumanVerificationQueue:
                     Path(resume_file).name
                     if resume_file
                     else (str(existing.get("resume_file", "")) if existing else "")
+                ),
+                layout_fingerprint=redact(layout_fingerprint, limit=80),
+                artifact_path=(
+                    str(Path(artifact_path))[:240]
+                    if artifact_path
+                    else (str(existing.get("artifact_path", "")) if existing else "")
                 ),
             )
             payload[entry_id] = entry.model_dump(mode="json")

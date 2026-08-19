@@ -42,7 +42,6 @@ export class LocalProductRepository implements ProductRepository {
           }),
         },
       } : base.analytics,
-      diagnostics: { seed: "local-demo-v1", supportingPersonas: 4, runtime },
     };
   }
 }

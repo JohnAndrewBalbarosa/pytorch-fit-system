@@ -59,8 +59,11 @@ from .job_finder_control import (
     disconnect_provider as disconnect_job_finder_provider,
     focus_intervention,
     focus_target as focus_job_finder_target,
+    release_intervention as release_job_finder_intervention,
+    reopen_goal_item as reopen_job_finder_goal_item,
     reopen_intervention as reopen_job_finder_intervention,
     recheck_intervention,
+    retry_intervention as retry_job_finder_intervention,
     start_session as start_job_site_session,
 )
 from .job_finder_supervisor import (
@@ -72,6 +75,7 @@ from .job_finder_supervisor import (
     launch_goal as launch_job_finder_goal,
     release_item as release_job_finder_item,
     retry_resolved_intervention,
+    retry_item as retry_job_finder_item,
     start_goal as create_job_finder_goal,
     stop_goal as stop_job_finder_goal,
 )
@@ -473,6 +477,27 @@ def api_approve_job_finder_item_review(goal_id: str, task_id: str):
     return {**goal.model_dump(mode="json"), "remaining": goal.remaining}
 
 
+@app.post("/api/job-finder/goals/{goal_id}/items/{task_id}/reopen")
+def api_reopen_job_finder_goal_item(goal_id: str, task_id: str):
+    try:
+        return reopen_job_finder_goal_item(goal_id, task_id)
+    except KeyError:
+        return JSONResponse({"error": "Unknown application goal item."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+@app.post("/api/job-finder/goals/{goal_id}/items/{task_id}/retry")
+def api_retry_job_finder_goal_item(goal_id: str, task_id: str):
+    try:
+        goal = retry_job_finder_item(goal_id, task_id)
+    except KeyError:
+        return JSONResponse({"error": "Unknown application goal item."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    return {**goal.model_dump(mode="json"), "remaining": goal.remaining}
+
+
 @app.post("/api/job-finder/interventions/{entry_id}/confirm-submitted")
 def api_confirm_external_intervention(entry_id: str):
     try:
@@ -578,6 +603,26 @@ def api_recheck_job_finder_intervention(entry_id: str):
         return JSONResponse({"error": "Unknown intervention."}, status_code=404)
     except Exception as exc:  # noqa: BLE001 - browser drift must surface without resolving
         return JSONResponse({"error": f"Could not recheck browser tab: {exc}"}, status_code=503)
+
+
+@app.post("/api/job-finder/interventions/{entry_id}/release")
+def api_release_job_finder_intervention(entry_id: str):
+    try:
+        return release_job_finder_intervention(entry_id)
+    except KeyError:
+        return JSONResponse({"error": "Unknown intervention."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+@app.post("/api/job-finder/interventions/{entry_id}/retry")
+def api_retry_job_finder_intervention(entry_id: str):
+    try:
+        return retry_job_finder_intervention(entry_id)
+    except KeyError:
+        return JSONResponse({"error": "Unknown intervention."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
 
 
 @app.post("/api/job-finder/interventions/{entry_id}/approve-question-answers")

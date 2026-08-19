@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { isOfficerOnlyPath, memberDestination, portalAudience, portalOrigin } from "@/lib/portal";
 
 const protectedPrefixes = ["/dashboard", "/career", "/jobs", "/connections", "/events", "/leaderboards", "/settings", "/admin"];
 const DEV_SESSION_COOKIE = "pytorch_fit_dev_session";
@@ -21,6 +22,13 @@ function attachDevelopmentSession(response: NextResponse) {
   return response;
 }
 
+function redirectToMember(request: NextRequest) {
+  const destination = memberDestination(request.nextUrl.pathname);
+  const url = new URL(destination, portalOrigin("member"));
+  if (destination === request.nextUrl.pathname) url.search = request.nextUrl.search;
+  return NextResponse.redirect(url);
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
   if (pathname === "/login" && signInBypassEnabled()) {
@@ -31,9 +39,16 @@ export async function proxy(request: NextRequest) {
     return attachDevelopmentSession(NextResponse.redirect(new URL(destination, request.url)));
   }
   if (!protectedPrefixes.some((prefix) => pathname.startsWith(prefix))) return NextResponse.next();
-  if (signInBypassEnabled()) return attachDevelopmentSession(NextResponse.next());
+  const audience = portalAudience();
+  if (signInBypassEnabled()) {
+    if (audience === "member" && isOfficerOnlyPath(pathname)) return redirectToMember(request);
+    return attachDevelopmentSession(NextResponse.next());
+  }
   const localSession = request.cookies.get(DEV_SESSION_COOKIE)?.value === "local-developer";
-  if (localSession && developmentAccessEnabled()) return NextResponse.next();
+  if (localSession && developmentAccessEnabled()) {
+    if (audience === "member" && isOfficerOnlyPath(pathname)) return redirectToMember(request);
+    return NextResponse.next();
+  }
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (supabaseUrl && supabaseKey) {
@@ -49,7 +64,18 @@ export async function proxy(request: NextRequest) {
       },
     });
     const { data } = await supabase.auth.getUser();
-    if (data.user) return response;
+    if (data.user) {
+      const { data: profile } = await supabase
+        .from("member_profiles")
+        .select("role,is_officer")
+        .eq("id", data.user.id)
+        .maybeSingle();
+      const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
+      const isOfficer = Boolean(profile?.is_officer) || isAdmin;
+      if (audience === "officer" && !isOfficer) return redirectToMember(request);
+      if (audience === "member" && isOfficerOnlyPath(pathname)) return redirectToMember(request);
+      return response;
+    }
   }
   const login = new URL("/login", request.url);
   login.searchParams.set("next", pathname);

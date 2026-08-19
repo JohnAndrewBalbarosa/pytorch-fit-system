@@ -160,6 +160,10 @@ def test_control_state_counts_only_current_plan_interventions(tmp_path, monkeypa
         "Current Co — Junior Engineer"
     ]
     assert state["counts"]["interventions"] == 2
+    assert len(state["work_items"]) == 2
+    assert state["work_items"][0]["source"] == "queue"
+    assert state["work_items"][1]["source"] == "goal"
+    assert state["work_items"][1]["actions"] == ["retry", "release"]
 
 
 def test_current_queue_accepts_live_legacy_target_but_not_inactive_goal(tmp_path):
@@ -495,6 +499,22 @@ def test_external_confirmation_requires_structured_identity(tmp_path, monkeypatc
         raise AssertionError("legacy handoff must not infer submission identity")
 
 
+def test_release_can_dismiss_legacy_queue_item_without_goal(tmp_path, monkeypatch):
+    queue_path = tmp_path / "queue.json"
+    queued = HumanVerificationQueue(queue_path).enqueue_handoff(
+        application_reference="Legacy Co — Engineer",
+        url="https://careers.example.com/apply",
+        reason="apply_on_company_site",
+        task_id="legacy-1",
+    )
+    monkeypatch.setattr(job_finder_control, "DEFAULT_QUEUE_PATH", queue_path)
+
+    result = job_finder_control.release_intervention(queued.id)
+
+    assert result == {"released": True, "goal_id": "", "task_id": "legacy-1"}
+    assert HumanVerificationQueue(queue_path).pending() == []
+
+
 def test_control_frontend_exposes_external_confirmation_action():
     response = TestClient(app).get("/static/job_finder_control.js")
 
@@ -512,6 +532,9 @@ def test_control_frontend_exposes_external_confirmation_action():
     assert "Application tabs" in response.text
     assert "Save answers & continue" in response.text
     assert '["captcha", "human_verification", "sign_in"].includes' in response.text
+    assert "state.work_items || state.interventions" in response.text
+    assert "Application layout review" in response.text
+    assert "Retry safely" in response.text
 
 
 def test_unqueued_human_outcome_remains_visible_as_grouped_fallback():

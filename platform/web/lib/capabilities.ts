@@ -1,3 +1,6 @@
+import type { UserTier } from "@/lib/permissions";
+import type { PortalAudience } from "@/lib/portal";
+
 export type CapabilityState = "available" | "read_only" | "locked";
 
 export type CapabilityKey =
@@ -22,6 +25,13 @@ export type CapabilityManifest = {
   developmentOwner: boolean;
   localDemo: boolean;
   authenticatedUser?: boolean;
+  portal: {
+    audience: PortalAudience;
+    role: string;
+    isOfficer: boolean;
+    canViewDiagnostics: boolean;
+    userTier: UserTier;
+  };
   capabilities: Record<CapabilityKey, Capability>;
 };
 
@@ -36,6 +46,11 @@ type CapabilityInputs = {
   resumeArtifactsReady: boolean;
   visualDemo?: boolean;
   localDemo?: boolean;
+  audience?: PortalAudience;
+  role?: string;
+  isOfficer?: boolean;
+  canViewDiagnostics?: boolean;
+  userTier?: UserTier;
 };
 
 const locked = (reason: string, missing: string[] = []): Capability => ({ state: "locked", reason, missing });
@@ -43,6 +58,7 @@ const available = (reason: string): Capability => ({ state: "available", reason,
 const readOnly = (reason: string): Capability => ({ state: "read_only", reason, missing: [] });
 
 export function buildCapabilityManifest(input: CapabilityInputs): CapabilityManifest {
+  const privilegedOperator = input.developmentOwner || input.isOfficer === true;
   const canOwnCareerData = input.developmentOwner || input.authenticatedUser === true;
   const ownerRequired = locked("Available only in the authorized local development session.", ["development owner session"]);
   const connections = canOwnCareerData
@@ -71,14 +87,14 @@ export function buildCapabilityManifest(input: CapabilityInputs): CapabilityMani
     : input.normalizedProfileReady
       ? available("Resume generation may consume the normalized middleman profile.")
       : locked("Run the evidence middleman before generating a resume.", ["middleman-produced user_profile.json"]);
-  const jobDiscovery = !input.developmentOwner
-    ? ownerRequired
-    : input.jobSiteConnected
-      ? available("The verified local job-site browser session is connected.")
-      : input.visualDemo
-        ? readOnly("Prototype opportunities are viewable; live discovery remains locked until a job-site session is verified.")
-      : locked("Open and verify the approved job-site browser session first.", ["verified job-site session"]);
-  const applicationDraft = !input.developmentOwner
+  const jobDiscovery = privilegedOperator && input.jobSiteConnected
+    ? available("The verified local job-site browser session is connected.")
+    : input.visualDemo
+      ? readOnly("Prototype opportunities are viewable; live discovery remains locked until a job-site session is verified.")
+      : !privilegedOperator
+        ? ownerRequired
+        : locked("Open and verify the approved job-site browser session first.", ["verified job-site session"]);
+  const applicationDraft = !privilegedOperator
     ? ownerRequired
     : !input.jobSiteConnected
       ? locked("A verified job-site session is required before application drafting.", ["verified job-site session"])
@@ -89,6 +105,14 @@ export function buildCapabilityManifest(input: CapabilityInputs): CapabilityMani
   return {
     developmentOwner: input.developmentOwner,
     localDemo: input.localDemo === true,
+    authenticatedUser: input.authenticatedUser,
+    portal: {
+      audience: input.audience || "member",
+      role: input.role || "anonymous",
+      isOfficer: input.isOfficer === true,
+      canViewDiagnostics: input.canViewDiagnostics === true,
+      userTier: input.userTier || "general",
+    },
     capabilities: {
       connections,
       evidence_read: evidenceRead,

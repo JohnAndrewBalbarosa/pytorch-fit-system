@@ -32,7 +32,6 @@ export class SupabaseProductRepository implements ProductRepository {
       resumeProfile,
       meta: { source: "live", provider: "supabase", mode: "production", synthetic: false, generatedAt: new Date().toISOString(), label: "Live Supabase data" },
       analytics: payload.analytics || unavailableDashboardAnalytics(),
-      ...(process.env.NODE_ENV === "development" ? { diagnostics: data } : { diagnostics: undefined }),
     };
   }
 }

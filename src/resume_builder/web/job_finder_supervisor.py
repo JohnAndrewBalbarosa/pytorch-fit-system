@@ -235,6 +235,27 @@ def approve_item_review(goal_id: str, task_id: str) -> ApplicationGoal:
     return goal
 
 
+def retry_item(goal_id: str, task_id: str) -> ApplicationGoal:
+    """Return one exact human handoff to the deterministic replay queue."""
+    store = goal_store()
+    item = store.item(goal_id, task_id)
+    if item.state != GoalItemState.HUMAN_HANDOFF:
+        raise ValueError("only a human-handoff item can be retried")
+    store.observe(
+        goal_id,
+        task_id=item.task_id,
+        site=item.site,
+        company=item.company,
+        job_title=item.job_title,
+        state=GoalItemState.OBSERVED,
+        detail="human requested deterministic replay",
+    )
+    goal = store.set_status(goal_id, ApplicationGoalStatus.ACTIVE)
+    if not process_status(goal_id)["running"]:
+        launch_goal(goal_id)
+    return goal
+
+
 def retry_resolved_intervention(application_reference: str) -> str:
     """Return one cleared human-gated goal item to the deterministic replay queue."""
     store = goal_store()

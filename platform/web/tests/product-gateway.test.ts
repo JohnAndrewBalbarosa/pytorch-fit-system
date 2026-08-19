@@ -17,6 +17,8 @@ import { overlayLocalCareerState, readLocalMedia, saveLocalEvidence, saveLocalMe
 import { ensureLocalDemo, readLocalDemoState, updateLocalDemoState } from "../lib/product/local-demo-state";
 import { localDemoStatus, resetLocalDemo } from "../lib/product/local-demo-admin";
 import { configuredProductProvider } from "../lib/product/repository";
+import { developerDiagnostics, isOfficerOnlyProductView, memberSafeProductData } from "../lib/product/diagnostics";
+import { isOfficerOnlyPath, memberDestination } from "../lib/portal";
 
 test("every product view has a complete, labeled visual demo contract", () => {
   for (const view of productViews) {
@@ -34,6 +36,66 @@ test("every product view has a complete, labeled visual demo contract", () => {
     assert.ok(data.analytics);
     assert.equal(data.analytics?.activity.state, "demo");
   }
+});
+
+test("member responses remove officer analytics and all diagnostics", () => {
+  const dashboard = demoProductView("dashboard");
+  const safe = memberSafeProductData("dashboard", {
+    ...dashboard,
+    diagnostics: developerDiagnostics(
+      "dashboard",
+      dashboard,
+      {
+        userId: "officer-1",
+        audience: "officer",
+        role: "admin",
+        isOfficer: true,
+        isAdmin: true,
+        canViewDiagnostics: true,
+        userTier: "admin",
+        localDevelopment: true,
+      },
+      4.2,
+    ),
+  });
+  assert.equal(safe.analytics, undefined);
+  assert.equal(safe.connections, undefined);
+  assert.equal(safe.operations, undefined);
+  assert.equal(safe.recommendations, undefined);
+  assert.equal(safe.diagnostics, undefined);
+  assert.ok(safe.events?.length);
+  assert.ok(safe.opportunities?.length);
+});
+
+test("officer routes, views, and diagnostics are explicit allowlists", () => {
+  assert.equal(isOfficerOnlyPath("/admin"), true);
+  assert.equal(isOfficerOnlyPath("/jobs/automation/run"), true);
+  assert.equal(isOfficerOnlyPath("/jobs/opportunities"), false);
+  assert.equal(memberDestination("/career/advisor"), "/dashboard");
+  assert.equal(memberDestination("/career/evidence"), "/career/evidence");
+  assert.equal(isOfficerOnlyProductView("advisor"), true);
+  assert.equal(isOfficerOnlyProductView("opportunities"), false);
+  const dashboard = demoProductView("dashboard");
+  const diagnostics = developerDiagnostics(
+    "dashboard",
+    dashboard,
+    {
+      userId: "officer-1",
+      audience: "officer",
+      role: "admin",
+      isOfficer: true,
+      isAdmin: true,
+      canViewDiagnostics: true,
+      userTier: "admin",
+      localDevelopment: false,
+    },
+    3.6,
+  );
+  assert.equal(diagnostics.authorization.diagnostics, true);
+  assert.equal(diagnostics.performance.repositoryReadMs, 4);
+  assert.deepEqual(Object.keys(diagnostics.data).sort(), [
+    "generatedAt", "mode", "provider", "source", "synthetic",
+  ]);
 });
 
 test("unavailable analytics preserve every dashboard module without fixture values", () => {

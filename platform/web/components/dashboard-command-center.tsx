@@ -24,6 +24,7 @@ import {
   Zap,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { DeveloperDiagnostics } from "@/components/developer-diagnostics";
 import { useCapabilities } from "@/components/capability-context";
 import { ActivityTrendChart, CareerReadinessDonut, DepartmentLoadChart, SkillRadarChart } from "@/components/charts";
 import { KanbanBoard } from "@/components/kanban-board";
@@ -140,7 +141,7 @@ function DashboardContent() {
     <section className="grid gap-4 xl:grid-cols-[0.82fr_1.18fr]"><Card className="border-white/10 bg-[#141416]"><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="font-bold tracking-[-0.02em] text-[#FFF7ED]">Department load</h2><p className="mt-1 text-sm text-[#FFF7ED]/50">Open work versus approved capacity.</p></div><div className="flex items-center gap-2"><ModuleBadge state={analytics.departments.state} /><ArrowUpRight className="text-[#e8590c]" size={20} /></div></div><DepartmentLoadChart data={analytics.departments.data} state={analytics.departments.state} /></Card><Card className="border-white/10 bg-[#141416]"><div className="mb-3 flex justify-end"><div className="flex items-center gap-2"><ModuleBadge state={analytics.events.state} /><Link className="focus-ring rounded-lg text-xs font-semibold text-[#e8590c]" href="/events">Open events</Link></div></div><KanbanBoard data={analytics.events.data} state={analytics.events.state} /></Card></section>
     <section className="grid gap-4 xl:grid-cols-3"><ApprovalQueue module={analytics.approvals} /><LeaderboardPanel module={analytics.leaderboard} /><Card className="border-white/10 bg-[#141416]"><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="font-bold tracking-[-0.02em] text-[#FFF7ED]">Chapter skill radar</h2><p className="mt-1 text-sm text-[#FFF7ED]/50">Aggregated, anonymous readiness mix.</p></div><Link aria-label="Open career evidence" className="focus-ring rounded-lg text-[#e8590c]" href="/career/evidence"><LockKeyhole size={20} /></Link></div><div className="mb-2"><ModuleBadge state={analytics.skills.state} /></div><SkillRadarChart data={analytics.skills.data} state={analytics.skills.state} /></Card></section>
     <div className="pt-4"><CareerWorkspace data={resolved} /></div>
-    {resolved.diagnostics !== undefined && <details className="rounded-lg border border-white/10 bg-[#141416] p-4"><summary className="cursor-pointer text-sm text-[#FFF7ED]/45">Development diagnostics</summary><pre className="mt-4 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-[#0d0d0d] p-4 font-mono text-xs text-[#FFF7ED]/45">{JSON.stringify(resolved.diagnostics, null, 2)}</pre></details>}
+    <DeveloperDiagnostics data={resolved.diagnostics} />
   </div>;
 }
 

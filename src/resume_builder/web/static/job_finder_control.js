@@ -14,6 +14,8 @@
     ["sign_in", "Sign in required"],
     ["resume_upload", "Resume upload approvals"],
     ["resume_continue", "Resume Continue approvals"],
+    ["layout_review", "Application layout review"],
+    ["submission_review", "Submission confirmation"],
     ["external_application", "External applications"],
     ["other", "Other manual work"],
   ];
@@ -476,6 +478,12 @@
         ? `Candidate scan: ${String(inventory.status).replaceAll("_", " ")} · ${inventorySource} · ${inventory.observed || 0} observed · ${inventory.eligible || 0} eligible · ${inventory.already_applied || 0} already applied · ${inventory.attempted || 0} attempted${appliedSync}${inventory.warning ? ` · ${inventory.warning}` : ""}`
         : "No candidate inventory yet. Open one Indeed search-results tab before scanning.",
     );
+    const planner = state.planner_status || {};
+    setText(
+      "[data-planner-status]",
+      "Dynamic layout planner: " + (planner.status || "configuration deferred")
+        + " · " + (planner.provider || "provider not selected"),
+    );
     const resumeButton = document.querySelector("[data-resume-goal]");
     resumeButton.textContent = goal.status === "waiting_for_candidates"
       ? "Scan current results"
@@ -499,8 +507,9 @@
     );
     renderResumeRoutes(state.resume_catalog || [], state.resume_artifact_directory || "");
     renderAutomatic(state.automatic || []);
-    renderInterventions(state.interventions || []);
-    autoRecheck(state.interventions || []);
+    const workItems = state.work_items || state.interventions || [];
+    renderInterventions(workItems);
+    autoRecheck(workItems);
     renderLivePages(state.live_pages || []);
     const goalItems = state.goal_items || [];
     renderGoalItems(
@@ -508,11 +517,7 @@
       goalItems.filter((item) => !["reserved", "human_handoff"].includes(item.state)),
       goal,
     );
-    renderGoalItems(
-      goalInterventionItemsNode,
-      goalItems.filter((item) => ["reserved", "human_handoff"].includes(item.state)),
-      goal,
-    );
+    goalInterventionItemsNode.replaceChildren();
   }
 
   function renderSalaryAnalytics(goal, items) {
@@ -924,50 +929,59 @@
       item.question_labels.forEach((label) => list.append(element("li", "", label)));
       body.append(list);
     }
+    if (item.layout_fingerprint) {
+      body.append(element("p", "detail", "Layout fingerprint: " + item.layout_fingerprint));
+    }
+    if (item.artifact_path) {
+      body.append(element("p", "detail", "Review artifact: " + item.artifact_path));
+    }
     const actions = element("div", "work-actions");
-    const focus = element("button", "button", item.can_focus ? "Focus tab" : "Reopen in Brave");
-    focus.type = "button";
-    focus.addEventListener("click", () => interventionAction(item.id, item.can_focus ? "focus" : "reopen"));
-    const recheck = element("button", "button ghost", "Recheck");
-    recheck.type = "button";
-    recheck.disabled = !item.can_focus;
-    recheck.addEventListener("click", () => interventionAction(item.id, "recheck"));
-    actions.append(focus);
-    if (item.action === "unknown_question") {
-      const approve = element("button", "button", "Save answers & continue");
-      approve.type = "button";
-      approve.disabled = !item.can_focus;
-      approve.addEventListener("click", () => approveQuestionAnswers(item.id));
-      actions.append(approve);
-    } else if (["resume_upload", "resume_continue"].includes(item.action)) {
-      const approve = element(
-        "button",
-        "button",
-        item.action === "resume_upload" ? "Approve resume upload" : "Approve resume Continue",
-      );
-      approve.type = "button";
-      approve.disabled = !item.can_focus;
-      approve.addEventListener("click", () => approveResumeGate(item.id));
-      actions.append(approve);
-    } else if (item.action === "external_application") {
-      const confirm = element("button", "button", "Confirm submitted");
-      confirm.type = "button";
-      confirm.disabled = !item.company || !item.job_title;
-      confirm.addEventListener("click", async () => {
-        const accepted = window.confirm(
-          `Confirm that you submitted the application for ${item.company} — ${item.job_title}?`,
-        );
-        if (!accepted) return;
-        try {
-          await post(`/api/job-finder/interventions/${encodeURIComponent(item.id)}/confirm-submitted`);
-          showToast("External application confirmed.");
-          refresh();
-        } catch (error) { showToast(error.message); }
-      });
-      actions.append(confirm);
-    } else actions.append(recheck);
+    (item.actions || []).forEach((action) => {
+      const labels = {
+        focus: "Focus tab",
+        reopen: "Reopen in Brave",
+        recheck: "Recheck",
+        approve_question: "Save answers & continue",
+        approve_resume: item.action === "resume_upload" ? "Approve resume upload" : "Approve resume Continue",
+        confirm_external: "Confirm submitted",
+        confirm: "Confirm submitted",
+        review_approve: "Looks right — continue safely",
+        retry: "Retry safely",
+        release: "Skip / Release",
+      };
+      const className = action === "release" ? "button ghost" : "button";
+      const button = element("button", className, labels[action] || action.replaceAll("_", " "));
+      button.type = "button";
+      button.disabled = ["recheck", "approve_question", "approve_resume"].includes(action) && !item.can_focus;
+      button.addEventListener("click", () => workItemAction(item, action));
+      actions.append(button);
+    });
     card.append(body, actions);
     return card;
+  }
+
+  async function workItemAction(item, action) {
+    if (["confirm", "confirm_external"].includes(action)) {
+      const accepted = window.confirm(
+        "Confirm that you submitted the application for " + item.company + " — " + item.job_title + "?",
+      );
+      if (!accepted) return;
+    }
+    if (item.source === "goal") {
+      const goalAction = action === "review_approve" ? "review-approve" : action;
+      await goalItemAction(latestState.goal.id, item.task_id, goalAction);
+      return;
+    }
+    if (action === "approve_question") return approveQuestionAnswers(item.id);
+    if (action === "approve_resume") return approveResumeGate(item.id);
+    const endpointAction = action === "confirm_external" ? "confirm-submitted" : action;
+    try {
+      await post("/api/job-finder/interventions/" + encodeURIComponent(item.id) + "/" + endpointAction);
+      showToast(action === "release"
+        ? "Job skipped and token released."
+        : String(action).replaceAll("_", " ") + " completed.");
+      refresh();
+    } catch (error) { showToast(error.message); }
   }
 
   function autoRecheck(items) {

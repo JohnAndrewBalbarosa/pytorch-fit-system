@@ -148,6 +148,22 @@ export type Connection = {
   detail: string;
 };
 
+export type DeveloperDiagnostics = {
+  schemaVersion: "1";
+  build: { version: string; commit: string };
+  request: { route: string; view: ProductView; audience: "officer" };
+  authorization: { role: string; isOfficer: true; diagnostics: true };
+  data: {
+    provider: ProductProvider;
+    mode: ProductMeta["mode"];
+    source: ProductSource;
+    synthetic: boolean;
+    generatedAt: string;
+  };
+  performance: { repositoryReadMs: number };
+  warnings: string[];
+};
+
 export type ProductViewData = {
   meta: ProductMeta;
   heading: { eyebrow: string; title: string; description: string };
@@ -176,7 +192,7 @@ export type ProductViewData = {
   connections?: Connection[];
   recommendations?: Array<{ title: string; detail: string; evidenceIds: string[] }>;
   analytics?: DashboardAnalytics;
-  diagnostics?: unknown;
+  diagnostics?: DeveloperDiagnostics;
 };
 
 export interface ProductRepository {

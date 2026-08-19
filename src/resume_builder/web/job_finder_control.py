@@ -22,6 +22,7 @@ from ..job_application import (
     VerificationQueueEntry,
     check_access_gate,
 )
+from ..job_application.dynamic_layout_runtime import dynamic_planner_status
 from .auth import IdentityStore, auth_status, clear_social_session, provider_configuration_status
 from .job_finder_supervisor import DEFAULT_ARTIFACT_DIR, DEFAULT_DATABASE
 from .shared_browser import cdp_url, open_tab
@@ -249,6 +250,9 @@ def _instruction(action: InterventionAction) -> str:
         InterventionAction.RESUME_CONTINUE: (
             "Review the uploaded resume preview, then approve Continue."
         ),
+        InterventionAction.LAYOUT_REVIEW: (
+            "Review the captured application layout, then retry when the page is ready."
+        ),
         InterventionAction.EXTERNAL_APPLICATION: "Complete this company-site application manually.",
         InterventionAction.OTHER: "Review the browser page and complete the requested action.",
     }[action]
@@ -320,6 +324,105 @@ def _intervention_key(item: dict[str, Any]) -> str:
     if task_id:
         return f"task:{task_id}"
     return f"entry:{str(item.get('id', '')).strip()}"
+
+
+def _listing_url_for_task(task_id: str) -> str:
+    """Recover only an exact Indeed listing URL from goal/run artifacts."""
+    latest = _latest_run()
+    payloads = [latest] if isinstance(latest, dict) else []
+    candidates = []
+    if DEFAULT_GOAL_ROOT.exists():
+        candidates.extend(DEFAULT_GOAL_ROOT.glob("**/manifest.json"))
+    if DEFAULT_RUN_ROOT.exists():
+        candidates.extend(DEFAULT_RUN_ROOT.glob("**/run.json"))
+    for path in sorted(candidates, key=lambda item: item.stat().st_mtime, reverse=True):
+        try:
+            payloads.append(json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError):
+            continue
+    for payload in payloads:
+        for job in payload.get("jobs", []) if isinstance(payload, dict) else []:
+            if not isinstance(job, dict) or str(job.get("task_id", "")) != task_id:
+                continue
+            candidate = str(job.get("listing_url", ""))
+            parts = urlsplit(candidate)
+            host = (parts.hostname or "").casefold()
+            if (host == "indeed.com" or host.endswith(".indeed.com")) and parts.path == "/viewjob":
+                return candidate
+    return ""
+
+
+def _work_item_actions(item: dict[str, Any]) -> list[str]:
+    if item.get("source") == "goal":
+        if item.get("state") == "reserved":
+            return ["confirm", "release"]
+        if item.get("can_review_in_control_center"):
+            return ["review_approve", "release"]
+        actions = ["reopen", "retry", "release"] if item.get("can_reopen") else ["retry", "release"]
+        return actions
+    action = str(item.get("action", ""))
+    actions = ["focus"] if item.get("can_focus") else []
+    if not actions and action in {"captcha", "human_verification", "sign_in", "layout_review"}:
+        actions.append("reopen")
+    if action in {"captcha", "human_verification", "sign_in"}:
+        actions.append("recheck")
+    elif action == "unknown_question":
+        actions.append("approve_question")
+    elif action in {"resume_upload", "resume_continue"}:
+        actions.append("approve_resume")
+    elif action == "external_application":
+        actions.append("confirm_external")
+    elif action == "layout_review":
+        actions.append("retry")
+    actions.append("release")
+    return list(dict.fromkeys(actions))
+
+
+def _canonical_work_items(
+    pending: list[dict[str, Any]],
+    goal: dict[str, Any],
+    goal_items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return one deduplicated actionable list used by both counts and UI cards."""
+    items: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for entry in pending:
+        payload = {**entry, "source": "queue", "state": "human_handoff"}
+        payload["actions"] = _work_item_actions(payload)
+        key = _intervention_key(payload)
+        if key not in seen:
+            seen.add(key)
+            items.append(payload)
+    if str(goal.get("status", "")) not in _CURRENT_GOAL_STATUSES:
+        return items
+    for goal_item in goal_items:
+        if goal_item.get("state") not in {"reserved", "human_handoff"}:
+            continue
+        payload = {
+            **goal_item,
+            "id": f"goal:{goal_item.get('task_id', '')}",
+            "source": "goal",
+            "application_reference": (
+                f"{goal_item.get('company', '')} — {goal_item.get('job_title', '')}"
+            ),
+            "action": (
+                "submission_review"
+                if goal_item.get("state") == "reserved"
+                else "layout_review"
+                if "unknown" in str(goal_item.get("detail", "")).casefold()
+                else "other"
+            ),
+            "instruction": str(goal_item.get("detail", "human review required")),
+            "can_focus": False,
+            "can_reopen": bool(_listing_url_for_task(str(goal_item.get("task_id", "")))),
+        }
+        key = _intervention_key(payload)
+        if key in seen:
+            continue
+        payload["actions"] = _work_item_actions(payload)
+        seen.add(key)
+        items.append(payload)
+    return items
 
 
 def _current_intervention_count(
@@ -631,7 +734,7 @@ def control_state() -> dict[str, Any]:
     suppressed_references = {
         f"{item.get('company', '')} — {item.get('job_title', '')}" for item in goal_items
     }
-    interventions = [
+    legacy_interventions = [
         *pending,
         *(
             _run_interventions(run, pending, suppressed_references)
@@ -639,6 +742,7 @@ def control_state() -> dict[str, Any]:
             else []
         ),
     ]
+    work_items = _canonical_work_items(pending, goal_payload, goal_items)
     automatic = _automatic_work(run)
     development_requests = DevelopmentQuestionBridge(DEFAULT_DEVELOPMENT_BRIDGE_ROOT).pending()
     automatic.extend(
@@ -665,12 +769,15 @@ def control_state() -> dict[str, Any]:
             "error": run.get("error", ""),
         },
         "automatic": automatic,
-        "interventions": interventions,
+        "interventions": legacy_interventions,
+        "work_items": work_items,
         "live_pages": _live_pages(pending_entries, targets),
         "goal": goal_payload,
         "goal_items": goal_items,
         "resume_catalog": _resume_catalog(),
         "question_bank": _question_bank_state(),
+        "planner_status": dynamic_planner_status(),
+        "search_progress": goal_payload.get("search_inventory", {}),
         "resume_artifact_directory": str(DEFAULT_ARTIFACT_DIR),
         "development_questions": [
             {
@@ -694,17 +801,13 @@ def control_state() -> dict[str, Any]:
         ],
         "counts": {
             "automatic": len(automatic),
-            "interventions": _current_intervention_count(
-                interventions,
-                goal_payload,
-                goal_items,
-            ),
+            "interventions": len(work_items),
             "access_interventions": sum(
                 item.get("action") in {"captcha", "human_verification", "sign_in"}
-                for item in interventions
+                for item in work_items
             ),
             "question_interventions": sum(
-                item.get("action") == "unknown_question" for item in interventions
+                item.get("action") == "unknown_question" for item in work_items
             ),
         },
     }
@@ -773,19 +876,10 @@ def reopen_intervention(entry_id: str) -> dict[str, str]:
         InterventionAction.CAPTCHA,
         InterventionAction.HUMAN_VERIFICATION,
         InterventionAction.SIGN_IN,
+        InterventionAction.LAYOUT_REVIEW,
     }:
-        raise ValueError("only access-verification handoffs can be reopened")
-    recovery_url = ""
-    run = _latest_run()
-    for job in run.get("jobs", []) if isinstance(run, dict) else []:
-        if not isinstance(job, dict) or str(job.get("task_id", "")) != entry.task_id:
-            continue
-        candidate = str(job.get("listing_url", ""))
-        parts = urlsplit(candidate)
-        host = (parts.hostname or "").casefold()
-        if (host == "indeed.com" or host.endswith(".indeed.com")) and parts.path == "/viewjob":
-            recovery_url = candidate
-            break
+        raise ValueError("this handoff cannot be reopened automatically")
+    recovery_url = _listing_url_for_task(entry.task_id)
     if not recovery_url:
         raise ValueError("the exact Indeed listing URL is unavailable for this stale handoff")
     opened = open_browser_url(recovery_url)
@@ -805,6 +899,93 @@ def reopen_intervention(entry_id: str) -> dict[str, str]:
         "target_id": updated.browser_target_id,
         "url": opened["url"],
     }
+
+
+def reopen_goal_item(goal_id: str, task_id: str) -> dict[str, str]:
+    """Create a recoverable queue entry for a stranded goal handoff."""
+    from .job_finder_supervisor import goal_store
+
+    store = goal_store()
+    goal = store.get(goal_id)
+    item = store.item(goal_id, task_id)
+    if item.state.value != "human_handoff":
+        raise ValueError("only a human-handoff goal item can be reopened")
+    recovery_url = _listing_url_for_task(task_id)
+    if not recovery_url:
+        raise ValueError("the exact Indeed listing URL is unavailable")
+    opened = open_browser_url(recovery_url)
+    action = (
+        InterventionAction.LAYOUT_REVIEW
+        if "unknown" in item.detail.casefold()
+        else InterventionAction.HUMAN_VERIFICATION
+    )
+    entry = _queue().enqueue_handoff(
+        application_reference=f"{item.company} — {item.job_title}",
+        url=recovery_url,
+        reason=action.value,
+        browser_target_id=opened["target_id"],
+        action=action,
+        task_id=task_id,
+        company=item.company,
+        job_title=item.job_title,
+        goal_id=goal.id,
+    )
+    return {"entry_id": entry.id, "target_id": opened["target_id"], "url": opened["url"]}
+
+
+def release_intervention(entry_id: str) -> dict[str, object]:
+    """Resolve and release only the goal item represented by one queue entry."""
+    from .job_finder_supervisor import goal_store, release_item
+
+    queue = _queue()
+    entry = queue.get(entry_id)
+    if entry is None:
+        raise KeyError(entry_id)
+    if not entry.goal_id:
+        queue.resolve(entry_id)
+        return {"released": True, "goal_id": "", "task_id": entry.task_id}
+    if not entry.task_id:
+        raise ValueError("this intervention is not attached to an active goal")
+    store = goal_store()
+    goal_id = entry.goal_id
+    try:
+        store.item(goal_id, entry.task_id)
+    except KeyError:
+        active = store.active()
+        if active is None:
+            raise ValueError("this intervention is not attached to an active goal") from None
+        store.item(active.id, entry.task_id)
+        goal_id = active.id
+    goal = release_item(goal_id, entry.task_id)
+    queue.resolve(entry_id)
+    return {"released": True, "goal_id": goal.id, "task_id": entry.task_id}
+
+
+def retry_intervention(entry_id: str) -> dict[str, object]:
+    """Resolve one review handoff and queue its exact goal item for replay."""
+    from .job_finder_supervisor import goal_store, retry_item
+
+    queue = _queue()
+    entry = queue.get(entry_id)
+    if entry is None:
+        raise KeyError(entry_id)
+    if entry.action != InterventionAction.LAYOUT_REVIEW:
+        raise ValueError("only a reviewed layout handoff can use deterministic retry")
+    if not entry.task_id:
+        raise ValueError("this intervention is not attached to an active goal")
+    store = goal_store()
+    goal_id = entry.goal_id
+    try:
+        store.item(goal_id, entry.task_id)
+    except KeyError:
+        active = store.active()
+        if active is None:
+            raise ValueError("this intervention is not attached to an active goal") from None
+        store.item(active.id, entry.task_id)
+        goal_id = active.id
+    goal = retry_item(goal_id, entry.task_id)
+    queue.resolve(entry_id)
+    return {"retried": True, "goal_id": goal.id, "task_id": entry.task_id}
 
 
 def approve_resume_intervention(entry_id: str) -> dict[str, Any]:

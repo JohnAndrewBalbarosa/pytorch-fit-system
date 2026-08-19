@@ -64,6 +64,9 @@ from resume_builder.job_application.indeed_unattended import (  # noqa: E402
     description_is_allowed,
     has_recent_exact_submission,
 )
+from resume_builder.job_application.dynamic_layout_runtime import (  # noqa: E402
+    capture_unknown_application_layout,
+)
 
 _WRITE_LOCK = Lock()
 _APPLY_SELECTORS = (
@@ -929,6 +932,31 @@ def _run_application(
         queue.consume_action(upload_approval.id)
     if continue_approval is not None and "resume:click" in result.actions_executed:
         queue.consume_action(continue_approval.id)
+    if "unknown module" in result.stop_reason.casefold():
+        layout_dir = Path(args.output) / "layouts" / job.task_id
+        layout = capture_unknown_application_layout(
+            application_page,
+            output_dir=layout_dir,
+            cache_dir=ROOT / ".cache" / "application-layout-rules",
+        )
+        queue.enqueue_handoff(
+            application_reference=application_reference,
+            url=str(application_page.url),
+            reason="layout_review",
+            browser_target_id=_browser_target_id(application_page),
+            action=InterventionAction.LAYOUT_REVIEW,
+            task_id=job.task_id,
+            company=job.company,
+            job_title=job.job_title,
+            goal_id=goal_id,
+            resume_file=resume_path.name,
+            layout_fingerprint=str(layout.get("layout_fingerprint", "")),
+            artifact_path=str(layout_dir.relative_to(ROOT)),
+        )
+        result.stop_reason = (
+            "unknown application layout captured; "
+            + str(layout.get("status", "human review required")).replace("_", " ")
+        )
     resume_gate = None
     if "approval required to upload" in result.stop_reason:
         resume_gate = InterventionAction.RESUME_UPLOAD
