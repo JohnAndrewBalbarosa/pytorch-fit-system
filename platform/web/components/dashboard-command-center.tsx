@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   AlertTriangle,
@@ -32,6 +32,7 @@ import { Card } from "@/components/ui/card";
 import type { CapabilityKey } from "@/lib/capabilities";
 import type { AnalyticsState, DashboardAnalytics, ProductViewData } from "@/lib/product/contracts";
 import { unavailableDashboardAnalytics } from "@/lib/product/contracts";
+import { fetchJson, queryKeys } from "@/lib/client-api";
 import { cn, formatRank } from "@/lib/utils";
 
 const metricIcons = [Users, Activity, AlertTriangle, CalendarCheck];
@@ -129,9 +130,9 @@ function fallbackData(): ProductViewData {
 const DASHBOARD_FALLBACK = fallbackData();
 
 function DashboardContent() {
-  const [data, setData] = useState<ProductViewData | null>(null);
-  const [error, setError] = useState("");
-  useEffect(() => { const controller = new AbortController(); void fetch("/api/product/dashboard", { cache: "no-store", signal: controller.signal }).then(async (response) => { const value = await response.json(); if (!response.ok) throw new Error(String(value.error || "Dashboard unavailable.")); setData(value as ProductViewData); }).catch((reason) => { if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(String(reason.message || reason)); }); return () => controller.abort(); }, []);
+  const query = useQuery({ queryKey: queryKeys.product("dashboard"), queryFn: () => fetchJson<ProductViewData>("/api/product/dashboard", { cache: "no-store" }) });
+  const data = query.data || null;
+  const error = query.error instanceof Error ? query.error.message : "";
   const resolved = data || DASHBOARD_FALLBACK;
   const analytics = resolved.analytics || unavailableDashboardAnalytics();
   return <div className="space-y-4"><OperationsHero data={resolved} error={error} loading={!data && !error} /><MetricRibbon module={analytics.metrics} />

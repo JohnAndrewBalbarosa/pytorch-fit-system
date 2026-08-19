@@ -1942,6 +1942,22 @@
       "worst_case": "2026-08-24",
       "assignee": "JohnAndrewBalbarosa",
       "body": "🤖 AI-built this session — needs human review.\n✅ Local development now starts with a persistent, editable SQLite demo containing one primary synthetic career persona and four supporting member states, rich evidence, resumes, opportunities, events, approvals, analytics, and leaderboards.\n✅ Safe simulator actions exercise opportunity progression, review approval, event registration, source sync, deterministic evidence analysis, and DEMO-prefixed exports without contacting external sites or services. A persistent banner identifies synthetic data.\n✅ Supabase remains the production provider and fails closed; production never falls back to synthetic fixtures. The CLI-only reset creates a timestamped backup before reseeding.\nWhere: platform/web/lib/product, platform/web/app/api/product, platform/web/components, platform/web/scripts/demo-data.ts.\nTests: product and capability suites, Supabase contract tests, typecheck, production build, Career Evidence E2E, local demo workflow E2E, and 10-route tour E2E.\n👤 HITL: visually inspect the seeded scenarios, safe-action boundaries, reset behavior, and production-provider isolation before moving to Done."
+    },
+    {
+      "title": "WEB.6 Accessible UI foundation and actual PDF viewer",
+      "stage": "In Review",
+      "role": "Frontend",
+      "group": "Foundation",
+      "department": "Frontend",
+      "hitl": "Yes",
+      "priority": "P1",
+      "estimate": 3,
+      "milestone": "Platform & Intelligence — Wk2",
+      "start": "2026-08-19",
+      "target": "2026-08-19",
+      "worst_case": "2026-08-26",
+      "assignee": "JohnAndrewBalbarosa",
+      "body": "🤖 AI-built this session — needs human review.\n✅ Replaces custom interaction infrastructure with a shadcn-compatible Radix foundation, TanStack Query and Table, React Hook Form plus Zod, shared Recharts wrappers, and Sonner feedback while preserving the established visual language.\n✅ Resume Studio now embeds a dedicated same-origin PDF.js viewer backed by the actual generated PDF. It defaults to whole-page fit, has fit-width, bounded zoom, page navigation, open/download actions, responsive containment, and strict query validation.\n✅ Adds keyboard/focus behavior, automated axe contrast/accessibility coverage, sortable semantic tables, accessible charts, mobile sheets, loading states, and documented component boundaries.\nTests: 15 product, 4 capability, Supabase migration, typecheck, production build, Career Evidence/PDF desktop+mobile E2E, local demo workflow E2E, 10-route tour E2E, Radix/axe UI E2E, and npm audit with zero vulnerabilities.\n👤 HITL: visually review the Resume Studio fit controls, desktop/mobile shell, forms, tables, charts, and keyboard dialog behavior before moving to Done."
     }
   ],
   "date_fields": [

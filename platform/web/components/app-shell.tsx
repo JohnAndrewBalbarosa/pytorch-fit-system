@@ -29,6 +29,8 @@ import { ProductTourController, requestProductTour } from "./product-tour";
 import { SignOutButton } from "./sign-out-button";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
+import { Sheet } from "./ui/sheet";
+import { Progress } from "./ui/progress";
 
 const navItems: Array<{ href: string; label: string; icon: typeof LayoutDashboard; capability?: CapabilityKey }> = [
   { href: "/dashboard", label: "Command Center", icon: LayoutDashboard },
@@ -103,9 +105,7 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
           <p className="font-mono text-[10px] uppercase tracking-widest text-[#FFF7ED]/40">Current cycle</p>
           <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
         </div>
-        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-          <div className="h-full w-[68%] rounded-full bg-[#e8590c]" />
-        </div>
+        <Progress className="h-1.5 bg-white/10" indicatorClassName="bg-[#e8590c]" value={68} />
         <p className="mt-2 text-xs text-[#FFF7ED]/45">Career evidence and application readiness.</p>
       </div>
       <div className="mt-auto rounded-lg border border-white/10 bg-white/[0.035] p-3">
@@ -141,12 +141,7 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
         </Button>
       </header>
       <div className={cn("hidden lg:fixed lg:inset-x-auto lg:bottom-0 lg:left-0 lg:block", manifest.localDemo ? "lg:top-8" : "lg:top-0")}>{sidebar}</div>
-      {open && (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <button aria-label="Close menu backdrop" className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} type="button" />
-          <div className="relative h-full">{sidebar}</div>
-        </div>
-      )}
+      <Sheet onOpenChange={setOpen} open={open}>{sidebar}</Sheet>
       <main className={cn("lg:pl-72", manifest.localDemo && "pt-8")}>
         <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">{children}</div>
       </main>

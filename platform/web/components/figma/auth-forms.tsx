@@ -4,11 +4,13 @@ import type { ComponentType, InputHTMLAttributes } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertCircle, ArrowRight, CheckCircle2, Lock, Mail, User as UserIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { AuthShell } from "./auth-shell";
-import { isSchoolEmail } from "@/lib/permissions";
 import { DevAccess } from "@/components/dev-access";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { loginSchema, registerSchema, type LoginValues, type RegisterValues } from "@/lib/auth-schema";
 
 type FieldProps = InputHTMLAttributes<HTMLInputElement> & {
   icon: ComponentType<{ size?: number; className?: string }>;
@@ -28,58 +30,49 @@ function Field({ icon: Icon, className: _className, ...props }: FieldProps) {
 
 export function LoginForm() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const emailValid = useMemo(() => email.length === 0 || isSchoolEmail(email), [email]);
-  const canSubmit = isSchoolEmail(email) && password.length >= 8;
+  const form = useForm<LoginValues>({ defaultValues: { email: "", password: "", remember: false }, mode: "onChange", resolver: zodResolver(loginSchema) });
+  const email = form.watch("email");
 
   return (
     <AuthShell sub="// sign in" title="Welcome back, builder.">
       <form
         className="space-y-4"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          if (!canSubmit) return;
-          setSubmitting(true);
+        onSubmit={form.handleSubmit(async ({ email: submittedEmail, password }) => {
           setError("");
           try {
             const supabase = createSupabaseBrowserClient();
-            const result = await supabase.auth.signInWithPassword({ email, password });
+            const result = await supabase.auth.signInWithPassword({ email: submittedEmail, password });
             if (result.error) throw result.error;
             router.replace("/dashboard");
             router.refresh();
           } catch (reason) {
             setError(reason instanceof Error ? reason.message : "Sign in failed.");
-          } finally {
-            setSubmitting(false);
           }
-        }}
+        })}
       >
         <Field
-          aria-invalid={!emailValid}
+          aria-invalid={Boolean(form.formState.errors.email)}
           autoComplete="email"
           icon={Mail}
-          onChange={(event) => setEmail(event.target.value)}
           placeholder="you@fit.edu.ph"
           required
           type="email"
-          value={email}
+          {...form.register("email")}
         />
-        {!emailValid && <p className="text-xs text-[#e8590c]">Use @fit.edu.ph or @feutech.edu.ph.</p>}
+        {email && form.formState.errors.email && <p className="text-xs text-[#e8590c]">{form.formState.errors.email.message}</p>}
         <Field
           autoComplete="current-password"
           icon={Lock}
-          onChange={(event) => setPassword(event.target.value)}
           placeholder="Password"
           required
           type="password"
-          value={password}
+          {...form.register("password")}
         />
+        {form.formState.errors.password && <p className="text-xs text-[#e8590c]">{form.formState.errors.password.message}</p>}
         <div className="flex items-center justify-between text-sm">
           <label className="flex items-center gap-2 text-[#FFF7ED]/60">
-            <input className="accent-[#e8590c]" type="checkbox" />
+            <input className="accent-[#e8590c]" type="checkbox" {...form.register("remember")} />
             Remember device
           </label>
           <a className="text-[#e8590c] hover:underline" href="#">Forgot?</a>
@@ -87,10 +80,10 @@ export function LoginForm() {
         {error && <div className="flex items-start gap-2 rounded-lg border border-[#e8590c]/30 bg-[#e8590c]/10 p-3 text-xs text-[#e8590c]"><AlertCircle className="mt-0.5 flex-none" size={14} />{error}</div>}
         <button
           className="focus-ring flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#e8590c] to-[#ff7a2d] py-3 text-white shadow-lg shadow-[#e8590c]/30 transition-all duration-300 hover:shadow-[#e8590c]/50 disabled:cursor-not-allowed disabled:opacity-55"
-          disabled={!canSubmit || submitting}
+          disabled={!form.formState.isValid || form.formState.isSubmitting}
           type="submit"
         >
-          {submitting ? "Signing in…" : "Sign in"} <ArrowRight size={15} />
+          {form.formState.isSubmitting ? "Signing in…" : "Sign in"} <ArrowRight size={15} />
         </button>
       </form>
       <div className="mt-8 text-center text-sm text-[#FFF7ED]/50">
@@ -103,35 +96,20 @@ export function LoginForm() {
 
 export function RegisterForm() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
-  const [name, setName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const emailValid = isSchoolEmail(email);
-  const passwordValid = password.length >= 8;
-  const confirmValid = confirm.length === 0 || confirm === password;
-  const canSubmit = name.trim().length >= 2 && emailValid && passwordValid && confirm === password;
+  const form = useForm<RegisterValues>({ defaultValues: { name: "", email: "", password: "", confirm: "", terms: false }, mode: "onChange", resolver: zodResolver(registerSchema) });
+  const email = form.watch("email");
+  const emailValid = email.length > 0 && !form.formState.errors.email;
 
   return (
     <AuthShell sub="// create account" title="Join PyTorch.FIT.">
       <form
         className="space-y-4"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          if (!emailValid) {
-            setError("Registration requires @fit.edu.ph or @feutech.edu.ph.");
-            return;
-          }
-          if (!passwordValid || confirm !== password) {
-            setError("Password must be 8+ characters and match confirmation.");
-            return;
-          }
-          setSubmitting(true);
+        onSubmit={form.handleSubmit(async ({ email: submittedEmail, name, password }) => {
+          setError("");
           try {
             const supabase = createSupabaseBrowserClient();
-            const result = await supabase.auth.signUp({ email, password, options: { data: { display_name: name.trim() } } });
+            const result = await supabase.auth.signUp({ email: submittedEmail, password, options: { data: { display_name: name.trim() } } });
             if (result.error) throw result.error;
             if (result.data.session) {
               router.replace("/dashboard");
@@ -141,24 +119,19 @@ export function RegisterForm() {
             }
           } catch (reason) {
             setError(reason instanceof Error ? reason.message : "Registration failed.");
-          } finally {
-            setSubmitting(false);
           }
-        }}
+        })}
       >
-        <Field autoComplete="name" icon={UserIcon} onChange={(event) => setName(event.target.value)} placeholder="Full name" required value={name} />
+        <Field autoComplete="name" icon={UserIcon} placeholder="Full name" required {...form.register("name")} />
+        {form.formState.errors.name && <p className="text-xs text-[#e8590c]">{form.formState.errors.name.message}</p>}
         <Field
-          aria-invalid={email.length > 0 && !emailValid}
+          aria-invalid={Boolean(email && form.formState.errors.email)}
           autoComplete="email"
           icon={Mail}
-          onChange={(event) => {
-            setEmail(event.target.value);
-            setError("");
-          }}
           placeholder="you@fit.edu.ph"
           required
           type="email"
-          value={email}
+          {...form.register("email", { onChange: () => setError("") })}
         />
         {email && (
           <div className={`flex items-center gap-2 font-mono text-xs ${emailValid ? "text-green-400" : "text-[#e8590c]"}`}>
@@ -169,23 +142,21 @@ export function RegisterForm() {
         <Field
           autoComplete="new-password"
           icon={Lock}
-          onChange={(event) => setPassword(event.target.value)}
           placeholder="Password"
           required
           type="password"
-          value={password}
+          {...form.register("password")}
         />
         <Field
-          aria-invalid={!confirmValid}
+          aria-invalid={Boolean(form.formState.errors.confirm)}
           autoComplete="new-password"
           icon={Lock}
-          onChange={(event) => setConfirm(event.target.value)}
           placeholder="Confirm password"
           required
           type="password"
-          value={confirm}
+          {...form.register("confirm")}
         />
-        {!confirmValid && <p className="text-xs text-[#e8590c]">Passwords must match.</p>}
+        {form.formState.errors.confirm && <p className="text-xs text-[#e8590c]">{form.formState.errors.confirm.message}</p>}
         {error && (
           <div className="flex items-start gap-2 rounded-lg border border-[#e8590c]/30 bg-[#e8590c]/10 p-3 text-xs text-[#e8590c]">
             <AlertCircle className="mt-0.5 flex-none" size={14} />
@@ -193,15 +164,15 @@ export function RegisterForm() {
           </div>
         )}
         <label className="flex items-start gap-2 text-xs leading-5 text-[#FFF7ED]/50">
-          <input className="mt-0.5 accent-[#e8590c]" required type="checkbox" />
+          <input className="mt-0.5 accent-[#e8590c]" required type="checkbox" {...form.register("terms")} />
           I agree to FEU Tech community guidelines and consent to role-based visibility gates in this prototype.
         </label>
         <button
           className="focus-ring flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#e8590c] to-[#ff7a2d] py-3 text-white shadow-lg shadow-[#e8590c]/30 transition-all duration-300 hover:shadow-[#e8590c]/50 disabled:cursor-not-allowed disabled:opacity-55"
-          disabled={!canSubmit || submitting}
+          disabled={!form.formState.isValid || form.formState.isSubmitting}
           type="submit"
         >
-          {submitting ? "Creating account…" : "Create account"} <ArrowRight size={15} />
+          {form.formState.isSubmitting ? "Creating account…" : "Create account"} <ArrowRight size={15} />
         </button>
       </form>
       <div className="mt-8 text-center text-sm text-[#FFF7ED]/50">

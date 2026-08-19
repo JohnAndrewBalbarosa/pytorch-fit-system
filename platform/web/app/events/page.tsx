@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Bell, CalendarDays, Crown, Users } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { SegmentedTabs } from "@/components/ui/tabs";
 import type { ProductViewData } from "@/lib/product/contracts";
 import { hasPriorityEnrollment, type UserTier } from "@/lib/permissions";
+import { fetchJson, queryKeys } from "@/lib/client-api";
 
 const roleTabs = [
   { value: "general", label: "General" },
@@ -19,14 +22,16 @@ const roleTabs = [
 
 export default function EventsPage() {
   const [tier, setTier] = useState<UserTier>("active");
-  const [data, setData] = useState<ProductViewData | null>(null);
+  const queryClient = useQueryClient();
+  const dashboard = useQuery({ queryKey: queryKeys.product("dashboard"), queryFn: () => fetchJson<ProductViewData>("/api/product/dashboard", { cache: "no-store" }) });
+  const data = dashboard.data || null;
   const priority = hasPriorityEnrollment(tier);
-  useEffect(() => { void fetch("/api/product/dashboard", { cache: "no-store" }).then((response) => response.json()).then(setData); }, []);
   const events = data?.events || [];
-  const toggle = async (id: string) => {
-    const response = await fetch("/api/product/demo-action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "toggle_event", id }) });
-    if (response.ok) setData(await fetch("/api/product/dashboard", { cache: "no-store" }).then((result) => result.json()));
-  };
+  const toggle = useMutation({
+    mutationFn: (id: string) => fetchJson("/api/product/demo-action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "toggle_event", id }) }),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: queryKeys.product("dashboard") }); toast.success("Synthetic event registration updated."); },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Event update failed."),
+  });
 
   return (
     <AppShell>
@@ -66,7 +71,7 @@ export default function EventsPage() {
                 {event.seats}
               </div>
             </div>
-            {data?.meta.mode === "local_demo" && <Button className="mt-4 w-full" onClick={() => void toggle(event.id)} size="sm" variant={event.registered ? "secondary" : "primary"}>{event.registered ? "Leave synthetic event" : "Join synthetic event"}</Button>}
+            {data?.meta.mode === "local_demo" && <Button className="mt-4 w-full" disabled={toggle.isPending} onClick={() => toggle.mutate(event.id)} size="sm" variant={event.registered ? "secondary" : "primary"}>{event.registered ? "Leave synthetic event" : "Join synthetic event"}</Button>}
           </Card>
         ))}
       </section>

@@ -3,11 +3,12 @@ import { currentProductUserId } from "@/lib/auth/current-user";
 import { demoProductView } from "@/lib/product/demo";
 import { configuredProductProvider } from "@/lib/product/repository";
 import { updateLocalDemoState } from "@/lib/product/local-demo-state";
+import { z } from "zod";
 
-type RequestBody = {
-  action?: "advance_opportunity" | "approve_review" | "toggle_event";
-  id?: string;
-};
+const requestSchema = z.object({
+  action: z.enum(["advance_opportunity", "approve_review", "toggle_event"]),
+  id: z.string().trim().min(1).max(120),
+}).strict();
 
 const stages = ["discovered", "drafted", "human_review", "demo_confirmed"];
 
@@ -17,10 +18,9 @@ export async function POST(request: Request) {
   }
   const userId = await currentProductUserId();
   if (!userId) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-  const body = await request.json().catch(() => ({})) as RequestBody;
-  if (!body.action || !body.id) return NextResponse.json({ error: "A demo action and record ID are required." }, { status: 400 });
-  const action = body.action;
-  const id = body.id;
+  const parsed = requestSchema.safeParse(await request.json().catch(() => ({})));
+  if (!parsed.success) return NextResponse.json({ error: "A supported demo action and record ID are required." }, { status: 400 });
+  const { action, id } = parsed.data;
   const fixture = demoProductView("dashboard");
 
   try {

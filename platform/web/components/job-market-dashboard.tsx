@@ -1,41 +1,31 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertTriangle, BarChart3, CheckCircle2, Database, Globe2, LockKeyhole } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import type { JobMarketSummary, WorkMode } from "@/lib/job-market";
+import type { JobMarketSummary } from "@/lib/job-market";
+import { fetchJson, queryKeys } from "@/lib/client-api";
+import { jobMarketFilterSchema, type JobMarketFilters } from "@/lib/job-market-schema";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const countries = ["Philippines", "Australia", "Canada", "Singapore", "United Kingdom", "United States"];
 
 export function JobMarketDashboard() {
-  const [country, setCountry] = useState("Philippines");
-  const [compareCountry, setCompareCountry] = useState("");
-  const [role, setRole] = useState("software");
-  const [mode, setMode] = useState<WorkMode>("any");
-  const [data, setData] = useState<JobMarketSummary | null>(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const { register, watch } = useForm<JobMarketFilters>({ resolver: zodResolver(jobMarketFilterSchema), defaultValues: { country: "Philippines", compareCountry: "", role: "software", mode: "any" } });
+  const [country, compareCountry, role, mode] = watch(["country", "compareCountry", "role", "mode"]);
   const selectedCountries = useMemo(() => [country, compareCountry].filter(Boolean), [country, compareCountry]);
   const query = useMemo(() => new URLSearchParams({ countries: selectedCountries.join(","), role_family: role, work_mode: mode, days: "90" }), [selectedCountries, role, mode]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setError("");
-    void fetch(`/api/job-market/summary?${query}`, { signal: controller.signal })
-      .then(async (response) => { const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Job-market data is unavailable."); return payload; })
-      .then(setData)
-      .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) setError(error instanceof Error ? error.message : "Job-market data is unavailable.");
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [query]);
+  const market = useQuery({ queryKey: queryKeys.jobMarket(query.toString()), queryFn: () => fetchJson<JobMarketSummary>(`/api/job-market/summary?${query}`), placeholderData: (previous) => previous });
+  const data = market.data || null;
+  const error = market.error instanceof Error ? market.error.message : "";
+  const loading = market.isFetching;
 
   return (
     <AppShell>
@@ -55,10 +45,10 @@ export function JobMarketDashboard() {
 
       <Card className="mb-4 bg-surface" data-tour="analytics-filters">
         <div className="grid gap-3 md:grid-cols-4">
-          <label className="text-sm text-muted">Country<select className="mt-2 w-full rounded-lg border border-border bg-elevated p-2.5 text-ink" value={country} onChange={(e) => setCountry(e.target.value)}>{countries.map((value) => <option key={value}>{value}</option>)}</select></label>
-          <label className="text-sm text-muted">Compare with<select className="mt-2 w-full rounded-lg border border-border bg-elevated p-2.5 text-ink" value={compareCountry} onChange={(e) => setCompareCountry(e.target.value)}><option value="">No comparison</option>{countries.filter((value) => value !== country).map((value) => <option key={value}>{value}</option>)}</select></label>
-          <label className="text-sm text-muted">Role family<input className="mt-2 w-full rounded-lg border border-border bg-elevated p-2.5 text-ink" value={role} onChange={(e) => setRole(e.target.value)} /></label>
-          <label className="text-sm text-muted">Work mode<select className="mt-2 w-full rounded-lg border border-border bg-elevated p-2.5 text-ink" value={mode} onChange={(e) => setMode(e.target.value as WorkMode)}>{["any", "remote", "hybrid", "onsite"].map((value) => <option key={value}>{value}</option>)}</select></label>
+          <label className="text-sm text-muted">Country<select className="mt-2 w-full rounded-lg border border-border bg-elevated p-2.5 text-ink" {...register("country")}>{countries.map((value) => <option key={value}>{value}</option>)}</select></label>
+          <label className="text-sm text-muted">Compare with<select className="mt-2 w-full rounded-lg border border-border bg-elevated p-2.5 text-ink" {...register("compareCountry")}><option value="">No comparison</option>{countries.filter((value) => value !== country).map((value) => <option key={value}>{value}</option>)}</select></label>
+          <label className="text-sm text-muted">Role family<Input className="mt-2" {...register("role")} /></label>
+          <label className="text-sm text-muted">Work mode<select className="mt-2 w-full rounded-lg border border-border bg-elevated p-2.5 text-ink" {...register("mode")}>{["any", "remote", "hybrid", "onsite"].map((value) => <option key={value}>{value}</option>)}</select></label>
         </div>
         <p className="mt-3 flex items-center gap-2 text-xs text-muted"><LockKeyhole size={13} />Filters query existing snapshots only. Refresh and import run through controlled backend ingestion.</p>
       </Card>
@@ -79,7 +69,7 @@ export function JobMarketDashboard() {
           </Card>
           <Card className="bg-surface">
             <CardHeader><div><CardTitle>Entry-level skill demand</CardTitle><CardDescription>Posting frequency; orange marks current verified evidence.</CardDescription></div><BarChart3 className="text-accent" size={20} /></CardHeader>
-            <div className="h-80"><ResponsiveContainer width="100%" height="100%"><BarChart data={data.skill_demand} layout="vertical" margin={{ left: 20 }}><CartesianGrid stroke="var(--border)" horizontal={false} /><XAxis type="number" stroke="var(--muted)" /><YAxis dataKey="skill" type="category" width={90} stroke="var(--muted)" /><Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)" }} /><Bar dataKey="postings" fill="#e8590c" radius={[0, 5, 5, 0]} /></BarChart></ResponsiveContainer></div>
+            <div className="h-80"><ResponsiveContainer width="100%" height="100%"><BarChart accessibilityLayer data={data.skill_demand} layout="vertical" margin={{ left: 20 }}><CartesianGrid stroke="var(--border)" horizontal={false} /><XAxis type="number" stroke="var(--muted)" /><YAxis dataKey="skill" type="category" width={90} stroke="var(--muted)" /><Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)" }} /><Bar dataKey="postings" fill="#e8590c" radius={[0, 5, 5, 0]} /></BarChart></ResponsiveContainer></div>
           </Card>
           <Card className="bg-surface">
             <CardHeader><div><CardTitle>Degree and experience barriers</CardTitle><CardDescription>Percent of the selected posting sample.</CardDescription></div><AlertTriangle className="text-accent" size={20} /></CardHeader>
@@ -93,7 +83,7 @@ export function JobMarketDashboard() {
         </section>
 
         <section className="mt-4 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-          <Card className="bg-surface"><CardHeader><div><CardTitle>Geography and work mode</CardTitle><CardDescription>Ratios remain scoped to each observed country label.</CardDescription></div><Globe2 className="text-accent" size={20} /></CardHeader><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-muted"><tr><th className="pb-3">Country / eligibility</th><th className="pb-3">Mode</th><th className="pb-3">Count</th><th className="pb-3">Ratio</th></tr></thead><tbody>{data.geography_ratios.map((item) => <tr className="border-t border-border" key={`${item.country}-${item.mode}`}><td className="py-3">{item.country}</td><td className="capitalize">{item.mode}</td><td>{item.count}</td><td>{item.percent}%</td></tr>)}</tbody></table></div></Card>
+          <Card className="bg-surface"><CardHeader><div><CardTitle>Geography and work mode</CardTitle><CardDescription>Ratios remain scoped to each observed country label.</CardDescription></div><Globe2 className="text-accent" size={20} /></CardHeader><Table><TableHeader><TableRow><TableHead>Country / eligibility</TableHead><TableHead>Mode</TableHead><TableHead>Count</TableHead><TableHead>Ratio</TableHead></TableRow></TableHeader><TableBody>{data.geography_ratios.map((item) => <TableRow key={`${item.country}-${item.mode}`}><TableCell>{item.country}</TableCell><TableCell className="capitalize">{item.mode}</TableCell><TableCell>{item.count}</TableCell><TableCell>{item.percent}%</TableCell></TableRow>)}</TableBody></Table></Card>
           <Card className="bg-elevated" data-tour="analytics-evidence"><CardHeader><div><CardTitle>Evidence comparison</CardTitle><CardDescription>Only normalized, evidenced skills are marked present.</CardDescription></div></CardHeader><div className="space-y-2">{data.skill_demand.map((item) => <div className="flex items-center justify-between rounded-lg border border-border bg-surface p-3" key={item.skill}><span>{item.skill}</span>{item.evidenced ? <Badge variant="success"><CheckCircle2 size={13} /> Evidenced</Badge> : <Badge>Gap to review</Badge>}</div>)}</div></Card>
         </section>
 

@@ -48,3 +48,22 @@ the developer token server-side.
 - `/developer/*` visualizers remain separate development aids and are never embedded as product UI.
 - Job analytics labels live, cached, and synthetic data distinctly and always exposes provenance,
   geography, freshness, unknown coverage, and sample size.
+
+## UI foundation
+
+The frontend uses documented, composable libraries instead of maintaining custom interaction
+infrastructure:
+
+- shadcn-compatible components in `components/ui/`, backed by Radix primitives for dialogs,
+  sheets, tabs, tooltips, progress, focus handling, portals, and keyboard behavior.
+- TanStack Query for server-state caching and mutation invalidation; local display state remains in
+  React components.
+- React Hook Form plus Zod for form state and validation, TanStack Table for sortable data grids,
+  Recharts through the shared chart wrapper, and Sonner for action feedback.
+- PDF.js for the same-origin resume viewer. It opens in whole-page fit, supports fit-width and
+  bounded zoom, and exposes separate open/download actions. The preview route returns the actual
+  generated PDF rather than an HTML imitation.
+
+Use `components.json` when adding shadcn components, preserve the existing design tokens, and put
+product-specific composition outside `components/ui/`. Run `npm run test:ui:e2e` for the Radix
+dialog keyboard and automated accessibility smoke test.

@@ -106,6 +106,11 @@ export async function resumePdfPageCount(profile: ResumeProfile, templateId: Res
   return pdf.getNumberOfPages();
 }
 
+export async function resumePdfBytes(profile: ResumeProfile, templateId: ResumeTemplateId) {
+  const pdf = await createResumePdf(profile, templateId);
+  return new Uint8Array(pdf.output("arraybuffer"));
+}
+
 export async function downloadPdf(profile: ResumeProfile, templateId: ResumeTemplateId, demo = false) {
   const pdf = await createResumePdf(profile, templateId);
   pdf.save(exportName(templateId, "pdf", demo));

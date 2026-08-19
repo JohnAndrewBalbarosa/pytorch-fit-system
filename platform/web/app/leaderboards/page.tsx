@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { createColumnHelper, createSortedRowModel, rowSortingFeature, tableFeatures, useTable } from "@tanstack/react-table";
 import { ArrowDownUp, Trophy } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { SegmentedTabs } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { LeaderboardEntry, ProductViewData } from "@/lib/product/contracts";
 import { formatRank } from "@/lib/utils";
+import { fetchJson, queryKeys } from "@/lib/client-api";
 
 type Board = "global" | "cv" | "dl";
 
@@ -17,15 +21,24 @@ const tabs = [
   { value: "dl", label: "Deep Learning Peer Leaders" }
 ] satisfies Array<{ value: Board; label: string }>;
 
+const leaderboardFeatures = tableFeatures({ rowSortingFeature, sortedRowModel: createSortedRowModel() });
+const columnHelper = createColumnHelper<typeof leaderboardFeatures, LeaderboardEntry>();
+const leaderboardColumns = columnHelper.columns([
+  columnHelper.accessor("rank", { header: "Rank" }), columnHelper.accessor("name", { header: "Member" }), columnHelper.accessor("track", { header: "Track" }),
+  columnHelper.accessor("points", { header: "Points" }), columnHelper.accessor("streak", { header: "Streak" }), columnHelper.accessor("badges", { header: "Skill badges" }),
+]);
+const EMPTY_LEADERBOARD: LeaderboardEntry[] = [];
+
 export default function LeaderboardsPage() {
   const [board, setBoard] = useState<Board>("global");
-  const [leaderboardRows, setLeaderboardRows] = useState<LeaderboardEntry[]>([]);
-  useEffect(() => { void fetch("/api/product/dashboard", { cache: "no-store" }).then((response) => response.json()).then((data: ProductViewData) => setLeaderboardRows(data.leaderboard || [])); }, []);
+  const dashboard = useQuery({ queryKey: queryKeys.product("dashboard"), queryFn: () => fetchJson<ProductViewData>("/api/product/dashboard", { cache: "no-store" }) });
+  const leaderboardRows = dashboard.data?.leaderboard || EMPTY_LEADERBOARD;
   const rows = useMemo(() => {
     if (board === "cv") return leaderboardRows.filter((row) => row.track.includes("Vision"));
     if (board === "dl") return leaderboardRows.filter((row) => row.track.includes("Deep"));
     return leaderboardRows;
   }, [board, leaderboardRows]);
+  const table = useTable({ columns: leaderboardColumns, data: rows, features: leaderboardFeatures, initialState: { sorting: [{ id: "points", desc: true }] } });
 
   return (
     <AppShell>
@@ -49,36 +62,27 @@ export default function LeaderboardsPage() {
           </Badge>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] border-collapse text-left text-sm">
-            <thead className="bg-elevated text-muted">
-              <tr>
-                <th className="px-4 py-3 font-semibold">Rank</th>
-                <th className="px-4 py-3 font-semibold">Member</th>
-                <th className="px-4 py-3 font-semibold">Track</th>
-                <th className="px-4 py-3 font-semibold">Points</th>
-                <th className="px-4 py-3 font-semibold">Streak</th>
-                <th className="px-4 py-3 font-semibold">Skill badges</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr className={`border-t border-border transition-all duration-300 ease-in-out hover:bg-elevated ${row.currentUser ? "bg-accentSoft" : ""}`} key={row.name}>
-                  <td className="data-label px-4 py-3 text-accent">{formatRank(row.rank)}</td>
-                  <td className="px-4 py-3 font-semibold">{row.name}</td>
-                  <td className="px-4 py-3 text-muted">{row.track}</td>
-                  <td className="data-label px-4 py-3">{row.points.toLocaleString()}</td>
-                  <td className="px-4 py-3">{row.streak} events</td>
-                  <td className="px-4 py-3">
+          <Table className="min-w-[760px]">
+            <TableHeader><TableRow>{table.getHeaderGroups()[0].headers.map((header) => <TableHead key={header.id}>{String(header.column.columnDef.header)}</TableHead>)}</TableRow></TableHeader>
+            <TableBody>
+              {table.getRowModel().rows.map(({ original: row }) => (
+                <TableRow className={row.currentUser ? "bg-accentSoft" : ""} key={row.name}>
+                  <TableCell className="data-label text-accent">{formatRank(row.rank)}</TableCell>
+                  <TableCell className="font-semibold">{row.name}</TableCell>
+                  <TableCell className="text-muted">{row.track}</TableCell>
+                  <TableCell className="data-label">{row.points.toLocaleString()}</TableCell>
+                  <TableCell>{row.streak} events</TableCell>
+                  <TableCell>
                     <div className="flex flex-wrap gap-2">
                       {row.badges.map((badge) => (
                         <Badge key={badge}>{badge}</Badge>
                       ))}
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </Card>
     </AppShell>

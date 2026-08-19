@@ -5,9 +5,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { buildCapabilityManifest } from "../lib/capabilities";
+import { loginSchema, registerSchema } from "../lib/auth-schema";
+import { evidenceFormSchema } from "../lib/product/evidence-schema";
 import { demoPersonas, demoProductView } from "../lib/product/demo";
 import { productViews, unavailableDashboardAnalytics } from "../lib/product/contracts";
-import { resumeHtml, resumePdfPageCount, resumeTemplates } from "../lib/product/resume-exports";
+import { resumeHtml, resumePdfBytes, resumePdfPageCount, resumeTemplates } from "../lib/product/resume-exports";
+import { resumePreviewQuerySchema, resumeTemplateSchema } from "../lib/product/resume-schema";
+import { jobMarketFilterSchema } from "../lib/job-market-schema";
 import { parseEvidenceProposalResponse } from "../lib/product/evidence-ai";
 import { overlayLocalCareerState, readLocalMedia, saveLocalEvidence, saveLocalMedia, saveLocalSourceState } from "../lib/product/local-career-store";
 import { ensureLocalDemo, readLocalDemoState, updateLocalDemoState } from "../lib/product/local-demo-state";
@@ -137,7 +141,26 @@ test("all resume templates render and measure the same ATS-readable normalized s
     assert.match(html, /PyTorch/);
     assert.doesNotMatch(html, /grid-template-columns|<table|<img/);
     assert.ok(await resumePdfPageCount(profile!, template.id) >= 1);
+    const bytes = await resumePdfBytes(profile!, template.id);
+    assert.equal(new TextDecoder().decode(bytes.slice(0, 4)), "%PDF");
   }
+});
+
+test("document and filter schemas reject unsupported or unbounded viewer input", () => {
+  assert.equal(resumeTemplateSchema.safeParse("classic").success, true);
+  assert.equal(resumeTemplateSchema.safeParse("https://remote.example/resume.pdf").success, false);
+  assert.deepEqual(resumePreviewQuerySchema.parse({ template: "modern" }), { template: "modern", disposition: "inline" });
+  assert.equal(resumePreviewQuerySchema.safeParse({ template: "classic", disposition: "popup" }).success, false);
+  assert.equal(jobMarketFilterSchema.safeParse({ country: "Philippines", compareCountry: "", role: "software", mode: "remote" }).success, true);
+  assert.equal(jobMarketFilterSchema.safeParse({ country: "P", compareCountry: "", role: "", mode: "worldwide" }).success, false);
+});
+
+test("user-facing forms share strict schemas for authentication and evidence", () => {
+  assert.equal(loginSchema.safeParse({ email: "owner@fit.edu.ph", password: "valid-passphrase", remember: false }).success, true);
+  assert.equal(loginSchema.safeParse({ email: "not-an-email", password: "short", remember: false }).success, false);
+  assert.equal(registerSchema.safeParse({ name: "Demo Owner", email: "owner@fit.edu.ph", password: "valid-passphrase", confirm: "different-passphrase", terms: true }).success, false);
+  assert.equal(evidenceFormSchema.safeParse({ title: "Hackathon winner", organization: "FEU Tech", role: "Lead", dateLabel: "2026", description: "Built a measured working prototype.", skillsText: "PyTorch, FastAPI" }).success, true);
+  assert.equal(evidenceFormSchema.safeParse({ title: "", organization: "", role: "", dateLabel: "", description: "guessed", skillsText: "" }).success, false);
 });
 
 test("local career commands survive a new repository read", () => {

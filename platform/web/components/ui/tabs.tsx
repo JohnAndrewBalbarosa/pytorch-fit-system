@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { Tabs } from "radix-ui";
 import { cn } from "@/lib/utils";
 
 export function SegmentedTabs<T extends string>({
@@ -13,21 +14,22 @@ export function SegmentedTabs<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <div className="inline-flex max-w-full gap-1 rounded-full border border-border bg-elevated p-1">
+    <Tabs.Root onValueChange={(next) => onChange(next as T)} value={value}>
+      <Tabs.List className="inline-flex max-w-full gap-1 rounded-full border border-border bg-elevated p-1">
       {items.map((item) => (
-        <button
+        <Tabs.Trigger
           key={item.value}
-          onClick={() => onChange(item.value)}
           className={cn(
             "focus-ring h-8 rounded-full px-3 text-sm font-semibold transition-all duration-300 ease-in-out",
             value === item.value ? "bg-accent text-white" : "text-muted hover:text-ink"
           )}
-          type="button"
+          value={item.value}
         >
           {item.label}
-        </button>
+        </Tabs.Trigger>
       ))}
-    </div>
+      </Tabs.List>
+    </Tabs.Root>
   );
 }
 

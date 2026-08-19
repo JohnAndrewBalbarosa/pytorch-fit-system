@@ -22,6 +22,9 @@ import {
 } from "recharts";
 import { activityTrend, barSkills, departmentLoad, skillRadar } from "@/lib/mock-data";
 import type { AnalyticsState } from "@/lib/product/contracts";
+import { ChartContainer } from "@/components/ui/chart";
+
+const chartConfig = { primary: { label: "Primary series", color: "var(--accent)" }, secondary: { label: "Secondary series", color: "var(--info)" } };
 
 const tooltipStyle = {
   background: "var(--surface)",
@@ -42,42 +45,42 @@ const emptyDepartments = ["Academics", "Engineering", "External", "Research", "C
 export function SkillRadarChart({ data = skillRadar, state }: { data?: Array<{ skill: string; score: number | null }>; state?: AnalyticsState } = {}) {
   const chartData = data.length ? data : emptySkills;
   return (
-    <div className="relative h-72 w-full">
+    <ChartContainer aria-label="Skill readiness radar chart" className="h-72" config={chartConfig}>
       <Watermark state={state} />
       <ResponsiveContainer>
-        <RadarChart data={chartData}>
+        <RadarChart accessibilityLayer data={chartData}>
           <PolarGrid stroke="rgba(122,139,158,0.35)" />
           <PolarAngleAxis dataKey="skill" tick={{ fill: "var(--muted)", fontSize: 12 }} />
           <Radar dataKey="score" fill="var(--accent)" fillOpacity={0.28} stroke="var(--accent)" strokeWidth={2} />
           <Tooltip contentStyle={tooltipStyle} />
         </RadarChart>
       </ResponsiveContainer>
-    </div>
+    </ChartContainer>
   );
 }
 
 export function SkillBarChart() {
   return (
-    <div className="h-64 w-full">
+    <ChartContainer aria-label="Skill score bar chart" className="h-64" config={chartConfig}>
       <ResponsiveContainer>
-        <BarChart data={barSkills}>
+        <BarChart accessibilityLayer data={barSkills}>
           <XAxis dataKey="name" tick={{ fill: "var(--muted)", fontSize: 12 }} />
           <YAxis tick={{ fill: "var(--muted)", fontSize: 12 }} />
           <Tooltip contentStyle={tooltipStyle} />
           <Bar dataKey="value" fill="var(--accent)" radius={[6, 6, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
-    </div>
+    </ChartContainer>
   );
 }
 
 export function ActivityTrendChart({ data = activityTrend, state }: { data?: Array<{ day: string; events: number | null; contributions: number | null }>; state?: AnalyticsState } = {}) {
   const chartData = data.length ? data : emptyActivity;
   return (
-    <div className="relative h-72 w-full">
+    <ChartContainer aria-label="Weekly activity trend chart" className="h-72" config={chartConfig}>
       <Watermark state={state} />
       <ResponsiveContainer>
-        <AreaChart data={chartData}>
+        <AreaChart accessibilityLayer data={chartData}>
           <defs>
             <linearGradient id="activity-orange" x1="0" x2="0" y1="0" y2="1">
               <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.42} />
@@ -92,17 +95,17 @@ export function ActivityTrendChart({ data = activityTrend, state }: { data?: Arr
           <Line dataKey="events" dot={false} stroke="var(--info)" strokeWidth={2} type="monotone" />
         </AreaChart>
       </ResponsiveContainer>
-    </div>
+    </ChartContainer>
   );
 }
 
 export function DepartmentLoadChart({ data = departmentLoad, state }: { data?: Array<{ department: string; open: number | null; approved: number | null }>; state?: AnalyticsState } = {}) {
   const chartData = data.length ? data : emptyDepartments;
   return (
-    <div className="relative h-64 w-full">
+    <ChartContainer aria-label="Department workload chart" className="h-64" config={chartConfig}>
       <Watermark state={state} />
       <ResponsiveContainer>
-        <BarChart data={chartData} layout="vertical" margin={{ left: 16 }}>
+        <BarChart accessibilityLayer data={chartData} layout="vertical" margin={{ left: 16 }}>
           <CartesianGrid horizontal={false} stroke="rgba(255,255,255,0.06)" />
           <XAxis tick={{ fill: "var(--muted)", fontSize: 12 }} type="number" />
           <YAxis dataKey="department" tick={{ fill: "var(--muted)", fontSize: 12 }} tickLine={false} type="category" width={86} />
@@ -111,7 +114,7 @@ export function DepartmentLoadChart({ data = departmentLoad, state }: { data?: A
           <Bar dataKey="approved" fill="rgba(255,255,255,0.22)" radius={[0, 6, 6, 0]} />
         </BarChart>
       </ResponsiveContainer>
-    </div>
+    </ChartContainer>
   );
 }
 
@@ -120,8 +123,8 @@ const readinessColors = ["#e8590c", "#fb923c", "#60a5fa", "#4ade80"];
 export function CareerReadinessDonut({ segments }: { segments: Array<{ label: string; ready: boolean }> }) {
   const ready = segments.filter((item) => item.ready).length;
   const data = segments.map((item) => ({ name: item.label, value: 1, ready: item.ready }));
-  return <div className="relative h-64 w-full">
-    <ResponsiveContainer><PieChart><Pie data={data} dataKey="value" innerRadius={68} outerRadius={92} paddingAngle={3} stroke="transparent">{data.map((item, index) => <Cell fill={item.ready ? readinessColors[index % readinessColors.length] : "rgba(255,255,255,0.08)"} key={item.name} />)}</Pie><Tooltip contentStyle={tooltipStyle} formatter={(_value, _name, entry) => [entry.payload.ready ? "Ready" : "Needs prerequisite", entry.payload.name]} /></PieChart></ResponsiveContainer>
+  return <ChartContainer aria-label="Career readiness donut chart" className="h-64" config={chartConfig}>
+    <ResponsiveContainer><PieChart accessibilityLayer><Pie data={data} dataKey="value" innerRadius={68} outerRadius={92} paddingAngle={3} stroke="transparent">{data.map((item, index) => <Cell fill={item.ready ? readinessColors[index % readinessColors.length] : "rgba(255,255,255,0.08)"} key={item.name} />)}</Pie><Tooltip contentStyle={tooltipStyle} formatter={(_value, _name, entry) => [entry.payload.ready ? "Ready" : "Needs prerequisite", entry.payload.name]} /></PieChart></ResponsiveContainer>
     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><span className="data-label text-3xl font-bold">{ready}/{segments.length}</span><span className="mt-1 text-xs text-muted">ready</span></div>
-  </div>;
+  </ChartContainer>;
 }

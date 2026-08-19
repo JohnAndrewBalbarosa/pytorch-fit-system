@@ -78,9 +78,30 @@ try {
   assert.equal(simulatedConnection.payload.source.connectionStatus, "connected");
 
   await page.goto(`${baseUrl}/career/resumes`);
+  const previewResponse = await page.request.get(`${baseUrl}/api/product/resume-preview?template=classic`);
+  assert.equal(previewResponse.status(), 200);
+  assert.match(previewResponse.headers()["content-type"], /^application\/pdf/);
+  assert.match(previewResponse.headers()["content-disposition"], /^inline;.*DEMO-/);
+  assert.equal((await previewResponse.body()).subarray(0, 4).toString(), "%PDF");
+  const invalidPreview = await page.request.get(`${baseUrl}/api/product/resume-preview?template=https://remote.example/resume.pdf`);
+  assert.equal(invalidPreview.status(), 400);
   await page.getByRole("button", { name: /Classic/ }).click();
   const resumeDialog = page.getByRole("dialog");
   await resumeDialog.getByText(/\d+-page PDF generated/).waitFor();
+  const viewer = page.frameLocator('[data-testid="resume-pdf-frame"]');
+  await viewer.locator('main[data-fit-mode="page"]').waitFor({ timeout: 15_000 });
+  await viewer.locator("canvas").waitFor();
+  const fit = await viewer.locator("main").evaluate(() => {
+    const canvas = document.querySelector("canvas").getBoundingClientRect();
+    const surface = document.querySelector('[data-testid="pdf-surface"]').getBoundingClientRect();
+    return { canvasWidth: canvas.width, canvasHeight: canvas.height, surfaceWidth: surface.width, surfaceHeight: surface.height };
+  });
+  assert.ok(fit.canvasWidth <= fit.surfaceWidth, `fit-page width overflow: ${fit.canvasWidth} > ${fit.surfaceWidth}`);
+  assert.ok(fit.canvasHeight <= fit.surfaceHeight, `fit-page height overflow: ${fit.canvasHeight} > ${fit.surfaceHeight}`);
+  await viewer.getByRole("button", { name: "Fit page width" }).click();
+  await viewer.locator('main[data-fit-mode="width"]').waitFor();
+  await viewer.getByRole("button", { name: "Fit whole page" }).click();
+  await viewer.locator('main[data-fit-mode="page"]').waitFor();
   for (const [label, extension] of [["HTML", ".html"], ["Editable DOCX", ".docx"], ["PDF", ".pdf"]]) {
     const [download] = await Promise.all([
       page.waitForEvent("download"),
@@ -91,12 +112,18 @@ try {
   }
   assert.deepEqual(pageErrors, []);
 
+  await resumeDialog.getByRole("button", { name: "Close", exact: true }).click();
+
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${baseUrl}/career/evidence`);
+  await page.goto(`${baseUrl}/career/resumes`);
+  await page.getByRole("button", { name: /Classic/ }).click();
+  const mobileViewer = page.frameLocator('[data-testid="resume-pdf-frame"]');
+  await mobileViewer.locator('main[data-fit-mode="page"]').waitFor({ timeout: 15_000 });
+  await mobileViewer.locator("canvas").waitFor();
   const dimensions = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
   assert.ok(dimensions.scroll <= dimensions.client, `mobile overflow: ${dimensions.scroll} > ${dimensions.client}`);
   await context.close();
-  console.log("Career Evidence persistence, upload, handoff, resume-fit, and mobile checks passed.");
+  console.log("Career Evidence persistence, upload, actual-PDF fit controls, exports, and mobile checks passed.");
 } finally {
   await browser.close();
 }

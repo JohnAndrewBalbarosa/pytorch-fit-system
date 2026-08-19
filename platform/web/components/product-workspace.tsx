@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   AlertTriangle,
   ArrowRight,
@@ -27,8 +28,10 @@ import { useCapability } from "@/components/capability-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import type { CapabilityKey } from "@/lib/capabilities";
 import type { ProductView, ProductViewData } from "@/lib/product/contracts";
+import { fetchJson, queryKeys } from "@/lib/client-api";
 
 type Props = { view: ProductView; capabilityKey: CapabilityKey; safety: string };
 
@@ -74,24 +77,28 @@ function ResumeView({ data }: { data: ProductViewData }) {
 }
 
 function OperationsView({ data }: { data: ProductViewData }) {
+  const demoAction = useDemoAction("job-operations");
   const operations = data.operations;
   if (!operations) return <Empty title="No application goal is configured" />;
   const percent = operations.target > 0 ? Math.min(100, Math.round(operations.completed / operations.target * 100)) : 0;
   return <section className="grid gap-4 xl:grid-cols-[0.75fr_1.25fr]">
-    <Card className="bg-surface"><CardHeader><div><CardTitle>{operations.goalLabel}</CardTitle><CardDescription>Only deterministic confirmation increases this count.</CardDescription></div><Target className="text-accent" size={20} /></CardHeader><p className="data-label text-5xl font-bold">{operations.completed}<span className="text-xl text-muted"> / {operations.target || "—"}</span></p><div className="mt-5 h-2 overflow-hidden rounded-full bg-elevated"><div className="h-full rounded-full bg-accent" style={{ width: `${percent}%` }} /></div><div className="mt-4 flex items-center justify-between text-sm text-muted"><span>{percent}% confirmed</span><span>{operations.activeWorkers} active workers</span></div><div className="mt-5 rounded-lg border border-border bg-elevated p-3 text-xs leading-5 text-muted"><LockKeyhole className="mr-2 inline text-accent" size={14} />Review, upload, Continue, CAPTCHA, and final Submit remain separately gated.</div></Card>
-    <Card className="bg-surface"><CardHeader><div><CardTitle>Human review queue</CardTitle><CardDescription>One approval never authorizes another item.</CardDescription></div><Badge variant="orange">HITL</Badge></CardHeader><div className="space-y-3">{operations.reviews.length ? operations.reviews.map((item) => <article className="rounded-lg border border-border bg-elevated p-4" key={item.id}><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{item.title}</p><p className="mt-2 text-sm leading-6 text-muted">{item.detail}</p></div><Badge variant={item.state === "blocked" ? "warning" : "default"}>{item.state}</Badge></div>{item.humanGate && <p className="mt-3 flex items-center gap-2 text-xs text-accent"><UserCheck size={13} />Explicit human approval required</p>}{data.meta.mode === "local_demo" && <Button className="mt-4" onClick={() => void runDemoAction("approve_review", item.id)} size="sm" variant="secondary"><UserCheck size={14} />Approve this demo gate</Button>}</article>) : <EmptyInline text="No items are waiting for review." />}</div></Card>
+    <Card className="bg-surface"><CardHeader><div><CardTitle>{operations.goalLabel}</CardTitle><CardDescription>Only deterministic confirmation increases this count.</CardDescription></div><Target className="text-accent" size={20} /></CardHeader><p className="data-label text-5xl font-bold">{operations.completed}<span className="text-xl text-muted"> / {operations.target || "—"}</span></p><Progress className="mt-5" value={percent} /><div className="mt-4 flex items-center justify-between text-sm text-muted"><span>{percent}% confirmed</span><span>{operations.activeWorkers} active workers</span></div><div className="mt-5 rounded-lg border border-border bg-elevated p-3 text-xs leading-5 text-muted"><LockKeyhole className="mr-2 inline text-accent" size={14} />Review, upload, Continue, CAPTCHA, and final Submit remain separately gated.</div></Card>
+    <Card className="bg-surface"><CardHeader><div><CardTitle>Human review queue</CardTitle><CardDescription>One approval never authorizes another item.</CardDescription></div><Badge variant="orange">HITL</Badge></CardHeader><div className="space-y-3">{operations.reviews.length ? operations.reviews.map((item) => <article className="rounded-lg border border-border bg-elevated p-4" key={item.id}><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{item.title}</p><p className="mt-2 text-sm leading-6 text-muted">{item.detail}</p></div><Badge variant={item.state === "blocked" ? "warning" : "default"}>{item.state}</Badge></div>{item.humanGate && <p className="mt-3 flex items-center gap-2 text-xs text-accent"><UserCheck size={13} />Explicit human approval required</p>}{data.meta.mode === "local_demo" && <Button className="mt-4" disabled={demoAction.isPending} onClick={() => demoAction.mutate({ action: "approve_review", id: item.id })} size="sm" variant="secondary"><UserCheck size={14} />Approve this demo gate</Button>}</article>) : <EmptyInline text="No items are waiting for review." />}</div></Card>
   </section>;
 }
 
 function OpportunitiesView({ data }: { data: ProductViewData }) {
-  return <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{data.opportunities?.length ? data.opportunities.map((item) => <Card className="bg-surface" key={item.id}><div className="mb-4 flex items-start justify-between gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accentSoft text-accent"><Target size={20} /></div><Badge>{item.stage.replaceAll("_", " ")}</Badge></div><h2 className="font-bold">{item.title}</h2><p className="mt-1 text-sm text-muted">{item.company}</p><div className="mt-5 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-elevated p-3"><p className="text-muted">Location</p><p className="mt-1 font-semibold">{item.location}</p></div><div className="rounded-lg bg-elevated p-3"><p className="text-muted">Work mode</p><p className="mt-1 font-semibold capitalize">{item.workMode}</p></div></div><div className="mt-3 rounded-lg bg-elevated p-3 text-xs"><p className="text-muted">Observed salary</p><p className="mt-1 font-semibold">{item.salaryBand || "Unknown"}</p></div><div className="mt-4 flex items-center justify-between border-t border-border pt-4"><span className="text-xs text-muted">Evidence fit</span><span className="data-label font-bold text-accent">{item.fit === null ? "Unknown" : `${item.fit}%`}</span></div>{data.meta.mode === "local_demo" && item.nextStage && <Button className="mt-4 w-full" onClick={() => void runDemoAction("advance_opportunity", item.id)} size="sm">Move to {item.nextStage.replaceAll("_", " ")}</Button>}</Card>) : <Empty title="No opportunities recorded" detail="The active provider has no stored opportunities." />}</section>;
+  const demoAction = useDemoAction("opportunities");
+  return <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{data.opportunities?.length ? data.opportunities.map((item) => <Card className="bg-surface" key={item.id}><div className="mb-4 flex items-start justify-between gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accentSoft text-accent"><Target size={20} /></div><Badge>{item.stage.replaceAll("_", " ")}</Badge></div><h2 className="font-bold">{item.title}</h2><p className="mt-1 text-sm text-muted">{item.company}</p><div className="mt-5 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-elevated p-3"><p className="text-muted">Location</p><p className="mt-1 font-semibold">{item.location}</p></div><div className="rounded-lg bg-elevated p-3"><p className="text-muted">Work mode</p><p className="mt-1 font-semibold capitalize">{item.workMode}</p></div></div><div className="mt-3 rounded-lg bg-elevated p-3 text-xs"><p className="text-muted">Observed salary</p><p className="mt-1 font-semibold">{item.salaryBand || "Unknown"}</p></div><div className="mt-4 flex items-center justify-between border-t border-border pt-4"><span className="text-xs text-muted">Evidence fit</span><span className="data-label font-bold text-accent">{item.fit === null ? "Unknown" : `${item.fit}%`}</span></div>{data.meta.mode === "local_demo" && item.nextStage && <Button className="mt-4 w-full" disabled={demoAction.isPending} onClick={() => demoAction.mutate({ action: "advance_opportunity", id: item.id })} size="sm">Move to {item.nextStage.replaceAll("_", " ")}</Button>}</Card>) : <Empty title="No opportunities recorded" detail="The active provider has no stored opportunities." />}</section>;
 }
 
-async function runDemoAction(action: "advance_opportunity" | "approve_review" | "toggle_event", id: string) {
-  const response = await fetch("/api/product/demo-action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, id }) });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || "Demo action failed.");
-  window.location.reload();
+function useDemoAction(view: ProductView) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { action: "advance_opportunity" | "approve_review" | "toggle_event"; id: string }) => fetchJson("/api/product/demo-action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+    onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: queryKeys.product(view) }), queryClient.invalidateQueries({ queryKey: queryKeys.product("dashboard") })]); toast.success("Synthetic workflow updated."); },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Demo action failed."),
+  });
 }
 
 function ConnectionsView({ data }: { data: ProductViewData }) {
@@ -120,18 +127,9 @@ function ViewBody({ view, data, canWriteEvidence }: { view: ProductView; data: P
 function ProductContent({ view, capabilityKey, safety }: Props) {
   const capability = useCapability(capabilityKey);
   const evidenceWrite = useCapability("evidence_write");
-  const [data, setData] = useState<ProductViewData | null>(null);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    if (capability.state === "locked") return;
-    const controller = new AbortController();
-    void fetch(`/api/product/${view}`, { cache: "no-store", signal: controller.signal }).then(async (response) => {
-      const value = await response.json();
-      if (!response.ok) throw new Error(String(value.error || "Product service failed."));
-      setData(value as ProductViewData);
-    }).catch((reason) => { if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(String(reason.message || reason)); });
-    return () => controller.abort();
-  }, [capability.state, view]);
+  const query = useQuery({ enabled: capability.state !== "locked", queryKey: queryKeys.product(view), queryFn: () => fetchJson<ProductViewData>(`/api/product/${view}`, { cache: "no-store" }) });
+  const data = query.data || null;
+  const error = query.error instanceof Error ? query.error.message : "";
   return <>
     {data ? <Header capabilityKey={capabilityKey} data={data} /> : <header className="mb-6 flex items-start justify-between gap-4" data-tour="page-heading"><div><p className="data-label mb-2 text-xs uppercase tracking-widest text-accent">Product workspace</p><h1 className="text-3xl font-bold">Loading visual workspace…</h1></div><Badge data-tour="service-status">Checking access</Badge></header>}
     <Card className="mb-4 border-accent/25 bg-accentSoft" data-tour="permission-boundary"><div className="flex gap-3"><ShieldCheck className="mt-0.5 flex-none text-accent" size={20} /><div><strong>Permission boundary</strong><p className="mt-1 text-sm text-muted">{safety}</p></div></div></Card>
