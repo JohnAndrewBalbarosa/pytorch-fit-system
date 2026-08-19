@@ -130,7 +130,8 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-[#0b0b0c] text-[#FFF7ED]">
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/10 bg-[#0b0b0c]/90 px-4 backdrop-blur lg:hidden">
+      {manifest.localDemo && <div className="fixed inset-x-0 top-0 z-50 flex h-8 items-center justify-center border-b border-[#ff8a3d]/30 bg-[#e8590c] px-3 text-center font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white sm:text-xs">Local demo · Synthetic data · External actions disabled</div>}
+      <header className={cn("sticky z-30 flex h-16 items-center justify-between border-b border-white/10 bg-[#0b0b0c]/90 px-4 backdrop-blur lg:hidden", manifest.localDemo ? "top-8" : "top-0")}>
         <Button aria-label="Open menu" onClick={() => setOpen(true)} size="icon" type="button" variant="secondary">
           <Menu size={18} />
         </Button>
@@ -139,14 +140,14 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
           <CircleHelp size={18} />
         </Button>
       </header>
-      <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:block">{sidebar}</div>
+      <div className={cn("hidden lg:fixed lg:inset-x-auto lg:bottom-0 lg:left-0 lg:block", manifest.localDemo ? "lg:top-8" : "lg:top-0")}>{sidebar}</div>
       {open && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <button aria-label="Close menu backdrop" className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} type="button" />
           <div className="relative h-full">{sidebar}</div>
         </div>
       )}
-      <main className="lg:pl-72">
+      <main className={cn("lg:pl-72", manifest.localDemo && "pt-8")}>
         <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">{children}</div>
       </main>
       <ProductTourController />

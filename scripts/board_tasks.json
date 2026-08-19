@@ -1926,6 +1926,22 @@
       "worst_case": "2026-08-24",
       "assignee": "JohnAndrewBalbarosa",
       "body": "🤖 AI-built this session — needs human review.\n✅ Career Evidence now has owner-scoped server commands for persistent edits, manual entries, metadata-stripped private photo uploads, connection state, and explicit-consent AI proposals. Website-session login and verification remain human handoffs; unavailable collection adapters fail closed without writing fake sync timestamps.\n✅ Local development uses a separate SQLite store with an upgrade path for existing databases; Supabase commands use a server-only service role while browser RLS remains SELECT-only. All migrations and the deterministic synthetic seed execute in an embedded PostgreSQL-compatible test.\n✅ Resume Studio injects one approved evidence model into Classic, Modern, and Compact ATS templates; HTML, editable DOCX, and selectable-text PDF exports work. PDF fit reports the actual generator page count rather than a guess.\n✅ Next.js/PostCSS/Sharp were upgraded to patched releases; production dependency audit reports zero vulnerabilities.\nTests: 10 product, 4 capability, Supabase migration+seed+RLS, production build, Career Evidence persistence/upload/export/mobile E2E, and 10-route Joyride E2E passed.\n👤 HITL: review evidence ownership, AI consent, migration policies, exported resumes, and desktop/mobile visuals before moving to Done."
+    },
+    {
+      "title": "WEB.5 Automatic isolated local demo workspace",
+      "stage": "In Review",
+      "role": "Frontend",
+      "group": "Foundation",
+      "department": "Platform Core",
+      "hitl": "Yes",
+      "priority": "P1",
+      "estimate": 3,
+      "milestone": "Platform & Intelligence — Wk2",
+      "start": "2026-08-17",
+      "target": "2026-08-17",
+      "worst_case": "2026-08-24",
+      "assignee": "JohnAndrewBalbarosa",
+      "body": "🤖 AI-built this session — needs human review.\n✅ Local development now starts with a persistent, editable SQLite demo containing one primary synthetic career persona and four supporting member states, rich evidence, resumes, opportunities, events, approvals, analytics, and leaderboards.\n✅ Safe simulator actions exercise opportunity progression, review approval, event registration, source sync, deterministic evidence analysis, and DEMO-prefixed exports without contacting external sites or services. A persistent banner identifies synthetic data.\n✅ Supabase remains the production provider and fails closed; production never falls back to synthetic fixtures. The CLI-only reset creates a timestamped backup before reseeding.\nWhere: platform/web/lib/product, platform/web/app/api/product, platform/web/components, platform/web/scripts/demo-data.ts.\nTests: product and capability suites, Supabase contract tests, typecheck, production build, Career Evidence E2E, local demo workflow E2E, and 10-route tour E2E.\n👤 HITL: visually inspect the seeded scenarios, safe-action boundaries, reset behavior, and production-provider isolation before moving to Done."
     }
   ],
   "date_fields": [

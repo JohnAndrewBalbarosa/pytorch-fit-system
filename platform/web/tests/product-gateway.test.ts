@@ -5,17 +5,22 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { buildCapabilityManifest } from "../lib/capabilities";
-import { demoProductView } from "../lib/product/demo";
+import { demoPersonas, demoProductView } from "../lib/product/demo";
 import { productViews, unavailableDashboardAnalytics } from "../lib/product/contracts";
 import { resumeHtml, resumePdfPageCount, resumeTemplates } from "../lib/product/resume-exports";
 import { parseEvidenceProposalResponse } from "../lib/product/evidence-ai";
 import { overlayLocalCareerState, readLocalMedia, saveLocalEvidence, saveLocalMedia, saveLocalSourceState } from "../lib/product/local-career-store";
+import { ensureLocalDemo, readLocalDemoState, updateLocalDemoState } from "../lib/product/local-demo-state";
+import { localDemoStatus, resetLocalDemo } from "../lib/product/local-demo-admin";
+import { configuredProductProvider } from "../lib/product/repository";
 
 test("every product view has a complete, labeled visual demo contract", () => {
   for (const view of productViews) {
     const data = demoProductView(view);
     assert.equal(data.meta.source, "demo");
-    assert.equal(data.meta.label, "Prototype data");
+    assert.equal(data.meta.label, "Local synthetic demo");
+    assert.equal(data.meta.mode, "local_demo");
+    assert.equal(data.meta.synthetic, true);
     assert.ok(data.heading.title);
     assert.equal(data.stats.length, 4);
     assert.ok(Array.isArray(data.evidence?.sources));
@@ -68,9 +73,57 @@ test("career demo exposes clickable source metadata and photo-backed evidence", 
   const data = demoProductView("career-evidence");
   assert.ok(data.evidence?.sources.some((source) => source.id === "website" && source.maturity === "experimental"));
   assert.ok(data.evidence?.sources.some((source) => source.id === "twitter" && source.maturity === "beta"));
-  assert.equal(data.evidence?.items?.length, 3);
+  assert.equal(data.evidence?.items?.length, 6);
   assert.ok(data.evidence?.items?.every((item) => item.mediaUrl.startsWith("/demo/evidence/")));
   assert.ok(data.evidence?.items?.some((item) => item.verificationState === "ai_proposed"));
+});
+
+test("local demo has one primary and four supporting lifecycle personas", () => {
+  assert.equal(demoPersonas.length, 5);
+  assert.equal(demoPersonas.filter((persona) => persona.id === "demo-primary").length, 1);
+  assert.deepEqual(new Set(demoPersonas.map((persona) => persona.state)).size, 5);
+  const data = demoProductView("dashboard");
+  assert.equal(data.events?.length, 5);
+  assert.equal(data.leaderboard?.length, 5);
+  assert.equal(data.opportunities?.length, 6);
+  assert.equal(data.operations?.reviews.length, 4);
+});
+
+test("production rejects the local provider instead of falling back to synthetic data", () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousProvider = process.env.PYTORCH_FIT_DATA_PROVIDER;
+  try {
+    Object.defineProperty(process.env, "NODE_ENV", { configurable: true, enumerable: true, value: "production", writable: true });
+    process.env.PYTORCH_FIT_DATA_PROVIDER = "local";
+    assert.throws(() => configuredProductProvider(), /requires PYTORCH_FIT_DATA_PROVIDER=supabase/);
+    process.env.PYTORCH_FIT_DATA_PROVIDER = "supabase";
+    assert.equal(configuredProductProvider(), "supabase");
+  } finally {
+    if (previousNodeEnv === undefined) Reflect.deleteProperty(process.env, "NODE_ENV");
+    else Object.defineProperty(process.env, "NODE_ENV", { configurable: true, enumerable: true, value: previousNodeEnv, writable: true });
+    if (previousProvider === undefined) delete process.env.PYTORCH_FIT_DATA_PROVIDER;
+    else process.env.PYTORCH_FIT_DATA_PROVIDER = previousProvider;
+  }
+});
+
+test("local demo runtime persists mutations and reset restores the seed", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "pytorch-fit-demo-"));
+  const previous = process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH;
+  process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH = path.join(directory, "demo.sqlite3");
+  try {
+    ensureLocalDemo("demo-owner");
+    updateLocalDemoState("demo-owner", (state) => ({ ...state, opportunityStages: { "opp-3": "drafted" }, approvedReviewIds: ["review-1"] }));
+    assert.equal(readLocalDemoState("demo-owner").opportunityStages["opp-3"], "drafted");
+    assert.equal(localDemoStatus("demo-owner").seeded, true);
+    const result = resetLocalDemo("demo-owner");
+    assert.ok(result.backup);
+    assert.deepEqual(readLocalDemoState("demo-owner").opportunityStages, {});
+    assert.deepEqual(readLocalDemoState("demo-owner").approvedReviewIds, []);
+  } finally {
+    if (previous === undefined) delete process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH;
+    else process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH = previous;
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("all resume templates render and measure the same ATS-readable normalized snapshot", async () => {

@@ -16,6 +16,7 @@ export function JobMarketDashboard() {
   const [role, setRole] = useState("software");
   const [mode, setMode] = useState<WorkMode>("any");
   const [data, setData] = useState<JobMarketSummary | null>(null);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const selectedCountries = useMemo(() => [country, compareCountry].filter(Boolean), [country, compareCountry]);
   const query = useMemo(() => new URLSearchParams({ countries: selectedCountries.join(","), role_family: role, work_mode: mode, days: "90" }), [selectedCountries, role, mode]);
@@ -23,11 +24,12 @@ export function JobMarketDashboard() {
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
+    setError("");
     void fetch(`/api/job-market/summary?${query}`, { signal: controller.signal })
-      .then((response) => response.json())
+      .then(async (response) => { const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Job-market data is unavailable."); return payload; })
       .then(setData)
       .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) throw error;
+        if (!(error instanceof DOMException && error.name === "AbortError")) setError(error instanceof Error ? error.message : "Job-market data is unavailable.");
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -61,7 +63,8 @@ export function JobMarketDashboard() {
         <p className="mt-3 flex items-center gap-2 text-xs text-muted"><LockKeyhole size={13} />Filters query existing snapshots only. Refresh and import run through controlled backend ingestion.</p>
       </Card>
 
-      {data && <>
+      {error && <Card className="mb-4 border-warning/30 bg-warning/10"><div className="flex gap-3"><AlertTriangle className="flex-none text-warning" /><div><strong>Market data unavailable</strong><p className="mt-1 text-sm text-muted">{error}</p></div></div></Card>}
+      {data && !loading && <>
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Metric label="Postings in snapshot" value={data.sample_size} detail={`${data.query.countries.join(", ")} · ${data.query.days} days`} />
           <Metric label="Degree unknown" value={data.unknown_degree_count} detail="Never counted as not required" />

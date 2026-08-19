@@ -12,9 +12,15 @@ From the repository root:
 python scripts/dev_frontend.py
 ```
 
-The launcher starts FastAPI on `127.0.0.1:8000`, Next.js on `127.0.0.1:3000`, creates a temporary
-server-to-server developer token, and enables the passwordless local workspace. The bypass is
+The launcher first ensures the versioned synthetic scenario in `.cache/demo/product.sqlite3`, then
+starts FastAPI on `127.0.0.1:8000`, Next.js on `127.0.0.1:3000`, creates a temporary server-to-server
+developer token, and enables the passwordless local workspace. The bypass is
 rejected when `NODE_ENV=production`; it does not grant any job-application permission.
+
+Local mode is an editable demo with one primary synthetic student and four supporting lifecycle
+personas. Supabase mode is production and never falls back to demo records. Inspect or restore the
+local scenario with `npm run demo:status` and `npm run demo:reset`; reset creates a timestamped
+backup under `.cache/demo/backups/` before restoring the canonical seed.
 
 Copy `.env.example` to `.env.local` only when running the services separately. Keep API keys and
 the developer token server-side.
@@ -30,8 +36,8 @@ the developer token server-side.
 - `PYTORCH_FIT_DATA_PROVIDER=local|supabase` selects exactly one provider. Local mode normalizes
   the existing FastAPI/SQLite services; production mode uses the authenticated Supabase RPC.
 - React never queries storage tables directly. `/api/product/*` returns stable visual view models.
-- `PYTORCH_FIT_DEMO_DATA=1` enables labeled prototype fallback only when the active provider fails.
-  A successful empty response remains empty. The flag is disabled by default.
+- `PYTORCH_FIT_DATA_PROVIDER=local` selects the labeled, synthetic, external-write-disabled demo.
+  `supabase` selects production data and never falls back to fixtures.
 - Command Center analytics keep fixed chart/card dimensions when a series is missing and render a
   centered `Data unavailable` watermark; unavailable data is never replaced with fixture values.
 - Supabase Auth uses cookie-backed server sessions. Production ignores the local sign-in bypass.

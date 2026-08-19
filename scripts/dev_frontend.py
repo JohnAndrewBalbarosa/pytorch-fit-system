@@ -23,6 +23,12 @@ def main() -> int:
     environment.setdefault("PYTORCH_FIT_DEV_BYPASS_SIGN_IN", "1")
     environment.setdefault("PYTORCH_FIT_DEV_API_TOKEN", secrets.token_urlsafe(32))
     npm = "npm.cmd" if os.name == "nt" else "npm"
+    subprocess.run(
+        [npm, "run", "demo:ensure", "--", "--quiet"],
+        cwd=ROOT / "platform" / "web",
+        env=environment,
+        check=True,
+    )
     processes = [
         subprocess.Popen(
             [

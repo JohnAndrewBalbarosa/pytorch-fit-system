@@ -32,6 +32,8 @@ export type DashboardAnalytics = {
 export type ProductMeta = {
   source: ProductSource;
   provider: ProductProvider;
+  mode: "local_demo" | "production";
+  synthetic: boolean;
   generatedAt: string;
   label: string;
 };
@@ -112,6 +114,30 @@ export type Opportunity = {
   workMode: string;
   stage: string;
   fit: number | null;
+  salaryBand?: string;
+  nextStage?: string | null;
+};
+
+export type ChapterEvent = {
+  id: string;
+  title: string;
+  date: string;
+  department: string;
+  type: string;
+  seats: number;
+  registered: boolean;
+  learningObjective: string;
+  output: string;
+};
+
+export type LeaderboardEntry = {
+  rank: number;
+  name: string;
+  track: string;
+  points: number;
+  streak: number;
+  badges: string[];
+  currentUser?: boolean;
 };
 
 export type Connection = {
@@ -145,6 +171,8 @@ export type ProductViewData = {
     reviews: ReviewItem[];
   };
   opportunities?: Opportunity[];
+  events?: ChapterEvent[];
+  leaderboard?: LeaderboardEntry[];
   connections?: Connection[];
   recommendations?: Array<{ title: string; detail: string; evidenceIds: string[] }>;
   analytics?: DashboardAnalytics;

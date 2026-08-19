@@ -20,6 +20,7 @@ export type Capability = {
 
 export type CapabilityManifest = {
   developmentOwner: boolean;
+  localDemo: boolean;
   authenticatedUser?: boolean;
   capabilities: Record<CapabilityKey, Capability>;
 };
@@ -34,6 +35,7 @@ type CapabilityInputs = {
   normalizedProfileReady: boolean;
   resumeArtifactsReady: boolean;
   visualDemo?: boolean;
+  localDemo?: boolean;
 };
 
 const locked = (reason: string, missing: string[] = []): Capability => ({ state: "locked", reason, missing });
@@ -86,6 +88,7 @@ export function buildCapabilityManifest(input: CapabilityInputs): CapabilityMani
 
   return {
     developmentOwner: input.developmentOwner,
+    localDemo: input.localDemo === true,
     capabilities: {
       connections,
       evidence_read: evidenceRead,
@@ -110,4 +113,5 @@ export const lockedCapabilityManifest = () => buildCapabilityManifest({
   evidenceReady: false,
   normalizedProfileReady: false,
   resumeArtifactsReady: false,
+  localDemo: false,
 });

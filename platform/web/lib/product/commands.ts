@@ -125,6 +125,29 @@ export async function applySourceAction(
 ): Promise<EvidenceSource> {
   const source = supportedSourceById(sourceId);
   if (!source) throw new Error("Unsupported evidence source.");
+  const localDemo = configuredProductProvider() === "local" && process.env.NODE_ENV !== "production";
+  if (localDemo) {
+    if (source.connectionMethod === "url" && action === "connect") {
+      try {
+        const url = new URL(options.url || "");
+        if (!new Set(["http:", "https:"]).has(url.protocol)) throw new Error();
+      } catch {
+        throw new Error("Enter a valid http or https portfolio URL.");
+      }
+    }
+    if (action === "disconnect" && options.confirmation !== true) throw new Error("Disconnect requires explicit confirmation.");
+    const connectionStatus = action === "disconnect" ? "disconnected" as const : "connected" as const;
+    const result: EvidenceSource = {
+      ...source,
+      connectionStatus,
+      status: connectionStatus === "connected" ? "verified" : "ready",
+      description: `Synthetic local simulation. ${source.description || ""}`,
+      lastSyncedAt: action === "sync" ? new Date().toISOString() : source.lastSyncedAt || null,
+      configuredUrl: source.connectionMethod === "url" && action === "connect" ? options.url || null : source.configuredUrl || null,
+    };
+    saveLocalSourceState(userId, { id: sourceId, connectionStatus, lastSyncedAt: result.lastSyncedAt, configuredUrl: result.configuredUrl });
+    return result;
+  }
   if (source.connectionMethod === "website_session" && action === "connect") {
     const error = new Error("Open a normal visible browser and complete login or verification. The system will not create or bypass a session.");
     error.name = "HumanHandoffRequired";

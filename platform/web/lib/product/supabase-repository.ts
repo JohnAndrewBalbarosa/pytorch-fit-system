@@ -30,7 +30,7 @@ export class SupabaseProductRepository implements ProductRepository {
       ...payload,
       evidence: payload.evidence ? { ...payload.evidence, items: typedItems, sources: detailPayload.sources || payload.evidence.sources } : payload.evidence,
       resumeProfile,
-      meta: { source: "live", provider: "supabase", generatedAt: new Date().toISOString(), label: "Live Supabase data" },
+      meta: { source: "live", provider: "supabase", mode: "production", synthetic: false, generatedAt: new Date().toISOString(), label: "Live Supabase data" },
       analytics: payload.analytics || unavailableDashboardAnalytics(),
       ...(process.env.NODE_ENV === "development" ? { diagnostics: data } : { diagnostics: undefined }),
     };

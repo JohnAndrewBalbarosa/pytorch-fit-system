@@ -46,11 +46,15 @@ function download(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
-export function downloadHtml(profile: ResumeProfile, templateId: ResumeTemplateId) {
-  download(new Blob([resumeHtml(profile, templateId)], { type: "text/html;charset=utf-8" }), `${templateId}-resume.html`);
+function exportName(templateId: ResumeTemplateId, extension: string, demo = false) {
+  return `${demo ? "DEMO-" : ""}${templateId}-resume.${extension}`;
 }
 
-export async function downloadDocx(profile: ResumeProfile, templateId: ResumeTemplateId) {
+export function downloadHtml(profile: ResumeProfile, templateId: ResumeTemplateId, demo = false) {
+  download(new Blob([resumeHtml(profile, templateId)], { type: "text/html;charset=utf-8" }), exportName(templateId, "html", demo));
+}
+
+export async function downloadDocx(profile: ResumeProfile, templateId: ResumeTemplateId, demo = false) {
   const { Document, HeadingLevel, Packer, Paragraph, TextRun } = await import("docx");
   const children = [
     new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun({ text: profile.fullName, bold: true })] }),
@@ -68,7 +72,7 @@ export async function downloadDocx(profile: ResumeProfile, templateId: ResumeTem
     ...profile.education.map((item) => new Paragraph(`${item.school} · ${item.program} · ${item.dateLabel}`)),
   ];
   const document = new Document({ creator: "PyTorch FIT Resume Studio", title: `${profile.fullName} resume`, sections: [{ children }] });
-  download(await Packer.toBlob(document), `${templateId}-resume.docx`);
+  download(await Packer.toBlob(document), exportName(templateId, "docx", demo));
 }
 
 export async function createResumePdf(profile: ResumeProfile, templateId: ResumeTemplateId) {
@@ -102,7 +106,7 @@ export async function resumePdfPageCount(profile: ResumeProfile, templateId: Res
   return pdf.getNumberOfPages();
 }
 
-export async function downloadPdf(profile: ResumeProfile, templateId: ResumeTemplateId) {
+export async function downloadPdf(profile: ResumeProfile, templateId: ResumeTemplateId, demo = false) {
   const pdf = await createResumePdf(profile, templateId);
-  pdf.save(`${templateId}-resume.pdf`);
+  pdf.save(exportName(templateId, "pdf", demo));
 }

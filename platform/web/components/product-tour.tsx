@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ACTIONS, EVENTS, Joyride, STATUS, type EventData } from "react-joyride";
 import { productTours, tourStorageKey } from "@/lib/product-tours";
@@ -16,6 +16,7 @@ export function ProductTourController() {
   const tour = productTours[pathname];
   const [run, setRun] = useState(false);
   const [instance, setInstance] = useState(0);
+  const startToken = useRef(0);
   const storageKey = useMemo(
     () => (tour ? tourStorageKey(pathname, tour.version) : ""),
     [pathname, tour]
@@ -23,22 +24,30 @@ export function ProductTourController() {
 
   const start = useCallback(() => {
     if (!tour) return;
+    const token = ++startToken.current;
     setRun(false);
     setInstance((value) => value + 1);
-    window.requestAnimationFrame(() => setRun(true));
+    window.requestAnimationFrame(() => {
+      if (startToken.current === token) setRun(true);
+    });
   }, [tour]);
 
   const markSeen = useCallback(() => {
     if (!storageKey) return;
+    startToken.current += 1;
     window.localStorage.setItem(storageKey, "seen");
     setRun(false);
   }, [storageKey]);
 
   useEffect(() => {
+    startToken.current += 1;
     setRun(false);
     if (!tour || window.localStorage.getItem(storageKey) === "seen") return;
     const timer = window.setTimeout(start, 450);
-    return () => window.clearTimeout(timer);
+    return () => {
+      startToken.current += 1;
+      window.clearTimeout(timer);
+    };
   }, [pathname, start, storageKey, tour]);
 
   useEffect(() => {
@@ -46,6 +55,15 @@ export function ProductTourController() {
     window.addEventListener(START_PRODUCT_TOUR_EVENT, replay);
     return () => window.removeEventListener(START_PRODUCT_TOUR_EVENT, replay);
   }, [start]);
+
+  useEffect(() => {
+    if (!run) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") markSeen();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [markSeen, run]);
 
   const handleEvent = useCallback(
     (event: EventData, controls: { skip: () => void }) => {

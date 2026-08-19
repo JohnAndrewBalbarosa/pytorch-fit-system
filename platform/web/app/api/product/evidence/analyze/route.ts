@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { currentProductUserId } from "@/lib/auth/current-user";
 import { requestEvidenceProposal, resolveSupabaseEvidenceInput } from "@/lib/product/evidence-ai";
 import { saveEvidenceProposal } from "@/lib/product/commands";
+import { configuredProductProvider } from "@/lib/product/repository";
 
 type AnalyzeRequest = {
   consent?: boolean;
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
   if (body.consent !== true) return NextResponse.json({ error: "Explicit per-analysis consent is required." }, { status: 400 });
   if (!body.evidenceId || !body.current?.title) return NextResponse.json({ error: "A selected evidence item is required." }, { status: 400 });
 
-  if (process.env.PYTORCH_FIT_DEMO_DATA === "1") {
+  if (configuredProductProvider() === "local" && process.env.NODE_ENV !== "production") {
     return NextResponse.json({
       proposal: {
         summary: "The selected evidence supports a concise achievement statement. Metrics remain unchanged unless present in the source.",

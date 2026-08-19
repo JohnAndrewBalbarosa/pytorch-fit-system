@@ -19,6 +19,7 @@ try {
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto(`${baseUrl}/career/evidence`);
   await page.waitForTimeout(1_000);
+  await page.getByText(/Local demo · Synthetic data · External actions disabled/i).waitFor();
 
   const manual = page.getByRole("button", { name: "Manual entry", exact: true });
   await manual.waitFor();
@@ -61,19 +62,20 @@ try {
   assert.equal(sourceState.configuredUrl, "https://example.test/portfolio");
   assert.equal(sourceState.lastSyncedAt, null);
 
-  const unavailableSync = await page.evaluate(async () => {
+  const simulatedSync = await page.evaluate(async () => {
     const response = await fetch("/api/product/sources/website", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync" }) });
     return { status: response.status, payload: await response.json() };
   });
-  assert.equal(unavailableSync.status, 400);
-  assert.match(unavailableSync.payload.error, /No deterministic collection adapter/);
+  assert.equal(simulatedSync.status, 200);
+  assert.match(simulatedSync.payload.source.description, /Synthetic local simulation/);
+  assert.ok(simulatedSync.payload.source.lastSyncedAt);
 
-  const handoff = await page.evaluate(async () => {
+  const simulatedConnection = await page.evaluate(async () => {
     const response = await fetch("/api/product/sources/twitter", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "connect" }) });
     return { status: response.status, payload: await response.json() };
   });
-  assert.equal(handoff.status, 409);
-  assert.equal(handoff.payload.code, "HUMAN_HANDOFF_REQUIRED");
+  assert.equal(simulatedConnection.status, 200);
+  assert.equal(simulatedConnection.payload.source.connectionStatus, "connected");
 
   await page.goto(`${baseUrl}/career/resumes`);
   await page.getByRole("button", { name: /Classic/ }).click();
@@ -84,6 +86,7 @@ try {
       page.waitForEvent("download"),
       resumeDialog.getByRole("button", { name: label, exact: true }).click(),
     ]);
+    assert.ok(download.suggestedFilename().startsWith("DEMO-"), `${label} export must be clearly demo-labeled`);
     assert.ok(download.suggestedFilename().endsWith(extension), `${label} export filename is incorrect`);
   }
   assert.deepEqual(pageErrors, []);

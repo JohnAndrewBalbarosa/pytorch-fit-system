@@ -33,8 +33,8 @@ export const fallbackMarketSummary: JobMarketSummary = {
   query: { countries: ["Philippines"], role_family: "software", work_mode: "any", days: 90 },
   generated_at: "2026-08-13T00:00:00Z",
   snapshot_kind: "synthetic_demo",
-  sample_size: 5,
-  unknown_degree_count: 5,
+  sample_size: 24,
+  unknown_degree_count: 7,
   unknown_experience_count: 5,
   sources: [
     { id: "adzuna", label: "Adzuna", kind: "live_api", configured: false, geography: "Supported countries", freshness: "Requires API credentials", attribution_url: "https://developer.adzuna.com/overview" },
@@ -43,23 +43,25 @@ export const fallbackMarketSummary: JobMarketSummary = {
     { id: "onet", label: "O*NET", kind: "official_series", configured: false, geography: "United States occupations", freshness: "Versioned taxonomy", attribution_url: "https://services.onetcenter.org/" },
     { id: "bls", label: "BLS / JOLTS", kind: "official_series", configured: false, geography: "United States", freshness: "Monthly series", attribution_url: "https://www.bls.gov/developers/home.htm" }
   ],
-  hiring_layoff_series: [{ period: "Current snapshot", active_postings: 5, layoffs: null, geography: "Philippines" }],
+  hiring_layoff_series: [{ period: "Jun 2026", active_postings: 18, layoffs: null, geography: "Philippines" }, { period: "Jul 2026", active_postings: 21, layoffs: null, geography: "Philippines" }, { period: "Aug 2026", active_postings: 24, layoffs: null, geography: "Philippines" }],
   skill_demand: [
-    { skill: "Python", postings: 3, evidenced: true }, { skill: "Git", postings: 2, evidenced: true },
-    { skill: "TypeScript", postings: 2, evidenced: false }, { skill: "React", postings: 1, evidenced: true },
-    { skill: "Docker", postings: 2, evidenced: false }, { skill: "AWS", postings: 2, evidenced: false }
+    { skill: "Python", postings: 15, evidenced: true }, { skill: "Git", postings: 14, evidenced: true },
+    { skill: "TypeScript", postings: 11, evidenced: true }, { skill: "React", postings: 10, evidenced: true },
+    { skill: "Docker", postings: 9, evidenced: false }, { skill: "AWS", postings: 7, evidenced: false }
   ],
   qualification_barriers: [
-    { label: "Completed degree required", count: 0, percent: 0 },
-    { label: "Degree requirement unknown", count: 5, percent: 100 },
-    { label: "2+ years experience", count: 0, percent: 0 },
-    { label: "Experience requirement unknown", count: 5, percent: 100 }
+    { label: "Completed degree required", count: 8, percent: 33 },
+    { label: "Degree requirement unknown", count: 7, percent: 29 },
+    { label: "2+ years experience", count: 6, percent: 25 },
+    { label: "Experience requirement unknown", count: 5, percent: 21 }
   ],
   geography_ratios: [
-    { country: "Philippines", mode: "remote", count: 2, percent: 40 },
-    { country: "Philippines", mode: "hybrid", count: 2, percent: 40 },
-    { country: "Philippines", mode: "onsite", count: 1, percent: 20 }
+    { country: "Philippines", mode: "remote", count: 10, percent: 42 },
+    { country: "Philippines", mode: "hybrid", count: 8, percent: 33 },
+    { country: "Philippines", mode: "onsite", count: 6, percent: 25 }
   ],
-  personal_comparison: [], salary_bands: [], funnel: [],
-  warnings: ["Backend unavailable; a versioned synthetic demonstration is shown.", "Unknown requirements are not treated as absent requirements."]
+  personal_comparison: [],
+  salary_bands: [{ band: "below_20k", count: 2 }, { band: "20k_40k", count: 12 }, { band: "40k_80k", count: 7 }, { band: "80k_plus", count: 1 }, { band: "unknown", count: 2 }],
+  funnel: [{ name: "Draft → review", successes: 4, resolved: 5, pending: 1, rate: 0.8 }, { name: "Review → demo confirmed", successes: 2, resolved: 3, pending: 1, rate: 0.67 }],
+  warnings: ["Versioned synthetic local dataset; it does not describe the live labor market.", "Unknown requirements are not treated as absent requirements."]
 };
