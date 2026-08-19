@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Bell, CalendarDays, Crown, Users } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { useCapabilities } from "@/components/capability-context";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,12 +21,15 @@ const roleTabs = [
   { value: "admin", label: "Officer" }
 ] satisfies Array<{ value: UserTier; label: string }>;
 
-export default function EventsPage() {
+function EventsContent() {
   const [tier, setTier] = useState<UserTier>("active");
+  const manifest = useCapabilities();
+  const officerPortal = manifest.portal.audience === "officer";
+  const effectiveTier = officerPortal ? tier : manifest.portal.userTier;
   const queryClient = useQueryClient();
   const dashboard = useQuery({ queryKey: queryKeys.product("dashboard"), queryFn: () => fetchJson<ProductViewData>("/api/product/dashboard", { cache: "no-store" }) });
   const data = dashboard.data || null;
-  const priority = hasPriorityEnrollment(tier);
+  const priority = hasPriorityEnrollment(effectiveTier);
   const events = data?.events || [];
   const toggle = useMutation({
     mutationFn: (id: string) => fetchJson("/api/product/demo-action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "toggle_event", id }) }),
@@ -34,13 +38,13 @@ export default function EventsPage() {
   });
 
   return (
-    <AppShell>
+    <>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3" data-tour="events-heading">
         <div>
           <h1 className="text-3xl font-bold tracking-[-0.02em]">Unified Events Matrix</h1>
           <p className="mt-2 text-muted">Upcoming workshops, clinics, hackathons, and chapter activities.</p>
         </div>
-        <div data-tour="events-role"><SegmentedTabs items={roleTabs} onChange={setTier} value={tier} /></div>
+        <div data-tour="events-role">{officerPortal ? <SegmentedTabs items={roleTabs} onChange={setTier} value={tier} /> : <Badge variant="orange">{effectiveTier === "general" ? "Member access" : "Priority member"}</Badge>}</div>
       </div>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" data-tour="events-grid">
@@ -52,7 +56,7 @@ export default function EventsPage() {
               </div>
               {priority ? (
                 <Badge variant="orange"><Crown size={14} /> Priority seat</Badge>
-              ) : tier === "active" ? (
+              ) : effectiveTier === "active" ? (
                 <Badge variant="success"><Bell size={14} /> Early access</Badge>
               ) : (
                 <Badge>Standard queue</Badge>
@@ -75,6 +79,10 @@ export default function EventsPage() {
           </Card>
         ))}
       </section>
-    </AppShell>
+    </>
   );
+}
+
+export default function EventsPage() {
+  return <AppShell><EventsContent /></AppShell>;
 }

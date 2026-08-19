@@ -1958,6 +1958,22 @@
       "worst_case": "2026-08-26",
       "assignee": "JohnAndrewBalbarosa",
       "body": "🤖 AI-built this session — needs human review.\n✅ Replaces custom interaction infrastructure with a shadcn-compatible Radix foundation, TanStack Query and Table, React Hook Form plus Zod, shared Recharts wrappers, and Sonner feedback while preserving the established visual language.\n✅ Resume Studio now embeds a dedicated same-origin PDF.js viewer backed by the actual generated PDF. It defaults to whole-page fit, has fit-width, bounded zoom, page navigation, open/download actions, responsive containment, and strict query validation.\n✅ Adds keyboard/focus behavior, automated axe contrast/accessibility coverage, sortable semantic tables, accessible charts, mobile sheets, loading states, and documented component boundaries.\nTests: 15 product, 4 capability, Supabase migration, typecheck, production build, Career Evidence/PDF desktop+mobile E2E, local demo workflow E2E, 10-route tour E2E, Radix/axe UI E2E, and npm audit with zero vulnerabilities.\n👤 HITL: visually review the Resume Studio fit controls, desktop/mobile shell, forms, tables, charts, and keyboard dialog behavior before moving to Done."
+    },
+    {
+      "title": "WEB.7 Separate officer and member portals",
+      "stage": "In Review",
+      "role": "Security",
+      "group": "Foundation",
+      "department": "Platform Core",
+      "hitl": "Yes",
+      "priority": "P1",
+      "estimate": 3,
+      "milestone": "Platform & Intelligence — Wk2",
+      "start": "2026-08-19",
+      "target": "2026-08-19",
+      "worst_case": "2026-08-26",
+      "assignee": "JohnAndrewBalbarosa",
+      "body": "🤖 AI-built this session — needs human review.\n✅ One shared Next.js codebase now serves a personal member portal on localhost:3000 and an officer/developer portal on localhost:3001, with isolated build directories and deterministic demo identities.\n✅ Server-owned audience and Supabase member role checks protect officer routes and APIs. Member payloads omit chapter analytics, operations, connections, recommendations, and diagnostics rather than hiding them in the browser.\n✅ Officer diagnostics use a strict allowlist containing build, route, authorization, provider, freshness, timing, and warning metadata; cookies, credentials, raw records, personal evidence, paths, and stack traces are excluded.\n✅ Navigation, dashboards, event/profile access labels, tours, and demo workflows now reflect the active portal audience.\nTests: 17 product, 4 capability, Supabase migration, typecheck, Python launcher compile, both production audience builds, two-port portal security E2E, member/officer demo workflow E2E, Career Evidence/PDF E2E, Radix/axe UI E2E, 10-route officer tour plus member tour E2E, and npm audit with zero vulnerabilities.\n👤 HITL: compare both localhost portals, inspect member network responses for absent officer fields, and review sanitized officer diagnostics before moving to Done."
     }
   ],
   "date_fields": [

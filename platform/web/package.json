@@ -15,6 +15,7 @@
     "test:career:e2e": "node tests/career-evidence.e2e.mjs",
     "test:demo:e2e": "node tests/local-demo-workflows.e2e.mjs",
     "test:ui:e2e": "node tests/ui-foundation.e2e.mjs",
+    "test:portals:e2e": "node tests/portal-separation.e2e.mjs",
     "test:supabase": "tsx --test tests/supabase-migrations.test.ts",
     "demo:seed:storage": "node scripts/seed-demo-storage.mjs",
     "demo:status": "tsx scripts/demo-data.ts status",

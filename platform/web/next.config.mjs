@@ -15,6 +15,7 @@ const viewerScriptPolicy = process.env.NODE_ENV === "development"
 const nextConfig = {
   agentRules: false,
   allowedDevOrigins: ["127.0.0.1"],
+  distDir: process.env.PYTORCH_FIT_NEXT_DIST_DIR || ".next",
   async headers() {
     return [
       {

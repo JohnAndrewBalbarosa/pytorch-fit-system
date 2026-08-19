@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
-const baseUrl = process.env.WEB_BASE_URL ?? "http://localhost:3100";
+const baseUrl = process.env.MEMBER_BASE_URL ?? process.env.WEB_BASE_URL ?? "http://127.0.0.1:3000";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const title = `Persistent evidence ${Date.now()}`;
 const browser = await chromium.launch({ headless: true });
@@ -19,7 +19,7 @@ try {
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto(`${baseUrl}/career/evidence`);
   await page.waitForTimeout(1_000);
-  await page.getByText(/Local demo · Synthetic data · External actions disabled/i).waitFor();
+  await page.getByText(/Local member demo · Synthetic data · External actions disabled/i).waitFor();
 
   const manual = page.getByRole("button", { name: "Manual entry", exact: true });
   await manual.waitFor();

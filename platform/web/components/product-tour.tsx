@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ACTIONS, EVENTS, Joyride, STATUS, type EventData } from "react-joyride";
-import { productTours, tourStorageKey } from "@/lib/product-tours";
+import { useCapabilities } from "@/components/capability-context";
+import { memberProductTours, productTours, tourStorageKey } from "@/lib/product-tours";
 
 export const START_PRODUCT_TOUR_EVENT = "pytorch-fit:start-product-tour";
 
@@ -13,7 +14,9 @@ export function requestProductTour() {
 
 export function ProductTourController() {
   const pathname = usePathname();
-  const tour = productTours[pathname];
+  const manifest = useCapabilities();
+  const tours = manifest.portal.audience === "member" ? memberProductTours : productTours;
+  const tour = tours[pathname];
   const [run, setRun] = useState(false);
   const [instance, setInstance] = useState(0);
   const startToken = useRef(0);

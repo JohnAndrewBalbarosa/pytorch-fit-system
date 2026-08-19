@@ -13,8 +13,10 @@ python scripts/dev_frontend.py
 ```
 
 The launcher first ensures the versioned synthetic scenario in `.cache/demo/product.sqlite3`, then
-starts FastAPI on `127.0.0.1:8000`, Next.js on `127.0.0.1:3000`, creates a temporary server-to-server
-developer token, and enables the passwordless local workspace. The bypass is
+starts FastAPI on `127.0.0.1:8000`, the member portal on `127.0.0.1:3000`, and the
+officer/developer portal on `127.0.0.1:3001`. Both portals use the same Next.js codebase with
+separate build directories and demo identities. The launcher creates a temporary server-to-server
+developer token and enables the passwordless local workspaces. The bypass is
 rejected when `NODE_ENV=production`; it does not grant any job-application permission.
 
 Local mode is an editable demo with one primary synthetic student and four supporting lifecycle
@@ -28,6 +30,9 @@ the developer token server-side.
 ## Frontend boundaries
 
 - Product routes live in `app/` and use `AppShell` plus shared UI components.
+- `PYTORCH_FIT_PORTAL_AUDIENCE=member|officer` selects a server-owned portal shell. Member APIs
+  omit diagnostics and officer payloads; production officer access additionally requires
+  `member_profiles.is_officer` or an admin role.
 - Next.js route handlers proxy only allowlisted FastAPI endpoints to a fixed loopback base URL.
 - `scripts/dev_frontend.py` enables the explicit development-only sign-in bypass and opens the
   dashboard directly. The bypass requires both `PYTORCH_FIT_DEV_ACCESS=1` and

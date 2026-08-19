@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import AxeBuilder from "@axe-core/playwright";
 import { chromium } from "playwright";
 
-const baseUrl = process.env.WEB_BASE_URL ?? "http://localhost:3100";
+const baseUrl = process.env.MEMBER_BASE_URL ?? process.env.WEB_BASE_URL ?? "http://127.0.0.1:3000";
 const browser = await chromium.launch({ headless: true });
 
 try {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentProductUserId } from "@/lib/auth/current-user";
+import { currentViewer, viewerMayUseOfficerPortal } from "@/lib/auth/viewer";
 import { demoProductView } from "@/lib/product/demo";
 import { configuredProductProvider } from "@/lib/product/repository";
 import { updateLocalDemoState } from "@/lib/product/local-demo-state";
@@ -16,11 +16,15 @@ export async function POST(request: Request) {
   if (process.env.NODE_ENV === "production" || configuredProductProvider() !== "local") {
     return NextResponse.json({ error: "Demo actions are unavailable." }, { status: 404 });
   }
-  const userId = await currentProductUserId();
-  if (!userId) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  const viewer = await currentViewer();
+  if (!viewer.userId) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   const parsed = requestSchema.safeParse(await request.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: "A supported demo action and record ID are required." }, { status: 400 });
   const { action, id } = parsed.data;
+  if (action === "approve_review" && !viewerMayUseOfficerPortal(viewer)) {
+    return NextResponse.json({ error: "Officer portal access is required for review approval." }, { status: 403 });
+  }
+  const userId = viewer.userId;
   const fixture = demoProductView("dashboard");
 
   try {

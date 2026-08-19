@@ -3,6 +3,7 @@
 import { Facebook, Linkedin, Medal, Plug, UserRound } from "lucide-react";
 import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { useCapabilities } from "@/components/capability-context";
 import { SkillBarChart, SkillRadarChart } from "@/components/charts";
 import { GatePanel } from "@/components/role-gate";
 import { Badge } from "@/components/ui/badge";
@@ -16,17 +17,20 @@ const tierTabs = [
   { value: "general", label: "General" }
 ] satisfies Array<{ value: UserTier; label: string }>;
 
-export default function ProfilePage() {
+function ProfileContent() {
   const [tier, setTier] = useState<UserTier>("active");
+  const manifest = useCapabilities();
+  const officerPortal = manifest.portal.audience === "officer";
+  const effectiveTier = officerPortal ? tier : manifest.portal.userTier;
 
   return (
-    <AppShell>
+    <>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-[-0.02em]">User Profile & Personal Hub</h1>
           <p className="mt-2 text-muted">Student growth profile with consent-based social connectors and skill telemetry.</p>
         </div>
-        <SegmentedTabs items={tierTabs} onChange={setTier} value={tier} />
+        {officerPortal ? <SegmentedTabs items={tierTabs} onChange={setTier} value={tier} /> : <Badge variant="orange">{userTiers[effectiveTier].label}</Badge>}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_0.75fr]">
@@ -46,7 +50,7 @@ export default function ProfilePage() {
                 </div>
               </div>
             </div>
-            <Badge variant="orange">{userTiers[tier].label}</Badge>
+            <Badge variant="orange">{userTiers[effectiveTier].label}</Badge>
           </div>
         </Card>
 
@@ -72,7 +76,7 @@ export default function ProfilePage() {
       </div>
 
       <div className="mt-4">
-        <GatePanel tier={tier} />
+        <GatePanel tier={effectiveTier} />
       </div>
 
       <section className="mt-4 grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
@@ -96,6 +100,10 @@ export default function ProfilePage() {
           <SkillBarChart />
         </Card>
       </section>
-    </AppShell>
+    </>
   );
+}
+
+export default function ProfilePage() {
+  return <AppShell><ProfileContent /></AppShell>;
 }

@@ -32,7 +32,20 @@ import { Badge } from "./ui/badge";
 import { Sheet } from "./ui/sheet";
 import { Progress } from "./ui/progress";
 
-const navItems: Array<{ href: string; label: string; icon: typeof LayoutDashboard; capability?: CapabilityKey }> = [
+type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; capability?: CapabilityKey };
+
+const memberNavItems: NavItem[] = [
+  { href: "/dashboard", label: "Personal Dashboard", icon: Home },
+  { href: "/career/evidence", label: "Career Evidence", icon: UserRound, capability: "evidence_read" },
+  { href: "/career/resumes", label: "Resume Studio", icon: BarChart3, capability: "resume_read" },
+  { href: "/jobs/opportunities", label: "Opportunities", icon: BriefcaseBusiness, capability: "job_discovery" },
+  { href: "/events", label: "Chapter Events", icon: CalendarDays },
+  { href: "/leaderboards", label: "Leaderboards", icon: Trophy },
+  { href: "/dashboard/profile", label: "My Profile", icon: UserRound },
+  { href: "/settings", label: "Settings", icon: Settings },
+];
+
+const officerNavItems: NavItem[] = [
   { href: "/dashboard", label: "Command Center", icon: LayoutDashboard },
   { href: "/career/evidence", label: "Career Evidence", icon: UserRound, capability: "evidence_read" },
   { href: "/career/resumes", label: "Resume Studio", icon: BarChart3, capability: "resume_read" },
@@ -42,6 +55,7 @@ const navItems: Array<{ href: string; label: string; icon: typeof LayoutDashboar
   { href: "/connections", label: "Connections", icon: Unplug, capability: "connections" },
   { href: "/events", label: "Chapter Events", icon: CalendarDays },
   { href: "/leaderboards", label: "Leaderboards", icon: Trophy },
+  { href: "/admin/dashboard", label: "Officer Admin", icon: Shield },
   { href: "/settings", label: "Settings", icon: Settings }
 ];
 
@@ -49,6 +63,8 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const manifest = useCapabilities();
+  const officerPortal = manifest.portal.audience === "officer";
+  const navItems = officerPortal ? officerNavItems : memberNavItems;
 
   const sidebar = (
     <aside className="flex h-full w-72 flex-col border-r border-white/10 bg-[#0d0d0d] p-4 text-[#FFF7ED]">
@@ -60,7 +76,7 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
             </div>
             <div>
               <p className="font-mono text-sm font-bold tracking-[-0.02em]">PYTORCH.FIT</p>
-              <p className="text-xs text-[#FFF7ED]/45">Campus Engine</p>
+              <p className="text-xs text-[#FFF7ED]/45">{officerPortal ? "Officer / Developer" : "Member Workspace"}</p>
             </div>
           </div>
         </Link>
@@ -70,7 +86,7 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
       </div>
       <nav className="space-y-1">
         {navItems.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(`${item.href}/`));
           const Icon = item.icon;
           const capability = item.capability ? manifest.capabilities[item.capability] : undefined;
           const isLocked = capability?.state === "locked";
@@ -106,14 +122,14 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
           <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
         </div>
         <Progress className="h-1.5 bg-white/10" indicatorClassName="bg-[#e8590c]" value={68} />
-        <p className="mt-2 text-xs text-[#FFF7ED]/45">Career evidence and application readiness.</p>
+        <p className="mt-2 text-xs text-[#FFF7ED]/45">{officerPortal ? "Chapter operations and review readiness." : "Personal evidence and career readiness."}</p>
       </div>
       <div className="mt-auto rounded-lg border border-white/10 bg-white/[0.035] p-3">
         <div className="mb-2 flex items-center gap-2">
           <Shield className="text-[#e8590c]" size={16} />
-          <p className="text-sm font-semibold">Protected data gateway</p>
+          <p className="text-sm font-semibold">{officerPortal ? "Officer data gateway" : "Personal data gateway"}</p>
         </div>
-        <p className="text-xs leading-5 text-[#FFF7ED]/45">Local and Supabase providers share one server-side contract.</p>
+        <p className="text-xs leading-5 text-[#FFF7ED]/45">{officerPortal ? "Role checks run before officer data or diagnostics are returned." : "Officer diagnostics and operational payloads are excluded from this portal."}</p>
       </div>
       <Button
         className="mt-3 w-full justify-start gap-3"
@@ -130,12 +146,12 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-[#0b0b0c] text-[#FFF7ED]">
-      {manifest.localDemo && <div className="fixed inset-x-0 top-0 z-50 flex h-8 items-center justify-center border-b border-[#ff8a3d]/30 bg-[#e8590c] px-3 text-center font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white sm:text-xs">Local demo · Synthetic data · External actions disabled</div>}
+      {manifest.localDemo && <div className="fixed inset-x-0 top-0 z-50 flex h-8 items-center justify-center border-b border-[#ff8a3d]/30 bg-[#e8590c] px-3 text-center font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white sm:text-xs">Local {officerPortal ? "officer" : "member"} demo · Synthetic data · External actions disabled</div>}
       <header className={cn("sticky z-30 flex h-16 items-center justify-between border-b border-white/10 bg-[#0b0b0c]/90 px-4 backdrop-blur lg:hidden", manifest.localDemo ? "top-8" : "top-0")}>
         <Button aria-label="Open menu" onClick={() => setOpen(true)} size="icon" type="button" variant="secondary">
           <Menu size={18} />
         </Button>
-        <Badge variant="orange">Prototype UI</Badge>
+        <Badge variant="orange">{officerPortal ? "Officer Portal" : "Member Portal"}</Badge>
         <Button aria-label="Replay page tour" data-tour="tour-help" onClick={requestProductTour} size="icon" type="button" variant="secondary">
           <CircleHelp size={18} />
         </Button>

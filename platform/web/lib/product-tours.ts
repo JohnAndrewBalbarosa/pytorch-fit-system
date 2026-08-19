@@ -77,6 +77,27 @@ export const productTours: Record<string, ProductTour> = {
   }
 };
 
+export const memberProductTours: Record<string, ProductTour> = {
+  ...productTours,
+  "/dashboard": {
+    version: 1,
+    steps: [
+      { target: '[data-tour="member-overview"]', title: "Your personal workspace", content: "Start here for your evidence, resume readiness, chapter participation, and opportunity shortlist.", placement: "bottom-start" },
+      { target: '[data-tour="member-destinations"]', title: "Personal tools", content: "Open only the member tools tied to your own profile and career evidence." },
+      { target: '[data-tour="member-events"]', title: "Upcoming events", content: "See available chapter activities and whether you already joined." },
+      { target: '[data-tour="member-opportunities"]', title: "Opportunity shortlist", content: "Review evidence-backed matches without exposing officer operations or diagnostics." },
+    ],
+  },
+  "/events": {
+    version: 2,
+    steps: [
+      { target: '[data-tour="events-heading"]', title: "Chapter events", content: "Browse workshops, clinics, hackathons, and other chapter activities from one view.", placement: "bottom-start" },
+      { target: '[data-tour="events-role"]', title: "Your access level", content: "This label comes from your authenticated member role; members cannot simulate officer access." },
+      { target: '[data-tour="events-grid"]', title: "Read event availability", content: "Each card shows the department, date, activity type, seats, and your applicable access label." },
+    ],
+  },
+};
+
 export function tourStorageKey(pathname: string, version: number): string {
   return `pytorch-fit:tour:${pathname}:v${version}`;
 }

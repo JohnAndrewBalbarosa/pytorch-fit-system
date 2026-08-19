@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 
-const baseUrl = process.env.WEB_BASE_URL ?? "http://localhost:3000";
+const baseUrl = process.env.OFFICER_BASE_URL ?? process.env.WEB_BASE_URL ?? "http://127.0.0.1:3001";
 const routes = [
   ["/dashboard", "Your command center"],
   ["/career/evidence", "What this page does"],
