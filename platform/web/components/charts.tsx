@@ -74,6 +74,14 @@ export function SkillBarChart() {
   );
 }
 
+export function PersonalActivityChart({ data }: { data: Array<{ week: string; points: number }> }) {
+  return <ChartContainer aria-label="Twelve-week verified point activity" className="h-64" config={chartConfig}><ResponsiveContainer><AreaChart accessibilityLayer data={data}><defs><linearGradient id="personal-activity" x1="0" x2="0" y1="0" y2="1"><stop offset="5%" stopColor="var(--accent)" stopOpacity={0.42} /><stop offset="95%" stopColor="var(--accent)" stopOpacity={0} /></linearGradient></defs><CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} /><XAxis dataKey="week" tick={{ fill: "var(--muted)", fontSize: 11 }} /><YAxis tick={{ fill: "var(--muted)", fontSize: 11 }} /><Tooltip contentStyle={tooltipStyle} /><Area dataKey="points" fill="url(#personal-activity)" stroke="var(--accent)" strokeWidth={2} type="monotone" /></AreaChart></ResponsiveContainer></ChartContainer>;
+}
+
+export function SkillPointsChart({ data }: { data: Array<{ skill: string; points: number }> }) {
+  return <ChartContainer aria-label="Verified skill points" className="h-64" config={chartConfig}><ResponsiveContainer><BarChart accessibilityLayer data={data} layout="vertical" margin={{ left: 12 }}><CartesianGrid horizontal={false} stroke="rgba(255,255,255,0.06)" /><XAxis type="number" tick={{ fill: "var(--muted)", fontSize: 11 }} /><YAxis dataKey="skill" type="category" width={76} tick={{ fill: "var(--muted)", fontSize: 11 }} /><Tooltip contentStyle={tooltipStyle} /><Bar dataKey="points" fill="var(--accent)" radius={[0,6,6,0]} /></BarChart></ResponsiveContainer></ChartContainer>;
+}
+
 export function ActivityTrendChart({ data = activityTrend, state }: { data?: Array<{ day: string; events: number | null; contributions: number | null }>; state?: AnalyticsState } = {}) {
   const chartData = data.length ? data : emptyActivity;
   return (

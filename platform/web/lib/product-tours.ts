@@ -63,8 +63,8 @@ export const productTours: Record<string, ProductTour> = {
     version: 1,
     steps: [
       { target: '[data-tour="leaderboards-heading"]', title: "Public-safe rankings", content: "Leaderboards use reviewed signals and public-safe handles instead of exposing private student information.", placement: "bottom-start" },
-      { target: '[data-tour="leaderboards-tabs"]', title: "Change the ranking view", content: "Switch between the global board and specialist categories without leaving the page." },
-      { target: '[data-tour="leaderboards-table"]', title: "Understand each rank", content: "Compare points, event streaks, tracks, and reviewed skill badges in this table." }
+      { target: '[data-tour="leaderboards-tabs"]', title: "Change the ranking view", content: "Switch between the global board and verified-skill ladders without leaving the page." },
+      { target: '[data-tour="leaderboards-table"]', title: "Understand each rank", content: "Compare season rating, tier, active-week streak, and verified skill labels." }
     ]
   },
   "/settings": {
@@ -74,7 +74,15 @@ export const productTours: Record<string, ProductTour> = {
       { target: '[data-tour="settings-grid"]', title: "Configure by section", content: "Each card groups related fields so you can review one concern at a time." },
       { target: '[data-tour="settings-privacy"]', title: "Privacy by default", content: "Public profile fields, social parsing consent, and analytics sharing must remain explicit choices." }
     ]
-  }
+  },
+  "/trust": {
+    version: 1,
+    steps: [{ target: '[data-testid="trust-center"]', title: "Integrity and privacy", content: "Review authoritative storage, proposed replica witnesses, privacy boundaries, and incoming structured feedback.", placement: "bottom-start" }],
+  },
+  "/membership": {
+    version: 1,
+    steps: [{ target: "main", title: "Membership review", content: "Paid membership remains human-approved. Authentication alone never grants an unpaid applicant member access.", placement: "center" }],
+  },
 };
 
 export const memberProductTours: Record<string, ProductTour> = {
@@ -83,10 +91,18 @@ export const memberProductTours: Record<string, ProductTour> = {
     version: 1,
     steps: [
       { target: '[data-tour="member-overview"]', title: "Your personal workspace", content: "Start here for your evidence, resume readiness, chapter participation, and opportunity shortlist.", placement: "bottom-start" },
-      { target: '[data-tour="member-destinations"]', title: "Personal tools", content: "Open only the member tools tied to your own profile and career evidence." },
-      { target: '[data-tour="member-events"]', title: "Upcoming events", content: "See available chapter activities and whether you already joined." },
-      { target: '[data-tour="member-opportunities"]', title: "Opportunity shortlist", content: "Review evidence-backed matches without exposing officer operations or diagnostics." },
+      { target: '[data-tour="member-metrics"]', title: "Private readiness stats", content: "These owner-only totals describe your evidence, resumes, events, and opportunities." },
+      { target: '[data-tour="member-standing"]', title: "Competitive progression", content: "Your season tier and activity chart use verified point events; your own ladder row is strongly highlighted." },
+      { target: '[data-tour="member-community"]', title: "Safe community pulse", content: "Members can see useful chapter totals without names, emails, private profiles, or small-group breakdowns." },
     ],
+  },
+  "/trust": {
+    version: 1,
+    steps: [{ target: '[data-testid="trust-center"]', title: "Privacy and trust", content: "Control account visibility, anonymous ranking, device persistence, and automatic report consent from one place.", placement: "bottom-start" }],
+  },
+  "/membership": {
+    version: 1,
+    steps: [{ target: "main", title: "Membership verification", content: "Authentication and paid chapter membership are separate. Officers approve payment evidence before access becomes active.", placement: "center" }],
   },
   "/events": {
     version: 2,

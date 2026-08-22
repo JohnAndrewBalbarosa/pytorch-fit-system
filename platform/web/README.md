@@ -29,6 +29,9 @@ the developer token server-side.
 
 ## Frontend boundaries
 
+The privacy, feedback, membership, local-device, and proposed officer-replica trust model is
+documented in [`docs/HYBRID-TRUST-ARCHITECTURE.md`](../../docs/HYBRID-TRUST-ARCHITECTURE.md).
+
 - Product routes live in `app/` and use `AppShell` plus shared UI components.
 - `PYTORCH_FIT_PORTAL_AUDIENCE=member|officer` selects a server-owned portal shell. Member APIs
   omit diagnostics and officer payloads; production officer access additionally requires

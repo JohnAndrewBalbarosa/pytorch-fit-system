@@ -1,7 +1,8 @@
 "use client";
 
-import { Facebook, Linkedin, Medal, Plug, UserRound } from "lucide-react";
+import { AtSign, Facebook, Linkedin, Medal, Plug, UserRound } from "lucide-react";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/app-shell";
 import { useCapabilities } from "@/components/capability-context";
 import { SkillBarChart, SkillRadarChart } from "@/components/charts";
@@ -10,6 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SegmentedTabs } from "@/components/ui/tabs";
 import { userTiers, type UserTier } from "@/lib/permissions";
+import { fetchJson } from "@/lib/client-api";
+import type { LeaderboardIdentitySettings } from "@/lib/member-command-contracts";
+import type { MemberPrivacySettings } from "@/lib/trust-contracts";
 
 const tierTabs = [
   { value: "active", label: "Active" },
@@ -22,6 +26,9 @@ function ProfileContent() {
   const manifest = useCapabilities();
   const officerPortal = manifest.portal.audience === "officer";
   const effectiveTier = officerPortal ? tier : manifest.portal.userTier;
+  const privacy = useQuery({ queryKey: ["member-privacy"], queryFn: () => fetchJson<MemberPrivacySettings>("/api/member/privacy", { cache: "no-store" }) });
+  const identity = useQuery({ queryKey: ["leaderboard-identity"], queryFn: () => fetchJson<LeaderboardIdentitySettings>("/api/member/leaderboard-identity", { cache: "no-store" }) });
+  const memberLabel = privacy.data?.hideRealName !== false ? identity.data?.preview || "Member #7A82F" : "Mika Santos";
 
   return (
     <>
@@ -41,7 +48,7 @@ function ProfileContent() {
                 <UserRound size={30} />
               </div>
               <div>
-                <h2 className="text-xl font-bold tracking-[-0.02em]">Mika Santos #7A82F</h2>
+                <h2 className="text-xl font-bold tracking-[-0.02em]">{officerPortal ? "Mika Santos · Alex_Rivera" : memberLabel}</h2>
                 <p className="text-sm text-muted">BS Computer Science, FEU Tech Innovation Center cohort</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Badge variant="orange">Computer Vision</Badge>
@@ -62,7 +69,11 @@ function ProfileContent() {
             </div>
             <Plug className="text-accent" size={20} />
           </CardHeader>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <button className="focus-ring flex items-center justify-between rounded-lg border border-border bg-surface p-3 text-left transition-all duration-300 ease-in-out hover:bg-elevated" type="button">
+              <span className="flex items-center gap-2 font-semibold"><AtSign size={18} /> Google</span>
+              <Badge variant={privacy.data?.hideGoogleIdentity === false ? "success" : "warning"}>{officerPortal || privacy.data?.hideGoogleIdentity === false ? "Connected" : "Hidden"}</Badge>
+            </button>
             <button className="focus-ring flex items-center justify-between rounded-lg border border-border bg-surface p-3 text-left transition-all duration-300 ease-in-out hover:bg-elevated" type="button">
               <span className="flex items-center gap-2 font-semibold"><Linkedin size={18} /> LinkedIn</span>
               <Badge variant="success">Linked</Badge>

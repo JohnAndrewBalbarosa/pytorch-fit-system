@@ -22,6 +22,7 @@ import { BrandMark } from "@/components/figma/brand";
 import { Counter } from "@/components/figma/counter";
 import { FigmaParticleHero } from "@/components/figma/particle-hero";
 import { Reveal } from "@/components/figma/reveal";
+import { DevAccess } from "@/components/dev-access";
 
 const faq = [
   {
@@ -148,6 +149,7 @@ function Hero() {
             Explore the system
           </Link>
         </div>
+        <div className="mx-auto max-w-md"><DevAccess /></div>
 
         <div className="mx-auto mt-20 grid max-w-4xl grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/5 md:grid-cols-4">
           {[
@@ -231,10 +233,10 @@ function AltSection({ id, eyebrow, title, body, reverse, children }: { id: strin
 
 function LeaderboardPreview() {
   const rows = [
-    { rank: 1, name: "Mika Santos", score: 982 },
-    { rank: 2, name: "Sofia Reyes", score: 941 },
-    { rank: 3, name: "Daniel Park", score: 918 },
-    { rank: 4, name: "Aria Tanaka", score: 877 }
+    { rank: 1, name: "Mika_7A82F", score: 982 },
+    { rank: 2, name: "Member #18C2A", score: 941 },
+    { rank: 3, name: "Daniel_P", score: 918 },
+    { rank: 4, name: "Member #4D91B", score: 877 }
   ];
 
   return (

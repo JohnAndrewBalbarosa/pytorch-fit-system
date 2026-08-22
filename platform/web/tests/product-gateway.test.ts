@@ -220,7 +220,7 @@ test("document and filter schemas reject unsupported or unbounded viewer input",
 test("user-facing forms share strict schemas for authentication and evidence", () => {
   assert.equal(loginSchema.safeParse({ email: "owner@fit.edu.ph", password: "valid-passphrase", remember: false }).success, true);
   assert.equal(loginSchema.safeParse({ email: "not-an-email", password: "short", remember: false }).success, false);
-  assert.equal(registerSchema.safeParse({ name: "Demo Owner", email: "owner@fit.edu.ph", password: "valid-passphrase", confirm: "different-passphrase", terms: true }).success, false);
+  assert.equal(registerSchema.safeParse({ name: "Demo Owner", username: "demo_owner", email: "owner@fit.edu.ph", password: "valid-passphrase", confirm: "different-passphrase", terms: true }).success, false);
   assert.equal(evidenceFormSchema.safeParse({ title: "Hackathon winner", organization: "FEU Tech", role: "Lead", dateLabel: "2026", description: "Built a measured working prototype.", skillsText: "PyTorch, FastAPI" }).success, true);
   assert.equal(evidenceFormSchema.safeParse({ title: "", organization: "", role: "", dateLabel: "", description: "guessed", skillsText: "" }).success, false);
 });

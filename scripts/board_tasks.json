@@ -1974,6 +1974,38 @@
       "worst_case": "2026-08-26",
       "assignee": "JohnAndrewBalbarosa",
       "body": "🤖 AI-built this session — needs human review.\n✅ One shared Next.js codebase now serves a personal member portal on localhost:3000 and an officer/developer portal on localhost:3001, with isolated build directories and deterministic demo identities.\n✅ Server-owned audience and Supabase member role checks protect officer routes and APIs. Member payloads omit chapter analytics, operations, connections, recommendations, and diagnostics rather than hiding them in the browser.\n✅ Officer diagnostics use a strict allowlist containing build, route, authorization, provider, freshness, timing, and warning metadata; cookies, credentials, raw records, personal evidence, paths, and stack traces are excluded.\n✅ Navigation, dashboards, event/profile access labels, tours, and demo workflows now reflect the active portal audience.\nTests: 17 product, 4 capability, Supabase migration, typecheck, Python launcher compile, both production audience builds, two-port portal security E2E, member/officer demo workflow E2E, Career Evidence/PDF E2E, Radix/axe UI E2E, 10-route officer tour plus member tour E2E, and npm audit with zero vulnerabilities.\n👤 HITL: compare both localhost portals, inspect member network responses for absent officer fields, and review sanitized officer diagnostics before moving to Done."
+    },
+    {
+      "title": "WEB.8 Personal command center and seasonal member leaderboards",
+      "stage": "In Review",
+      "role": "Frontend",
+      "group": "Profiles & Analytics",
+      "department": "Points & Leaderboard",
+      "hitl": "Yes",
+      "priority": "P1",
+      "estimate": 5,
+      "milestone": "Platform & Intelligence — Wk2",
+      "start": "2026-08-19",
+      "target": "2026-08-19",
+      "worst_case": "2026-08-26",
+      "assignee": "JohnAndrewBalbarosa",
+      "body": "🤖 AI-built this session — needs human review.\n✅ Delivers a private member command center, authenticated quarterly competitive ladders, strong current-user row highlighting, personal stats, and privacy-safe community aggregates without exposing career records or stable identity fields.\n✅ Members can use a nickname, season-scoped anonymous alias, or explicit real-name opt-in; hide Google identity and error-reporting preferences persist through owner-only APIs and Supabase RLS.\n✅ Adds Google OAuth callback wiring, localhost one-click member/officer entry, paid-membership gating, a clearly non-scannable development payment QR, officer verification queue, and minimal membership funnel state.\n✅ Adds one-click structured UI feedback and privacy-bounded automatic error reports. Reports exclude raw HTML, screenshots, form values, cookies, tokens, local cache contents, and stack traces.\n✅ Documents the hybrid trust architecture, provenance transitions, known tampering/availability/privacy vulnerabilities, and a staged officer-replica design; Supabase remains authoritative and covert access to member device caches is prohibited.\nTests: 17 product, 4 capability, 2 leaderboard unit, 3 trust unit, full Supabase migration/seed, typecheck, member production build, officer production build, two-port portal security E2E, and privacy/leaderboard/report-flow axe E2E.\n👤 HITL: visually review member/officer identity behavior, verify production OAuth/payment configuration, inspect privacy/RLS policies and report payloads, and publish rank thresholds before moving to Done."
+    },
+    {
+      "title": "INFRA.1 Pilot encrypted officer integrity replicas",
+      "stage": "Backlog",
+      "role": "Security",
+      "group": "Foundation",
+      "department": "Platform Core",
+      "hitl": "Yes",
+      "priority": "P1",
+      "estimate": 8,
+      "milestone": "Platform & Intelligence — Wk2",
+      "start": "2026-08-22",
+      "target": "2026-09-19",
+      "worst_case": "2026-10-03",
+      "assignee": "",
+      "body": "🎯 Goal: validate an opt-in officer-device integrity witness pilot without turning browsers into equal writable databases.\n📦 Scope: signed append-only manifests, encrypted bounded replicas, quorum/freshness comparison, key rotation and revocation, recovery drills, storage quotas, offline conflict handling, and auditable officer consent. Vercel coordinates leases and health; Supabase remains the authoritative operational store.\n🔒 Boundaries: no covert inspection of member caches, no client-authored verified provenance, no raw credential/payment replication, and no automatic promotion of disputed data.\n✔ Acceptance: threat model and data-flow review approved; prototype survives stale/malicious/offline peer tests; loss or compromise of one officer device does not expose plaintext or corrupt authority; a documented kill switch returns operation to Supabase-only mode.\n👤 HITL: security and chapter leadership must approve the threat model, device enrollment, retention, recovery, and pilot participants before implementation or deployment."
     }
   ],
   "date_fields": [

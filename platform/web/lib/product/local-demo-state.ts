@@ -8,12 +8,33 @@ export type DemoRuntimeState = {
   opportunityStages: Record<string, string>;
   approvedReviewIds: string[];
   registeredEventIds: string[];
+  leaderboardIdentity: {
+    username: string;
+    mode: "nickname" | "anonymous" | "real_name";
+    realNameConsent: boolean;
+    reviewRequired: boolean;
+  };
+  privacySettings: {
+    hideGoogleIdentity: boolean;
+    hideRealName: boolean;
+    deviceCacheEnabled: boolean;
+    anonymousRanking: boolean;
+    automaticErrorReports: boolean;
+  };
 };
 
 const initialState = (): DemoRuntimeState => ({
   opportunityStages: {},
   approvedReviewIds: [],
   registeredEventIds: ["event-ignite"],
+  leaderboardIdentity: { username: "Alex_Rivera", mode: "nickname", realNameConsent: false, reviewRequired: false },
+  privacySettings: {
+    hideGoogleIdentity: true,
+    hideRealName: true,
+    deviceCacheEnabled: true,
+    anonymousRanking: false,
+    automaticErrorReports: true,
+  },
 });
 
 export function localDemoDatabasePath() {
@@ -66,6 +87,8 @@ export function readLocalDemoState(userId: string): DemoRuntimeState {
       opportunityStages: parsed.opportunityStages || {},
       approvedReviewIds: parsed.approvedReviewIds || [],
       registeredEventIds: parsed.registeredEventIds || [],
+      leaderboardIdentity: parsed.leaderboardIdentity || initialState().leaderboardIdentity,
+      privacySettings: parsed.privacySettings || initialState().privacySettings,
     };
   } finally {
     db.close();

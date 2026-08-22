@@ -18,6 +18,7 @@ import {
   Shield,
   Trophy,
   Unplug,
+  UserCheck,
   UserRound,
   X
 } from "lucide-react";
@@ -41,6 +42,8 @@ const memberNavItems: NavItem[] = [
   { href: "/jobs/opportunities", label: "Opportunities", icon: BriefcaseBusiness, capability: "job_discovery" },
   { href: "/events", label: "Chapter Events", icon: CalendarDays },
   { href: "/leaderboards", label: "Leaderboards", icon: Trophy },
+  { href: "/trust", label: "Privacy & Trust", icon: Shield },
+  { href: "/membership", label: "Membership", icon: UserCheck },
   { href: "/dashboard/profile", label: "My Profile", icon: UserRound },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -55,6 +58,8 @@ const officerNavItems: NavItem[] = [
   { href: "/connections", label: "Connections", icon: Unplug, capability: "connections" },
   { href: "/events", label: "Chapter Events", icon: CalendarDays },
   { href: "/leaderboards", label: "Leaderboards", icon: Trophy },
+  { href: "/trust", label: "Integrity Console", icon: Shield },
+  { href: "/membership", label: "Member Reviews", icon: UserCheck },
   { href: "/admin/dashboard", label: "Officer Admin", icon: Shield },
   { href: "/settings", label: "Settings", icon: Settings }
 ];

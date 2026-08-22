@@ -4,7 +4,8 @@ import { NextResponse } from "next/server";
 const enabled = () => process.env.NODE_ENV !== "production" && process.env.PYTORCH_FIT_DEV_ACCESS === "1";
 
 export async function GET() {
-  return NextResponse.json({ enabled: enabled() });
+  const audience = process.env.PYTORCH_FIT_PORTAL_AUDIENCE === "officer" ? "officer" : "member";
+  return NextResponse.json({ enabled: enabled(), audience });
 }
 
 export async function POST() {
