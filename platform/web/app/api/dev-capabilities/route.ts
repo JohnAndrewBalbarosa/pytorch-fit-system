@@ -38,10 +38,11 @@ export async function GET() {
   const viewer = await currentViewer();
   const developmentOwner = viewer.localDevelopment && viewer.isOfficer;
   const localDemo = viewer.localDevelopment && configuredProductProvider() === "local";
-  const [auth, onboarding, control, profileReady] = await Promise.all([
+  const [auth, onboarding, control, ai, profileReady] = await Promise.all([
     backendJson("/api/auth/status"),
     backendJson("/api/onboarding/state"),
     backendJson("/api/job-finder/control-state"),
+    backendJson("/api/local-ai/status"),
     normalizedProfileReady(),
   ]);
   const identity = auth.identity as Record<string, { connected?: boolean }> | undefined;
@@ -63,6 +64,7 @@ export async function GET() {
     evidenceReady: localDemo || Boolean(onboarding.ready && source?.master_loaded),
     normalizedProfileReady: localDemo || profileReady,
     resumeArtifactsReady: localDemo || Boolean(source?.resumes?.some((item) => item.artifact_ready)),
+    aiConfigured: ai.configured === true,
     visualDemo: localDemo,
     localDemo,
   }), { headers: { "Cache-Control": "no-store" } });

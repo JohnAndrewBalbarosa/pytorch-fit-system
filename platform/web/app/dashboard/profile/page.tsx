@@ -1,19 +1,24 @@
 "use client";
 
-import { AtSign, Facebook, Linkedin, Medal, Plug, UserRound } from "lucide-react";
+import { AtSign, Facebook, Linkedin, Medal, Plug, Sparkles, UserRound } from "lucide-react";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/app-shell";
 import { useCapabilities } from "@/components/capability-context";
 import { SkillBarChart, SkillRadarChart } from "@/components/charts";
 import { GatePanel } from "@/components/role-gate";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { SegmentedTabs } from "@/components/ui/tabs";
 import { userTiers, type UserTier } from "@/lib/permissions";
 import { fetchJson } from "@/lib/client-api";
 import type { LeaderboardIdentitySettings } from "@/lib/member-command-contracts";
 import type { MemberPrivacySettings } from "@/lib/trust-contracts";
+import type { ProductViewData } from "@/lib/product/contracts";
+import { toast } from "sonner";
+
+type UpskillPlan = { summary: string; recommendations: Array<{ focusSkill: string; rationale: string; nextStep: string; evidenceIds: string[] }>; warnings: string[] };
 
 const tierTabs = [
   { value: "active", label: "Active" },
@@ -28,6 +33,18 @@ function ProfileContent() {
   const effectiveTier = officerPortal ? tier : manifest.portal.userTier;
   const privacy = useQuery({ queryKey: ["member-privacy"], queryFn: () => fetchJson<MemberPrivacySettings>("/api/member/privacy", { cache: "no-store" }) });
   const identity = useQuery({ queryKey: ["leaderboard-identity"], queryFn: () => fetchJson<LeaderboardIdentitySettings>("/api/member/leaderboard-identity", { cache: "no-store" }) });
+  const evidence = useQuery({ queryKey: ["product", "career-evidence"], queryFn: () => fetchJson<ProductViewData>("/api/product/career-evidence", { cache: "no-store" }) });
+  const aiStatus = useQuery({ queryKey: ["local-ai-status"], queryFn: () => fetchJson<{ configured: boolean }>("/api/backend/local-ai/status", { cache: "no-store" }) });
+  const [upskillPlan, setUpskillPlan] = useState<UpskillPlan | null>(null);
+  const upskill = useMutation({
+    mutationFn: () => {
+      const verified = (evidence.data?.evidence?.items || []).filter((item) => item.verificationState === "source_matched" || item.verificationState === "user_verified");
+      if (!verified.length) throw new Error("No verified evidence is available for UpSkill planning.");
+      return fetchJson<UpskillPlan>("/api/backend/local-ai/upskill", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ evidence: verified.map((item) => ({ id: item.id, title: item.title, description: item.description, skills: item.skills })) }) });
+    },
+    onSuccess: setUpskillPlan,
+    onError: (error) => toast.error(error instanceof Error ? error.message : "UpSkill planning failed."),
+  });
   const memberLabel = privacy.data?.hideRealName !== false ? identity.data?.preview || "Member #7A82F" : "Mika Santos";
 
   return (
@@ -100,6 +117,11 @@ function ProfileContent() {
             <Medal className="text-accent" size={20} />
           </CardHeader>
           <SkillRadarChart />
+          <div className="mt-4 border-t border-border pt-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-sm text-muted">Generate evidence-cited next steps through your configured local AI boundary.</p><Button disabled={!aiStatus.data?.configured || upskill.isPending || evidence.isLoading} onClick={() => upskill.mutate()} size="sm" type="button"><Sparkles size={15} />{upskill.isPending ? "Planning…" : "Generate local AI plan"}</Button></div>
+            {!aiStatus.data?.configured && <p className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">AI setup is required in Settings before UpSkill can run.</p>}
+            {upskillPlan && <div className="space-y-3"><p className="text-sm leading-6">{upskillPlan.summary}</p>{upskillPlan.recommendations.map((item) => <div className="rounded-lg border border-border bg-elevated p-3" key={`${item.focusSkill}-${item.evidenceIds.join("-")}`}><p className="font-semibold">{item.focusSkill}</p><p className="mt-1 text-sm text-muted">{item.rationale}</p><p className="mt-2 text-sm"><span className="font-semibold">Next:</span> {item.nextStep}</p><p className="mt-2 font-mono text-xs text-muted">Evidence: {item.evidenceIds.join(", ")}</p></div>)}</div>}
+          </div>
         </Card>
         <Card className="bg-surface">
           <CardHeader>

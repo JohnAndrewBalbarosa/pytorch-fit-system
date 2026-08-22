@@ -115,6 +115,7 @@ test("visual demo unlocks previews but never execution capabilities", () => {
     evidenceReady: false,
     normalizedProfileReady: false,
     resumeArtifactsReady: false,
+    aiConfigured: false,
     visualDemo: true,
   });
   assert.equal(manifest.capabilities.evidence_read.state, "read_only");

@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 ROOT = next(path for path in Path(__file__).resolve().parents if (path / "pyproject.toml").exists())
 sys.path.insert(0, str(ROOT / "src"))
 
-from resume_builder.job_finder import (  # noqa: E402
+from resume_builder.job_finder import (
     AccessGuard,
     CountrySelectionPolicy,
     JobListingLayoutStore,
@@ -37,7 +37,7 @@ from resume_builder.job_finder import (  # noqa: E402
     render_rule_overlay,
     sanitize_debug_dom,
 )
-from resume_builder.llm import get_provider  # noqa: E402
+from resume_builder.llm.local_config import get_configured_provider
 
 DEFAULT_OUTPUT = ROOT / "out" / "live-job-model"
 
@@ -227,7 +227,7 @@ def _api_plan(args: argparse.Namespace) -> int:
     layout_store = JobListingLayoutStore(args.output_dir / "rules")
     artifact_store = JobScrapeArtifactStore(args.output_dir / "runs")
     planner = JobListingPlanner(
-        get_provider(),
+        get_configured_provider(),
         store=layout_store,
         artifact_store=artifact_store,
     )

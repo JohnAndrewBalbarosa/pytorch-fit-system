@@ -10,6 +10,7 @@ const base = {
   evidenceReady: true,
   normalizedProfileReady: true,
   resumeArtifactsReady: true,
+  aiConfigured: true,
 };
 
 test("development owner receives only prerequisite-backed capabilities", () => {
@@ -28,6 +29,7 @@ test("development ownership never substitutes missing external prerequisites", (
     jobSiteConnected: false,
     normalizedProfileReady: false,
     resumeArtifactsReady: false,
+    aiConfigured: true,
   });
   assert.equal(manifest.capabilities.job_discovery.state, "locked");
   assert.equal(manifest.capabilities.application_draft.state, "locked");
@@ -55,6 +57,7 @@ test("authenticated users may edit only their own career evidence", () => {
     evidenceReady: true,
     normalizedProfileReady: true,
     resumeArtifactsReady: false,
+    aiConfigured: false,
   });
   assert.equal(manifest.capabilities.evidence_write.state, "available");
   assert.equal(manifest.capabilities.application_draft.state, "locked");

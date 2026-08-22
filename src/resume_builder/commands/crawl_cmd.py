@@ -4,9 +4,10 @@ from pathlib import Path
 
 import typer
 
-from ..extraction.crawler import AgenticCrawler, DEFAULT_OBJECTIVE, PlaywrightPageFetcher
+from ..extraction.crawler import DEFAULT_OBJECTIVE, AgenticCrawler, PlaywrightPageFetcher
 from ..extraction.crawler_store import LayoutStore
 from ..llm import get_provider
+from ..llm.local_config import get_configured_provider
 
 
 def crawl_site(
@@ -22,7 +23,7 @@ def crawl_site(
 ) -> None:
     """Learn HTML-tag actions, validate/revise them, then crawl an adaptive sample."""
     crawler = AgenticCrawler(
-        llm=get_provider(provider),
+        llm=get_provider(provider) if provider else get_configured_provider(),
         fetch_page=PlaywrightPageFetcher(headless=not visible),
         store=LayoutStore(output_dir=output_dir),
         max_depth=max_depth,
@@ -34,4 +35,3 @@ def crawl_site(
         f"failed {len(run.failed_urls)}; learned {len(run.learned_layouts)} layout(s)."
     )
     typer.echo(f"JSON: {output_dir / 'latest-run.json'}")
-

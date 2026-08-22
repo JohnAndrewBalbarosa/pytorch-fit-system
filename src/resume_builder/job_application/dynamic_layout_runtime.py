@@ -7,10 +7,9 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from resume_builder.core.config import get_settings
 from resume_builder.extraction.crawler_dom import fingerprint
 from resume_builder.job_finder.visualizer import sanitize_debug_dom
-from resume_builder.llm import get_provider
+from resume_builder.llm.local_config import get_configured_provider, local_ai_status
 
 from .models import DynamicApplicationPlan
 from .visualizer import render_application_overlay
@@ -19,22 +18,12 @@ from .website_planner import ApplicationWebsitePlanner, build_application_dom_in
 
 def dynamic_planner_status() -> dict[str, object]:
     """Expose model readiness without exposing API keys or endpoint credentials."""
-    settings = get_settings()
-    provider = settings.llm_provider or "openai-compatible"
-    base_url = (settings.llm_api_base_url or "").casefold()
-    if provider in {"openai", "openai-compatible"}:
-        local_endpoint = bool(base_url) and "api.openai.com" not in base_url
-        ready = local_endpoint or bool(settings.llm_api_key or settings.openai_api_key)
-    elif provider == "google":
-        ready = bool(settings.google_api_key)
-    elif provider == "anthropic":
-        ready = bool(settings.anthropic_api_key)
-    else:
-        ready = False
+    status = local_ai_status()
+    ready = bool(status["configured"])
     return {
-        "provider": provider,
+        "provider": status["provider"],
         "ready": ready,
-        "status": "ready" if ready else "configuration deferred",
+        "status": "ready" if ready else "setup required",
     }
 
 
@@ -110,7 +99,7 @@ def capture_unknown_application_layout(
     if not readiness["ready"]:
         return {**capture, "status": "model_not_configured", "plan": None}
     try:
-        plan = ApplicationWebsitePlanner(get_provider()).plan(
+        plan = ApplicationWebsitePlanner(get_configured_provider()).plan(
             [(safe_url, safe_html)],
             objective="classify and fill this application draft without submitting",
         )

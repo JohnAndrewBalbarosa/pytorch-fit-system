@@ -44,6 +44,7 @@ type CapabilityInputs = {
   evidenceReady: boolean;
   normalizedProfileReady: boolean;
   resumeArtifactsReady: boolean;
+  aiConfigured: boolean;
   visualDemo?: boolean;
   localDemo?: boolean;
   audience?: PortalAudience;
@@ -71,6 +72,8 @@ export function buildCapabilityManifest(input: CapabilityInputs): CapabilityMani
     : locked("No normalized career evidence is available yet.", ["normalized evidence"]);
   const evidenceScrape = !input.developmentOwner
     ? ownerRequired
+    : !input.aiConfigured
+      ? locked("Configure a local or remote AI endpoint in Settings before collecting scraper evidence.", ["AI endpoint and model"])
     : input.identityConnected || input.socialConnected
       ? available("An approved local source session is available for evidence collection.")
       : locked("Connect an approved identity or social source before collecting evidence.", ["approved source session"]);
@@ -84,18 +87,24 @@ export function buildCapabilityManifest(input: CapabilityInputs): CapabilityMani
     : locked("No generated resume artifact is available.", ["generated resume artifact"]);
   const resumeGenerate = !input.developmentOwner
     ? ownerRequired
+    : !input.aiConfigured
+      ? locked("Configure the AI endpoint in Settings before generating a resume.", ["AI endpoint and model"])
     : input.normalizedProfileReady
       ? available("Resume generation may consume the normalized middleman profile.")
       : locked("Run the evidence middleman before generating a resume.", ["middleman-produced user_profile.json"]);
-  const jobDiscovery = privilegedOperator && input.jobSiteConnected
+  const jobDiscovery = privilegedOperator && input.aiConfigured && input.jobSiteConnected
     ? available("The verified local job-site browser session is connected.")
     : input.visualDemo
       ? readOnly("Prototype opportunities are viewable; live discovery remains locked until a job-site session is verified.")
       : !privilegedOperator
         ? ownerRequired
+        : !input.aiConfigured
+          ? locked("Configure the AI endpoint before starting a scraper-connected job pipeline.", ["AI endpoint and model"])
         : locked("Open and verify the approved job-site browser session first.", ["verified job-site session"]);
   const applicationDraft = !privilegedOperator
     ? ownerRequired
+    : !input.aiConfigured
+      ? locked("Configure the AI endpoint before application planning.", ["AI endpoint and model"])
     : !input.jobSiteConnected
       ? locked("A verified job-site session is required before application drafting.", ["verified job-site session"])
       : !input.resumeArtifactsReady
@@ -137,5 +146,6 @@ export const lockedCapabilityManifest = () => buildCapabilityManifest({
   evidenceReady: false,
   normalizedProfileReady: false,
   resumeArtifactsReady: false,
+  aiConfigured: false,
   localDemo: false,
 });

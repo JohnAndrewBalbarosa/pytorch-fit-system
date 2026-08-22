@@ -46,7 +46,9 @@ def test_public_url_gate_accepts_global_addresses(monkeypatch):
     _assert_public_url("https://events.example/workshop")
 
 
-def test_event_pipeline_template_surfaces_structured_validation_errors():
+def test_event_pipeline_template_integrates_stage_and_contract_errors():
     template = Path("src/resume_builder/web/templates/developer_event_pipeline.html").read_text(encoding="utf-8")
-    assert 'status.textContent = "Schema invalid."' in template
-    assert "JSON.stringify(error.payload, null, 2)" in template
+    assert 'id:"ai-config"' in template
+    assert 'id:"schema"' in template
+    assert "error.payload||{error:error.message}" in template
+    assert "inspect-output" in template

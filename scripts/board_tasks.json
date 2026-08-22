@@ -2008,6 +2008,22 @@
       "body": "🤖 AI-built this session — needs human review.\n✅ Delivers a private member command center, authenticated quarterly competitive ladders, strong current-user row highlighting, personal stats, and privacy-safe community aggregates without exposing career records or stable identity fields.\n✅ Members can use a nickname, season-scoped anonymous alias, or explicit real-name opt-in; hide Google identity and error-reporting preferences persist through owner-only APIs and Supabase RLS.\n✅ Adds Google OAuth callback wiring, localhost one-click member/officer entry, paid-membership gating, a clearly non-scannable development payment QR, officer verification queue, and minimal membership funnel state.\n✅ Adds one-click structured UI feedback and privacy-bounded automatic error reports. Reports exclude raw HTML, screenshots, form values, cookies, tokens, local cache contents, and stack traces.\n✅ Documents the hybrid trust architecture, provenance transitions, known tampering/availability/privacy vulnerabilities, and a staged officer-replica design; Supabase remains authoritative and covert access to member device caches is prohibited.\nTests: 17 product, 4 capability, 2 leaderboard unit, 3 trust unit, full Supabase migration/seed, typecheck, member production build, officer production build, two-port portal security E2E, and privacy/leaderboard/report-flow axe E2E.\n👤 HITL: visually review member/officer identity behavior, verify production OAuth/payment configuration, inspect privacy/RLS policies and report payloads, and publish rank thresholds before moving to Done."
     },
     {
+      "title": "AI.1 Local model settings and executable pipeline workbench",
+      "stage": "In Review",
+      "role": "AI",
+      "group": "Intelligence",
+      "department": "Platform Core",
+      "hitl": "Yes",
+      "priority": "P1",
+      "estimate": 5,
+      "milestone": "Platform & Intelligence — Wk2",
+      "start": "2026-08-22",
+      "target": "2026-08-22",
+      "worst_case": "2026-08-29",
+      "assignee": "JohnAndrewBalbarosa",
+      "body": "🤖 AI-built this session — needs human review.\n✅ Adds a user-supplied OpenAI-compatible connection in Settings for local servers or remote APIs. Secrets stay in a loopback-only local store with owner-only file permissions and are never returned to the browser.\n✅ Makes one readiness gate authoritative for UpSkill, resume generation, website crawling, job planning, event extraction, and scraper-connected job goals. Execution stops before opening a browser when setup is missing.\n✅ Replaces the detached event JSON textarea with an n8n-style executable workbench: connected stages, real run status and timing, per-node input/output/error inspection, editable workflow output, and strict contract testing. Human department approval remains blocked outside the developer workbench.\n✅ UpSkill now requests an evidence-cited plan through the configured local model and rejects unknown evidence IDs.\nWhere: src/resume_builder/llm/local_config.py, src/resume_builder/web/local_ai_api.py, src/resume_builder/web/org_event_api.py, platform/web/app/settings/page.tsx, platform/web/app/dashboard/profile/page.tsx.\nTests: Python AI-config/event-pipeline tests, FastAPI route smoke test, TypeScript typecheck, capability and product suites.\n👤 HITL: enter a real local or remote model endpoint, run the connection test, inspect a full public-event workflow, verify UpSkill citations, and review secret storage before Done."
+    },
+    {
       "title": "INFRA.1 Pilot encrypted officer integrity replicas",
       "stage": "Backlog",
       "role": "Security",

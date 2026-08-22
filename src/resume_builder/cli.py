@@ -15,19 +15,19 @@ from pathlib import Path
 
 import typer
 
-from .core.config import get_settings
-from .llm import get_provider
 from .classification.industry import WebPageInput
-from .core.models import Mode
-from .orchestration.pipeline import BuildIndustryInputs, BuildInputs, Pipeline
-from .role import StaticRolePicker
-from .sources.social import build_default_aggregator
-from .sources.document import DocumentSource
-from .review.review_orchestrator import review_resume_text
-
 from .commands import auth_cmd as _auth_cmd
-from .commands import scrape_cmd as _scrape_cmd
 from .commands import crawl_cmd as _crawl_cmd
+from .commands import scrape_cmd as _scrape_cmd
+from .core.config import get_settings
+from .core.models import Mode
+from .llm import get_provider
+from .llm.local_config import get_configured_provider
+from .orchestration.pipeline import BuildIndustryInputs, BuildInputs, Pipeline
+from .review.review_orchestrator import review_resume_text
+from .role import StaticRolePicker
+from .sources.document import DocumentSource
+from .sources.social import build_default_aggregator
 
 app = typer.Typer(help="GitHub-aware role-targeted resume builder.", no_args_is_help=True)
 
@@ -204,7 +204,7 @@ def review(
     if not resume_text.strip():
         raise typer.BadParameter("No readable resume text found in --docs.")
 
-    llm = get_provider(llm_provider)
+    llm = get_provider(llm_provider) if llm_provider else get_configured_provider()
     findings = review_resume_text(llm, resume_text)
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)

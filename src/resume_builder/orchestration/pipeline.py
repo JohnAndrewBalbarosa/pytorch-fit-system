@@ -36,7 +36,8 @@ from ..core.principles import HARVARD_PRINCIPLES
 from ..extraction.models import CleanedSource
 from ..extractors import AIExtractor, Extractor, StaticExtractor
 from ..interpretation import ProfileSink, RetrievedSource, build_user_profile, interpret
-from ..llm import LLMProvider, get_provider
+from ..llm import LLMProvider
+from ..llm.local_config import get_configured_provider
 from ..llm.null_provider import NullProvider
 from ..metrics import load_metrics
 from ..renderers import get_renderer
@@ -522,7 +523,7 @@ class Pipeline:
     def _resolve_llm(mode: Mode, settings: Settings) -> LLMProvider:
         if mode == Mode.STATIC:
             return NullProvider()
-        return get_provider(settings=settings)
+        return get_configured_provider(settings=settings)
 
     def _render_all(
         self, resume: Resume, formats: list[str], output_dir: Path

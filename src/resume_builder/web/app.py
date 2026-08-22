@@ -28,7 +28,8 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from ..core.config import get_settings
-from ..llm import LLMUnavailableError, get_provider
+from ..llm import LLMUnavailableError
+from ..llm.local_config import get_configured_provider, local_ai_status
 from ..core.models import Mode
 from ..orchestration.pipeline import BuildInputs, Pipeline
 from ..role import StaticRolePicker
@@ -91,6 +92,7 @@ from .market_fit_control import (
 )
 from .job_market_api import router as job_market_router
 from .org_event_api import router as org_event_router
+from .local_ai_api import router as local_ai_router
 from .onboarding import OnboardingService
 from ..job_finder import JobScrapeArtifactStore, render_rule_overlay
 from ..job_application import (
@@ -113,6 +115,7 @@ if sys.platform == "win32":
 app = FastAPI(title="resume-build-chopper")
 app.include_router(job_market_router)
 app.include_router(org_event_router)
+app.include_router(local_ai_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:3000", "http://127.0.0.1:3001", "http://localhost:3000", "http://localhost:3001"],
@@ -143,6 +146,19 @@ _AUTO_START_LOCK = threading.RLock()
 
 def _onboarding_service() -> OnboardingService:
     return OnboardingService(artifact_dir=DEFAULT_ARTIFACT_DIR, database=DEFAULT_DATABASE)
+
+
+def _ai_setup_required_response() -> JSONResponse | None:
+    if local_ai_status()["configured"]:
+        return None
+    return JSONResponse(
+        {
+            "error": "AI setup is required before resume and scraper pipelines can run.",
+            "setupRequired": True,
+            "settingsPath": "/settings",
+        },
+        status_code=409,
+    )
 
 
 def _canonical_frontend(path: str) -> RedirectResponse | None:
@@ -357,7 +373,7 @@ def api_refresh_market_fit():
 @app.post("/api/job-finder/market-fit/opportunities/{opportunity_id}/demands/draft")
 def api_draft_market_fit_demands(opportunity_id: str):
     try:
-        return draft_market_fit_demands(opportunity_id, get_provider()).model_dump(mode="json")
+        return draft_market_fit_demands(opportunity_id, get_configured_provider()).model_dump(mode="json")
     except KeyError:
         return JSONResponse({"error": "Unknown market-fit opportunity."}, status_code=404)
     except (ValueError, LLMUnavailableError) as exc:
@@ -393,7 +409,7 @@ def api_add_market_fit_event(opportunity_id: str, request: FunnelEventCreate):
 @app.post("/api/job-finder/market-fit/opportunities/{opportunity_id}/interview-prep")
 def api_prepare_market_fit_interview(opportunity_id: str):
     try:
-        return prepare_market_fit_interview(opportunity_id, get_provider()).model_dump(mode="json")
+        return prepare_market_fit_interview(opportunity_id, get_configured_provider()).model_dump(mode="json")
     except KeyError:
         return JSONResponse({"error": "Unknown market-fit opportunity."}, status_code=404)
     except (ValueError, LLMUnavailableError) as exc:
@@ -432,6 +448,9 @@ class JobFinderGoalRequest(BaseModel):
 
 @app.post("/api/job-finder/goals")
 def api_create_job_finder_goal(request: JobFinderGoalRequest):
+    setup_error = _ai_setup_required_response()
+    if setup_error:
+        return setup_error
     try:
         goal = create_job_finder_goal(**request.model_dump())
     except ValueError as exc:
@@ -443,6 +462,9 @@ def api_create_job_finder_goal(request: JobFinderGoalRequest):
 
 @app.post("/api/job-finder/goals/{goal_id}/resume")
 def api_resume_job_finder_goal(goal_id: str):
+    setup_error = _ai_setup_required_response()
+    if setup_error:
+        return setup_error
     try:
         return launch_job_finder_goal(goal_id)
     except KeyError:
@@ -786,7 +808,7 @@ def api_metrics_pages(pages: int = 1) -> dict[str, int]:
 @app.post("/api/cdo/advisor/analyze")
 def api_cdo_advisor_analyze(payload: AdvisorAnalyzeRequest):
     try:
-        result = analyze_for_injection(payload, get_provider())
+        result = analyze_for_injection(payload, get_configured_provider())
     except LLMUnavailableError as exc:
         return JSONResponse(
             {
@@ -871,6 +893,16 @@ async def build_view(
     formats: Annotated[str, Form()] = "latex,md,json,pdf",
     docs: Annotated[UploadFile | None, File()] = None,
 ) -> HTMLResponse:
+    if not local_ai_status()["configured"]:
+        return templates.TemplateResponse(
+            request,
+            "result.html",
+            {
+                "error": "AI setup is required in Settings before the resume builder can run.",
+                "files": [],
+            },
+            status_code=409,
+        )
     mode_enum = Mode(mode)
     selection = role_prompt if mode_enum == Mode.AI else role
     if not selection:

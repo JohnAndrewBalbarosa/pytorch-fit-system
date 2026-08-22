@@ -178,7 +178,7 @@ def test_cdo_advisor_endpoint_returns_ai_injection_with_deterministic_scores(mon
                 ],
             )
 
-    monkeypatch.setattr(web_app, "get_provider", lambda: _FakeLLM())
+    monkeypatch.setattr(web_app, "get_configured_provider", lambda: _FakeLLM())
     response = TestClient(app).post(
         "/api/cdo/advisor/analyze",
         json={
