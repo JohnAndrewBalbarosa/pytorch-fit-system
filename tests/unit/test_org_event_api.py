@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import socket
+from pathlib import Path
 
 import pytest
 
@@ -43,3 +44,9 @@ def test_public_url_gate_rejects_unsupported_or_local_urls(url, monkeypatch):
 def test_public_url_gate_accepts_global_addresses(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", lambda *_args: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))])
     _assert_public_url("https://events.example/workshop")
+
+
+def test_event_pipeline_template_surfaces_structured_validation_errors():
+    template = Path("src/resume_builder/web/templates/developer_event_pipeline.html").read_text(encoding="utf-8")
+    assert 'status.textContent = "Schema invalid."' in template
+    assert "JSON.stringify(error.payload, null, 2)" in template
