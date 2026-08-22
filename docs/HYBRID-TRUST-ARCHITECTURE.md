@@ -39,14 +39,15 @@ version rather than rewriting the source claim.
 
 | State | Meaning | May affect verified ranks? |
 |---|---|---|
-| `manual` | Entered or edited on a member-controlled device | No |
+| `manual_pending` | Entered or edited on a member-controlled device; awaiting departmental review | No |
 | `scraped_pending` | Captured by an approved normal browser session; awaiting server checks | No |
 | `scraped_verified` | Server accepted source, timestamp, hash, and normalized value | Yes, through approved point events |
 | `officer_reviewed` | A named officer approved a bounded claim and audit event | Yes, according to policy |
+| `rejected` | The responsible department rejected the exact revision | No |
 | `superseded` | A newer version exists; historical record remains | No new effect |
 | `disputed` | Hash, source, or review mismatch requires human resolution | No |
 
-If a member edits a `scraped_verified` value locally, the edited copy is immediately a new `manual`
+If a member edits a `scraped_verified` value locally, the edited copy is immediately a new `manual_pending`
 proposal. It does not inherit the verified tag. The original server record remains unchanged.
 
 ## 3. Local persistence

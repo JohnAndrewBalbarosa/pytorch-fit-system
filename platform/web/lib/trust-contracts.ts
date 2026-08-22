@@ -27,9 +27,29 @@ export type FeedbackReportInput = z.infer<typeof feedbackReportSchema>;
 export type FeedbackReport = FeedbackReportInput & {
   id: string;
   portal: "member" | "officer";
-  status: "received" | "triaged" | "resolved";
+  status: "received" | "triaged" | "in_progress" | "resolved" | "dismissed";
+  severity: "low" | "medium" | "high" | "critical";
+  reporterId: string;
+  reporterLabel: string;
+  assignedTo: string | null;
+  resolution: string | null;
   createdAt: string;
+  updatedAt: string;
 };
+
+export type FeedbackReportPage = {
+  items: FeedbackReport[];
+  nextCursor: string | null;
+};
+
+export const feedbackUpdateSchema = z.object({
+  status: z.enum(["received", "triaged", "in_progress", "resolved", "dismissed"]),
+  severity: z.enum(["low", "medium", "high", "critical"]),
+  assignedTo: z.string().uuid().nullable(),
+  resolution: z.string().trim().max(1200).nullable(),
+}).strict();
+
+export type FeedbackUpdate = z.infer<typeof feedbackUpdateSchema>;
 
 export type MembershipStatus = {
   state: "prospective" | "payment_pending" | "active" | "rejected";

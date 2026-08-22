@@ -825,4 +825,28 @@ Only `authenticated` users may SELECT (not `anon`).
     (one per source URL or per scrape date). The current schema allows this (no UNIQUE constraint
     on `judge_id`). Should there be a "latest profile" concept, or is a timeline of profiles the
     intended design? The `idx_judge_profiles_scraped_at` index supports the "latest first" read
-    pattern but the schema does not enforce single-profile-per-judge.
+   pattern but the schema does not enforce single-profile-per-judge.
+
+---
+
+## Officer operations review workflows (migration 0010)
+
+Migration `0010_reports_evidence_event_workflows.sql` adds three authority-separated workflows:
+
+| Workflow | Authoritative records | Write authority |
+|---|---|---|
+| Feedback triage | `product_feedback`, `feedback_audit_events` | reporter inserts; officers update |
+| Evidence review | `evidence_claims`, `evidence_claim_reviews` | service ingestion; responsible department reviews manual claims |
+| External events | `external_event_packages`, interests, approvals, mail, SADO proofs | members submit/express interest; officers approve and record proof |
+
+Event packages carry a revision field for the forthcoming edit/invalidation flow. Approval uniqueness
+is `(event_id, department, revision)`, so one department cannot satisfy multiple unanimous-review slots. Mail approval binds to
+the SHA-256 hash of the exact subject/body revision. Provider receipts and idempotency keys prevent a
+successful external send from being repeated during reconciliation. Copy/export never changes the
+submission state. A reviewed copy/export requires a separate officer-entered manual-delivery
+reference before the request becomes submitted. An event becomes SADO-approved only when an officer
+persists a non-empty response reference after confirmed Gmail or manual delivery.
+
+RLS exposes the authenticated event feed and owner feedback while keeping officer approvals, mail
+metadata, evidence review records, and SADO proof details officer-only. Security-definer functions
+repeat authorization checks and expose only shaped JSON; direct client mutation is revoked.

@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -89,6 +90,7 @@ from .market_fit_control import (
     update_campaign as update_market_fit_campaign,
 )
 from .job_market_api import router as job_market_router
+from .org_event_api import router as org_event_router
 from .onboarding import OnboardingService
 from ..job_finder import JobScrapeArtifactStore, render_rule_overlay
 from ..job_application import (
@@ -110,6 +112,14 @@ if sys.platform == "win32":
 
 app = FastAPI(title="resume-build-chopper")
 app.include_router(job_market_router)
+app.include_router(org_event_router)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:3000", "http://127.0.0.1:3001", "http://localhost:3000", "http://localhost:3001"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -166,6 +176,11 @@ def prototype(request: Request) -> HTMLResponse:
 @app.get("/developer/scraping", response_class=HTMLResponse)
 def developer_scraping(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "developer_scraping.html", {})
+
+
+@app.get("/developer/event-pipeline", response_class=HTMLResponse)
+def developer_event_pipeline(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "developer_event_pipeline.html", {})
 
 
 def _latest_job_scrape_artifact():

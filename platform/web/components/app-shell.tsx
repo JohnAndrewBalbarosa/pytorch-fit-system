@@ -8,6 +8,7 @@ import {
   BriefcaseBusiness,
   CalendarDays,
   CircleHelp,
+  ClipboardList,
   Flame,
   Home,
   LayoutDashboard,
@@ -59,6 +60,7 @@ const officerNavItems: NavItem[] = [
   { href: "/events", label: "Chapter Events", icon: CalendarDays },
   { href: "/leaderboards", label: "Leaderboards", icon: Trophy },
   { href: "/trust", label: "Integrity Console", icon: Shield },
+  { href: "/reports", label: "Reports & Feedback", icon: ClipboardList },
   { href: "/membership", label: "Member Reviews", icon: UserCheck },
   { href: "/admin/dashboard", label: "Officer Admin", icon: Shield },
   { href: "/settings", label: "Settings", icon: Settings }

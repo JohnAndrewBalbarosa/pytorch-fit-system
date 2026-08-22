@@ -1,9 +1,8 @@
-# Org Activity Operations Layer — DRAFT (requirements capture)
+# Org Activity Operations Layer — approved pilot specification
 
-> ⚠️ **STATUS: WORK IN PROGRESS.** This captures a live requirements dump so nothing is lost.
-> The user said *"meron pa"* (more coming) — do NOT build or finalize board items from this yet.
-> Pending from user: (1) the rest of the requirements, (2) a **document template**, (3) sign-off
-> on the structure below. Once complete, fold into `SPECIFICATION.md` + the board.
+> **STATUS: v1 pilot implementation in human review.** The pipeline decisions in §8b are approved.
+> The official SADO document template, production Gmail credentials/recipient rules, and any real
+> external send remain separately blocked and human-gated.
 
 This layer extends the PyTorch FIT System from a personal career platform into an **operations
 platform for the PyTorch FEU Tech chapter** — running the org's real activities (emails,
@@ -183,6 +182,54 @@ flowchart TD
 - `ApprovalMiddleman` + registry of `DepartmentApprover` (secretariat, treasurer, …) — parallel dispatch, collect verdicts
 - Downstream `EmailSender` / `Poster` behind interfaces, each HITL-gated
 
+### 8c. Officer operations review slice (ORG.19)
+
+This is a bounded, reviewable increment of the confirmed pipeline rather than the whole ORG v1
+implementation. It covers feedback triage, evidence-claim review, and external-event intake through
+SADO proof. Configurable routing administration, department briefs/documents, recipient discovery,
+and Facebook publishing remain separate backlog work.
+
+External-event intake is available to authenticated members. A member supplies a public event URL;
+the loopback FastAPI companion opens it in a normal visible browser, stops on access verification or
+login, and asks the configured provider-neutral HTTP model to extract a strict JSON package. The
+package is a proposal, not approval. Publishing it creates an event labelled **Not SADO approved**.
+
+```mermaid
+stateDiagram-v2
+    [*] --> NotSadoApproved: member publishes validated JSON
+    NotSadoApproved --> DepartmentReview: first required department approves
+    DepartmentReview --> EmailReview: every required department approves this revision
+    EmailReview --> SubmittedToSado: Gmail receipt or officer-confirmed manual delivery reference
+    SubmittedToSado --> SadoApproved: officer records a SADO response reference
+```
+
+- Required departments come from the category + scope routing rules. Each department has one vote
+  per revision; repeat approval is idempotent. Every required department must approve.
+- The schema is revision-ready; event editing and approval invalidation UI remain follow-up work.
+  This slice does not generate department papers.
+- `copy_export` is the default mail mode. It freezes and exports the reviewed immutable draft
+  without contacting an external provider. A separate manual-delivery reference is required before
+  the event is marked submitted.
+- `gmail` is opt-in. It requires configured credentials and an allowlisted SADO recipient, stores an
+  idempotency key/provider receipt, and never marks an ambiguous or failed request as delivered.
+- `sado_approved` requires a human-entered response reference. Email delivery alone is not approval.
+- Manual evidence claims are approved only by the responsible department against the exact content
+  hash. Scraped evidence needs deterministic provenance; AI output alone is never verified evidence.
+- Feedback diagnostics remain allowlisted and privacy-bounded. Only officers can assign, prioritize,
+  resolve, or dismiss reports; every material workflow change is audited.
+
+Runtime configuration for this slice:
+
+| Setting | Meaning |
+|---|---|
+| `NEXT_PUBLIC_PYTORCH_FIT_LOCAL_COMPANION_URL` | Loopback FastAPI origin; defaults to `http://127.0.0.1:8000` in development |
+| `PYTORCH_FIT_EVENT_MAIL_MODE` | `copy_export` (default) or `gmail` |
+| `PYTORCH_FIT_SADO_EMAIL` | Single allowlisted SADO recipient used by Gmail mode |
+| `PYTORCH_FIT_GMAIL_ACCESS_TOKEN` | Server-only Gmail access token; never returned to the client |
+
+All four settings are deployment configuration, not user-submitted values. Gmail mode must remain
+disabled until chapter leadership verifies the sender account and recipient.
+
 ## 9. Folder rename note
 
 User wants the local folder renamed to **`pytorch`**. This can't be done safely from inside the
@@ -316,3 +363,22 @@ flowchart LR
 6. **Pretest/posttest capture** — how/when points are snapshotted around an activity to compute GAIN.
 7. **Referral anti-gaming** — preventing self-referral / fake-account farming.
 8. **Opportunity awarding** — is awarding to high-pointers automatic or officer-confirmed (HITL)?
+
+## 11. Reports, evidence authority, and external-event pilot
+
+The current web pilot adds three connected operational loops:
+
+- Officers use `/reports` to search, filter, paginate, inspect, assign, and transition privacy-safe
+  member/officer reports. Members may view only their own receipts. Report diagnostics exclude raw
+  HTML, form values, cookies, tokens, cache contents, screenshots, and full stack traces.
+- AI may extract Facebook/LinkedIn evidence, but only deterministic server provenance checks or an
+  authorized officer from the responsible department can make a claim leaderboard-eligible. Editing
+  verified content creates a new manual revision; it never inherits verification.
+- Members and officers may submit an external event link to the localhost companion. It uses a
+  normal visible browser, stops at access challenges, returns a strict JSON package, and publishes
+  the reviewed package as **Not SADO approved**. Required departments approve in parallel. Email is
+  sent only after exact-payload human approval and configured credentials. Successful delivery means
+  `submitted_to_sado`; only a separately recorded SADO response/reference means `sado_approved`.
+
+The standalone developer inspector is `/developer/event-pipeline`. It validates and normalizes event
+JSON without placing development controls in product navigation.

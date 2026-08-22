@@ -1,13 +1,27 @@
 import { NextResponse } from "next/server";
 import { currentViewer } from "@/lib/auth/viewer";
-import { createFeedbackReport, readFeedbackReports } from "@/lib/trust-center";
+import { createFeedbackReport, readFeedbackReportPage, readFeedbackReports } from "@/lib/trust-center";
+import type { FeedbackReport } from "@/lib/trust-contracts";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   const viewer = await currentViewer();
   if (!viewer.userId) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   try {
+    const params = new URL(request.url).searchParams;
+    if (params.get("paginated") === "1") {
+      const value = <T extends string>(key: string) => params.get(key) as T | null;
+      return NextResponse.json(await readFeedbackReportPage(viewer, {
+        status: value<FeedbackReport["status"]>("status") || undefined,
+        severity: value<FeedbackReport["severity"]>("severity") || undefined,
+        portal: value<FeedbackReport["portal"]>("portal") || undefined,
+        category: value<FeedbackReport["category"]>("category") || undefined,
+        search: params.get("search") || undefined,
+        cursor: params.get("cursor") || undefined,
+        limit: Number(params.get("limit") || 25),
+      }), { headers: { "Cache-Control": "private, no-store" } });
+    }
     return NextResponse.json(await readFeedbackReports(viewer), { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Reports unavailable." }, { status: 503 });

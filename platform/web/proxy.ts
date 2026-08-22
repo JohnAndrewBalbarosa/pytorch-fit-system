@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { isOfficerOnlyPath, memberDestination, portalAudience, portalOrigin } from "@/lib/portal";
 
-const protectedPrefixes = ["/dashboard", "/career", "/jobs", "/connections", "/events", "/leaderboards", "/settings", "/trust", "/membership", "/admin"];
+const protectedPrefixes = ["/dashboard", "/career", "/jobs", "/connections", "/events", "/leaderboards", "/settings", "/trust", "/reports", "/membership", "/admin"];
 const DEV_SESSION_COOKIE = "pytorch_fit_dev_session";
 
 const developmentAccessEnabled = () =>
@@ -85,4 +85,4 @@ export async function proxy(request: NextRequest) {
   return NextResponse.redirect(login);
 }
 
-export const config = { matcher: ["/login", "/dashboard/:path*", "/career/:path*", "/jobs/:path*", "/connections/:path*", "/events/:path*", "/leaderboards/:path*", "/settings/:path*", "/trust/:path*", "/membership/:path*", "/admin/:path*"] };
+export const config = { matcher: ["/login", "/dashboard/:path*", "/career/:path*", "/jobs/:path*", "/connections/:path*", "/events/:path*", "/leaderboards/:path*", "/settings/:path*", "/trust/:path*", "/reports/:path*", "/membership/:path*", "/admin/:path*"] };

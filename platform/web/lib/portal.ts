@@ -6,6 +6,7 @@ const officerOnlyPrefixes = [
   "/connections",
   "/jobs/analytics",
   "/jobs/automation",
+  "/reports",
 ];
 
 export function portalAudience(): PortalAudience {

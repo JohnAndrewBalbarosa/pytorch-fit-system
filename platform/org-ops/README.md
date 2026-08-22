@@ -1,9 +1,9 @@
 # `platform/org-ops` — Org Activity Operations (scaffold)
 
-> **Scaffold / contracts only.** These TypeScript interfaces define the pipeline confirmed in
-> [`docs/ORG-OPERATIONS.md`](../../docs/ORG-OPERATIONS.md) §8b. They are the drop-in contract
-> layer for the future Next.js + Supabase app. Human/external-dependent and template-dependent
-> implementations are intentionally left as stubs (`throw new Error("not implemented")`).
+> **Shared contracts plus pilot adapters.** These TypeScript interfaces define the pipeline confirmed
+> in [`docs/ORG-OPERATIONS.md`](../../docs/ORG-OPERATIONS.md) §8b. The canonical Next.js pilot now
+> implements event intake/review under `platform/web`; official document templates and real external
+> delivery remain human/external-dependent.
 
 ## Pipeline
 

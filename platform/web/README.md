@@ -54,6 +54,10 @@ documented in [`docs/HYBRID-TRUST-ARCHITECTURE.md`](../../docs/HYBRID-TRUST-ARCH
 - Career evidence enters resume and analytics processing through `RetrievalMiddleman`; analytics
   reads its normalized `user_profile.json`, never a generated resume as source evidence.
 - `/developer/*` visualizers remain separate development aids and are never embedded as product UI.
+- `/reports` is an officer-only, paginated feedback-triage workspace. `/events` exposes public
+  unapproved external-event intake, department review, exact email approval, and separate SADO proof.
+- The localhost FastAPI companion owns visible-browser event extraction and the standalone
+  `/developer/event-pipeline` JSON inspector. Access challenges stop for human action; no bypass is attempted.
 - Job analytics labels live, cached, and synthetic data distinctly and always exposes provenance,
   geography, freshness, unknown coverage, and sample size.
 

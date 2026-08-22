@@ -12,6 +12,7 @@ test("all Supabase migrations and the deterministic showcase seed execute", asyn
   await db.exec(`
     CREATE ROLE authenticated;
     CREATE ROLE anon;
+    CREATE ROLE service_role BYPASSRLS;
     CREATE SCHEMA auth;
     CREATE SCHEMA storage;
     CREATE TABLE auth.users (
@@ -105,6 +106,22 @@ test("all Supabase migrations and the deterministic showcase seed execute", asyn
   await db.exec("SET ROLE anon");
   await assert.rejects(() => db.query("SELECT member_leaderboard(NULL,NULL,1,25)"));
   await assert.rejects(() => db.query("SELECT * FROM leaderboard"));
+  await db.exec("RESET ROLE");
+  await db.exec("SET ROLE service_role");
+  await db.query(`SELECT accept_scraped_evidence(jsonb_build_object(
+    'memberId','00000000-0000-4000-8000-000000000001','title','Verified LinkedIn workshop evidence','source','linkedin',
+    'sourceUrl','https://www.linkedin.com/feed/update/test','contentHash','sha256:${"b".repeat(64)}',
+    'scraperVersion','visible-scraper-v1','scrapedAt',now(),'department','academics','points',250
+  ))`);
+  await db.exec("RESET ROLE");
+  const accepted = await db.query<{ count: number }>("SELECT count(*)::int AS count FROM evidence_claims WHERE provenance='scraped_verified' AND content_hash='sha256:" + "b".repeat(64) + "'");
+  assert.equal(accepted.rows[0].count, 1);
+  await db.exec("SET ROLE service_role");
+  await assert.rejects(() => db.query(`SELECT accept_scraped_evidence(jsonb_build_object(
+    'memberId','00000000-0000-4000-8000-000000000001','title','Spoofed Facebook evidence','source','facebook',
+    'sourceUrl','https://www.facebook.com/test','contentHash','sha256:${"c".repeat(64)}',
+    'scraperVersion','visible-scraper-v1','scrapedAt',now(),'department','academics','points',250
+  ))`));
   await db.exec("RESET ROLE");
   await db.close();
 });

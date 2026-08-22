@@ -1320,6 +1320,22 @@
       "assignee": ""
     },
     {
+      "title": "ORG.19 Officer reports, evidence, and external-event review workflows",
+      "stage": "In Review",
+      "role": "Architect",
+      "group": "Org Operations",
+      "body": "🤖 AI-built this session — needs human review.\n✅ Adds privacy-safe, paginated officer report triage with filters, assignment, resolution, internal notes, and audited status/severity changes.\n✅ Adds deterministic scraped-evidence provenance checks and responsible-department review for exact manual revisions; AI never grants leaderboard eligibility.\n✅ Adds localhost visible-browser event extraction, strict JSON validation/inspector, public Not SADO approved events, category-owned unanimous department review, exact reviewed Gmail or manual delivery with idempotency, and separate SADO proof. Copy/export alone never claims submission.\n✅ Preserves the existing chapter-event registration, access-tier, and local-demo experience beside the external-event workflow.\n🔒 Boundaries: authenticated intake; one approval per required department/revision; Gmail is explicit allowlisted configuration only; no access-control bypass, Facebook posting, official SADO template, or generated department papers in this slice.\nWhere: docs/ORG-OPERATIONS.md §8c, platform/web/lib/operations-center.ts, supabase/migrations/0010_reports_evidence_event_workflows.sql.\nTests: TypeScript and Python compile, operations/trust/product/capability/leaderboard units, full Supabase migration+seed with provenance rejection, both production portal builds, portal-separation E2E, leaderboard/privacy E2E, and live report/event/SADO-gate checks.\n👤 HITL: review RLS/department authorization, configure and test the real Gmail sender+recipient, verify event labels/copy, and inspect the SADO proof workflow before Done.",
+      "start": "2026-08-22",
+      "target": "2026-08-22",
+      "department": "Org Operations",
+      "hitl": "Yes",
+      "worst_case": "2026-08-29",
+      "priority": "P1",
+      "estimate": 3,
+      "milestone": "Platform & Intelligence — Wk2",
+      "assignee": "JohnAndrewBalbarosa"
+    },
+    {
       "title": "GOV.1 Chapter Proposal document",
       "stage": "Done",
       "role": "Architect",
