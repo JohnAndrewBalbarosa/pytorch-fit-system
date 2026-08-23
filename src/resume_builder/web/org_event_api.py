@@ -24,6 +24,13 @@ class EventUrlRequest(BaseModel):
     url: str = Field(min_length=1, max_length=2048)
 
 
+class PipelineNodeRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    node_id: str = Field(alias="nodeId", min_length=1, max_length=80)
+    input: dict[str, object] = Field(default_factory=dict)
+
+
 class ExternalEventPackage(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
@@ -154,6 +161,9 @@ def execute_event_pipeline(raw_url: str) -> tuple[dict[str, object], int]:
         _stage("extract", "Structured AI extraction", requires_ai=True),
         _stage("schema", "Strict JSON schema"),
         _stage("review", "Human department review"),
+        _stage("email-draft", "Email handoff JSON"),
+        _stage("email-approval", "Email readiness gate"),
+        _stage("email-send", "External email delivery"),
     ]
     response: dict[str, object] = {
         "runId": str(uuid.uuid4()),
@@ -188,6 +198,7 @@ def execute_event_pipeline(raw_url: str) -> tuple[dict[str, object], int]:
             "finalUrl": final_url,
             "renderedCharacters": len(cleaned),
             "textPreview": cleaned[:800],
+            "renderedText": cleaned,
         }
         facts = _run_stage(
             stages[3],
@@ -201,9 +212,16 @@ def execute_event_pipeline(raw_url: str) -> tuple[dict[str, object], int]:
                     system="You are an event-page extraction stage, not an approval or verification authority.",
                     max_tokens=2200,
                 ),
-                {"provider": provider.name, "contract": "ExtractedFacts"},
+                {
+                    "provider": provider.name,
+                    "contract": "ExtractedFacts",
+                },
             ),
         )
+        stages[3]["output"] = {
+            **stages[3]["output"],
+            "aiResponse": facts.model_dump(mode="json", by_alias=True),
+        }
         digest = hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
         package = _run_stage(
             stages[4],
@@ -220,6 +238,9 @@ def execute_event_pipeline(raw_url: str) -> tuple[dict[str, object], int]:
         stages[5]["status"] = "blocked"
         stages[5]["input"] = {"packageReady": True}
         stages[5]["output"] = {"reason": "Human approval is required outside this workbench."}
+        for stage in stages[6:]:
+            stage["status"] = "blocked"
+            stage["error"] = "Department and email approvals are required before delivery."
         response["status"] = "awaiting_human_review"
         response["package"] = package.model_dump(mode="json", by_alias=True)
         return response, 200
@@ -241,9 +262,116 @@ def execute_event_pipeline(raw_url: str) -> tuple[dict[str, object], int]:
     return response, status_code
 
 
+def _email_handoff(package: ExternalEventPackage) -> dict[str, object]:
+    subject = f"SADO endorsement request — {package.title}"
+    body = (
+        f"Organizer: {package.organizer}\nEvent: {package.title}\n"
+        f"Schedule: {package.start_at} ({package.timezone_name})\n"
+        f"Venue: {package.venue}\nSource: {package.source_url}\n\n{package.summary}"
+    )
+    return {
+        "to": ["configured allowlisted recipient (hidden)"],
+        "subject": subject,
+        "body": body,
+        "revisionHash": hashlib.sha256((subject + body).encode("utf-8")).hexdigest(),
+        "deliveryMode": "dry_run",
+        "deliveryStatus": "not_sent",
+    }
+
+
+def execute_pipeline_node(node_id: str, input_value: dict[str, object]) -> tuple[dict[str, object], int]:
+    labels = {
+        "ai-config": ("AI configuration", True),
+        "access-gate": ("Public URL access gate", False),
+        "render": ("Visible browser inventory", False),
+        "extract": ("Structured AI extraction", True),
+        "schema": ("Strict JSON schema", False),
+        "review": ("Human department review", False),
+        "email-draft": ("Email handoff JSON", False),
+        "email-approval": ("Email readiness gate", False),
+        "email-send": ("External email delivery", False),
+    }
+    if node_id not in labels:
+        return {"error": f"Unknown pipeline node: {node_id}"}, 404
+    label, requires_ai = labels[node_id]
+    node = _stage(node_id, label, requires_ai=requires_ai)
+    node["input"] = input_value
+    try:
+        if node_id == "ai-config":
+            provider = get_configured_provider()
+            output = {**local_ai_status(), "runtimeProvider": provider.name}
+        elif node_id == "access-gate":
+            get_configured_provider()
+            url = str(input_value.get("url", ""))
+            _assert_public_url(url)
+            output = {"allowed": True, "url": url}
+        elif node_id == "render":
+            get_configured_provider()
+            url = str(input_value.get("url", ""))
+            _assert_public_url(url)
+            final_url, text = _visible_page_text(url)
+            cleaned = "\n".join(line.strip() for line in text.splitlines() if line.strip())[:24_000]
+            output = {"finalUrl": final_url, "renderedCharacters": len(cleaned), "renderedText": cleaned}
+        elif node_id == "extract":
+            provider = get_configured_provider()
+            rendered_text = str(input_value.get("renderedText", "")).strip()[:24_000]
+            if len(rendered_text) < 80:
+                raise ValueError("renderedText must contain at least 80 characters from a rendered page fixture.")
+            facts = provider.structured(
+                "Extract only facts explicitly present in this rendered external-event page. "
+                "Use ISO-8601 dates with timezone when present; never invent missing facts.\n\n"
+                + rendered_text,
+                schema=ExtractedFacts,
+                system="You are an event-page extraction stage, not an approval authority.",
+                max_tokens=2200,
+            )
+            output = {"provider": provider.name, "aiResponse": facts.model_dump(mode="json", by_alias=True)}
+        elif node_id == "schema":
+            package = ExternalEventPackage.model_validate(input_value)
+            output = {"valid": True, "normalized": package.model_dump(mode="json", by_alias=True)}
+        elif node_id == "review":
+            output = {"allowed": False, "reason": "Human department review cannot be simulated or approved here."}
+            node["status"] = "blocked"
+            return {"node": node | {"output": output}}, 200
+        elif node_id == "email-draft":
+            package = ExternalEventPackage.model_validate(input_value)
+            output = _email_handoff(package)
+        elif node_id == "email-approval":
+            department_approved = input_value.get("departmentApproved") is True
+            human_approved = input_value.get("humanApproved") is True
+            output = {
+                "ready": department_approved and human_approved,
+                "checks": {
+                    "departmentApproved": department_approved,
+                    "humanApprovedExactRevision": human_approved,
+                    "recipientAllowlistGatePresent": True,
+                },
+            }
+        else:
+            output = {"allowed": False, "reason": "The workbench is dry-run only; external email delivery is disabled."}
+            node["status"] = "blocked"
+            return {"node": node | {"output": output}}, 200
+        node["status"] = "completed"
+        node["output"] = output
+        node["durationMs"] = 0
+        return {"node": node}, 200
+    except Exception as exc:
+        node["status"] = "failed"
+        node["error"] = str(exc)
+        ai_gated = node_id in {"ai-config", "access-gate", "render", "extract"}
+        status_code = 409 if ai_gated and not local_ai_status()["configured"] else 422
+        return {"node": node, "error": str(exc)}, status_code
+
+
 @router.post("/run")
 def run_event_pipeline(request: EventUrlRequest):
     value, status_code = execute_event_pipeline(str(request.url))
+    return JSONResponse(value, status_code=status_code)
+
+
+@router.post("/run-node")
+def run_event_pipeline_node(request: PipelineNodeRequest):
+    value, status_code = execute_pipeline_node(request.node_id, request.input)
     return JSONResponse(value, status_code=status_code)
 
 

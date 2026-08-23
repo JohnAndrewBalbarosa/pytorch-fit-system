@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..llm.base import LLMUnavailableError
 from ..llm.local_config import (
+    PROVIDER_CATALOG,
     LocalAIConfigInput,
     get_configured_provider,
     local_ai_status,
@@ -68,6 +69,11 @@ class UpskillPlan(BaseModel):
 @router.get("/status")
 def api_local_ai_status() -> dict[str, object]:
     return local_ai_status()
+
+
+@router.get("/providers")
+def api_local_ai_providers() -> dict[str, object]:
+    return {"middleware": "litellm", "providers": PROVIDER_CATALOG}
 
 
 @router.post("/settings")

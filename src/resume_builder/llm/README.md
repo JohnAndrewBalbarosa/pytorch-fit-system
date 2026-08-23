@@ -20,11 +20,12 @@ class LLMProvider(ABC):
 ```mermaid
 flowchart TD
     Stage[AIExtractor / AISynthesizer] --> ABC[[LLMProvider ABC]]
-    Reg[get_provider settings/env] --> Pick{provider?}
-    Pick -->|anthropic| AN[AnthropicProvider]
-    Pick -->|openai-compatible| OA[OpenAI-compatible HTTP API<br/>cloud or local model server]
-    Pick -->|static mode| NU[NullProvider no-op]
-    AN & OA & NU --> ABC
+    Config[Settings: provider + model + credentials] --> MW[LiteLLM middleware]
+    MW -->|google| GO[Gemini]
+    MW -->|anthropic| AN[Claude]
+    MW -->|openai/openrouter/azure| OA[Cloud APIs]
+    MW -->|ollama/openai-compatible/other| LO[Local or other providers]
+    GO & AN & OA & LO --> ABC
     ABC --> Str[structured: ask JSON -> tolerant parse -> pydantic]
 ```
 
@@ -35,6 +36,7 @@ flowchart TD
 | `base.py` | `LLMProvider` ABC + tolerant JSON parser + `LLMUnavailableError` |
 | `registry.py` | `get_provider()` factory (settings/env driven) |
 | `local_config.py` | User-managed local secret store, masked readiness, and shared runtime gate |
+| `litellm_provider.py` | Unified provider/model routing and normalized completion responses |
 | `anthropic_provider.py` | Claude API |
 | `openai_provider.py` | OpenAI-compatible HTTP API; remote or locally hosted server |
 | `claude_session_provider.py` | Development-only interactive fixture; not in runtime registry |
@@ -51,8 +53,14 @@ Production AI execution must cross an HTTP API boundary. Configure
 only when it exposes the same API contract. The current Codex/Claude chat session may generate
 fixtures during development, but it is not embedded in or selectable by the shipped system.
 
-The product Settings page writes the same OpenAI-compatible contract to the ignored
-`.cache/local-ai.json` file with owner-only permissions. It accepts local servers such as Ollama,
-LM Studio, or vLLM, as well as user-supplied remote APIs. Reads expose only endpoint/model metadata
-and whether a key exists; the key value is never returned. Resume generation, UpSkill, and
-scraper-connected execution all fail closed at the shared configuration gate.
+The product Settings page writes one normalized contract to the ignored `.cache/local-ai.json`
+file with owner-only permissions. LiteLLM translates that contract for Google Gemini, Anthropic
+Claude, OpenAI, OpenRouter, Azure, Ollama, OpenAI-compatible servers, and full LiteLLM provider
+routes. API keys are passed per request instead of mutating process-wide provider environment
+variables. Reads expose only endpoint/model metadata and whether a key exists; the key value is
+never returned. Resume generation, UpSkill, and scraper-connected execution all fail closed at the
+shared configuration gate.
+
+The local DAG workbench exposes full-run and standalone-node testing for access, rendered scraping,
+structured AI output, strict package validation, department-review handoff, email-draft JSON, and
+email readiness. It never executes the external email-delivery node.

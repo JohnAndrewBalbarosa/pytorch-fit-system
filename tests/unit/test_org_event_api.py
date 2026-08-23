@@ -5,11 +5,16 @@ from pathlib import Path
 
 import pytest
 
-from resume_builder.web.org_event_api import ExternalEventPackage, _assert_public_url
+from resume_builder.web.org_event_api import (
+    ExternalEventPackage,
+    ExtractedFacts,
+    _assert_public_url,
+    execute_pipeline_node,
+)
 
 
-def test_event_package_requires_strict_grounded_shape():
-    package = ExternalEventPackage.model_validate({
+def event_payload():
+    return {
         "title": "Regional PyTorch Workshop",
         "organizer": "Example University",
         "summary": "A public workshop with a published program and registration page.",
@@ -30,7 +35,11 @@ def test_event_package_requires_strict_grounded_shape():
         "scraperVersion": "visible-browser-v1",
         "confidence": 0.9,
         "warnings": [],
-    })
+    }
+
+
+def test_event_package_requires_strict_grounded_shape():
+    package = ExternalEventPackage.model_validate(event_payload())
     assert package.scope == "external"
 
 
@@ -52,3 +61,41 @@ def test_event_pipeline_template_integrates_stage_and_contract_errors():
     assert 'id:"schema"' in template
     assert "error.payload||{error:error.message}" in template
     assert "inspect-output" in template
+    assert "Run selected node only" in template
+    assert 'id:"email-draft"' in template
+
+
+def test_email_nodes_are_dry_run_and_delivery_remains_blocked():
+    draft, draft_status = execute_pipeline_node("email-draft", event_payload())
+    delivery, delivery_status = execute_pipeline_node("email-send", {})
+
+    assert draft_status == 200
+    assert draft["node"]["status"] == "completed"
+    assert draft["node"]["output"]["deliveryStatus"] == "not_sent"
+    assert "Regional PyTorch Workshop" in draft["node"]["output"]["subject"]
+    assert delivery_status == 200
+    assert delivery["node"]["status"] == "blocked"
+    assert delivery["node"]["output"]["allowed"] is False
+
+
+def test_standalone_extract_node_exposes_the_exact_structured_ai_response(monkeypatch):
+    class FakeProvider:
+        name = "litellm:google"
+
+        def structured(self, *_args, **_kwargs):
+            payload = event_payload()
+            for key in ("scope", "sourceUrl", "scrapedAt", "contentHash", "scraperVersion"):
+                payload.pop(key)
+            return ExtractedFacts.model_validate(payload)
+
+    monkeypatch.setattr(
+        "resume_builder.web.org_event_api.get_configured_provider", lambda: FakeProvider()
+    )
+    value, status = execute_pipeline_node(
+        "extract",
+        {"renderedText": "Rendered public event facts. " * 8},
+    )
+
+    assert status == 200
+    assert value["node"]["output"]["provider"] == "litellm:google"
+    assert value["node"]["output"]["aiResponse"]["title"] == "Regional PyTorch Workshop"

@@ -30,6 +30,7 @@ def test_local_ai_settings_are_private_and_status_is_masked(tmp_path, monkeypatc
 
     save_local_ai_config(
         LocalAIConfigInput(
+            provider="openai-compatible",
             base_url="http://127.0.0.1:11434/v1",
             model="qwen2.5:7b",
             api_key="secret-value",
@@ -43,6 +44,10 @@ def test_local_ai_settings_are_private_and_status_is_masked(tmp_path, monkeypatc
         "baseUrl": "http://127.0.0.1:11434/v1",
         "model": "qwen2.5:7b",
         "apiKeyPresent": True,
+        "apiVersion": "",
+        "project": "",
+        "region": "",
+        "middleware": "litellm",
         "source": "settings",
     }
     assert "secret-value" not in str(status)
@@ -72,3 +77,20 @@ def test_missing_configuration_has_actionable_error(tmp_path, monkeypatch):
     monkeypatch.setenv("RESUME_LOCAL_AI_CONFIG_PATH", str(tmp_path / "missing.json"))
     with pytest.raises(LLMUnavailableError, match="Settings"):
         get_configured_provider()
+
+
+def test_google_and_anthropic_require_their_own_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("RESUME_LOCAL_AI_CONFIG_PATH", str(tmp_path / "local-ai.json"))
+    with pytest.raises(ValueError, match="Google Gemini requires an API key"):
+        save_local_ai_config(LocalAIConfigInput(provider="google", model="gemini-2.5-flash"))
+
+
+def test_switching_provider_never_reuses_another_vendor_secret(tmp_path, monkeypatch):
+    monkeypatch.setenv("RESUME_LOCAL_AI_CONFIG_PATH", str(tmp_path / "local-ai.json"))
+    save_local_ai_config(
+        LocalAIConfigInput(provider="google", model="gemini-2.5-flash", api_key="google-secret")
+    )
+    with pytest.raises(ValueError, match="Anthropic Claude requires an API key"):
+        save_local_ai_config(
+            LocalAIConfigInput(provider="anthropic", model="claude-sonnet-4-5-20250929")
+        )

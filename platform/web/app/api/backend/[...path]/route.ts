@@ -9,6 +9,7 @@ const endpoints: Record<string, string> = {
   "resumes": "/api/resumes",
   "auth/status": "/api/auth/status",
   "local-ai/status": "/api/local-ai/status",
+  "local-ai/providers": "/api/local-ai/providers",
   "local-ai/settings": "/api/local-ai/settings",
   "local-ai/test": "/api/local-ai/test",
   "local-ai/upskill": "/api/local-ai/upskill"
