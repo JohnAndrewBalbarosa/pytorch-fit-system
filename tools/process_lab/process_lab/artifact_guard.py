@@ -10,7 +10,13 @@ FORBIDDEN_PARTS = {
     "prefect",
 }
 FORBIDDEN_SUFFIXES = {".spec.ts", ".test.ts", ".trace.zip", "-trace.zip"}
-FORBIDDEN_CONTENT = (b"process_lab", b"pytorch-fit-process-lab", b"schemathesis")
+FORBIDDEN_CONTENT = (
+    b"process_lab",
+    b"pytorch-fit-process-lab",
+    b"prefect",
+    b"questionary",
+    b"schemathesis",
+)
 
 
 def forbidden_artifacts(root: Path) -> list[str]:

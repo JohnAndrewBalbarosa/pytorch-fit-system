@@ -26,6 +26,7 @@ python -m venv .cache/process-lab/venv
 
 `doctor` accepts an installed Supabase CLI or the maintained CLI through `npx`; Docker must be
 running before `up` starts the local Supabase stack.
+`up` starts the visible local Prefect server and configures every managed resource automatically.
 
 In another terminal, attach to the existing browser and run a workflow:
 
@@ -36,6 +37,12 @@ RESUME_BUILD_PLAYWRIGHT_CDP_URL=http://127.0.0.1:9222 \
 
 Open Prefect at `http://127.0.0.1:4200`. Browser traces are written under
 `out/process-lab/` and can be opened with Playwright Trace Viewer.
+
+Use `pytorch-fit-process-lab open` for the guided workflow chooser. It runs the selected flow and
+opens its exact Prefect graph; press `F` in the graph for Prefect's native fullscreen mode. Variables,
+Blocks, Work Pools, queues, deployments, concurrency limits, automations, and Event Feed are
+configured automatically. See [PREFECT-OPERATIONS.md](PREFECT-OPERATIONS.md) for their purpose and
+troubleshooting.
 
 Login checks require `PROCESS_LAB_EMAIL` and `PROCESS_LAB_PASSWORD`. Keep them in the shell or an
 ignored local environment file; the lab sanitizes results and never persists either value.

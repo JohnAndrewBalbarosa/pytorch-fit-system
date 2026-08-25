@@ -111,6 +111,9 @@ def run_local_stack() -> int:
             "PREFECT_API_URL": "http://127.0.0.1:4200/api",
         }
     )
+    # In-process Prefect SDK calls and child Prefect CLI calls must target the same
+    # dedicated local server as the worker, not Prefect's temporary-server fallback.
+    os.environ["PREFECT_API_URL"] = environment["PREFECT_API_URL"]
     processes = [
         subprocess.Popen(
             [sys.executable, "scripts/dev_frontend.py"], cwd=REPO_ROOT, env=environment
@@ -134,19 +137,52 @@ def run_local_stack() -> int:
         deadline = time.monotonic() + 45
         while time.monotonic() < deadline:
             try:
-                if requests.get(f"{settings.api_url}/healthz", timeout=1).ok:
+                product_ready = requests.get(f"{settings.api_url}/healthz", timeout=1).ok
+                prefect_ready = requests.get("http://127.0.0.1:4200/api/health", timeout=1).ok
+                if product_ready and prefect_ready:
                     break
             except requests.RequestException:
                 pass
             time.sleep(0.25)
         else:
-            raise RuntimeError("Local product services did not become ready within 45 seconds.")
+            raise RuntimeError(
+                "Local product or Prefect services did not become ready within 45 seconds."
+            )
+        from .configuration import WORK_POOL, configure_workspace
+
+        configure_workspace()
+        processes.append(
+            subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "prefect",
+                    "worker",
+                    "start",
+                    "--pool",
+                    WORK_POOL,
+                    "--limit",
+                    "2",
+                    "--name",
+                    "pytorch-fit-local-worker",
+                    "--install-policy",
+                    "never",
+                ],
+                cwd=REPO_ROOT,
+                env=environment,
+            )
+        )
         from resume_builder.web.shared_browser import ensure_shared_browser
 
         ensure_shared_browser()
         _open_cdp_tab(settings.cdp_url, f"{settings.member_url}/")
         _open_cdp_tab(settings.cdp_url, f"{settings.api_url}/docs")
-        _open_cdp_tab(settings.cdp_url, "http://127.0.0.1:4200")
+        subprocess.run(
+            [sys.executable, "-m", "process_lab.cli", "open"],
+            cwd=REPO_ROOT,
+            env=environment,
+            check=False,
+        )
         return max(process.wait() for process in processes)
     finally:
         stop()

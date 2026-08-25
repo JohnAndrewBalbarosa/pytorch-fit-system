@@ -5,6 +5,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from prefect.concurrency.sync import concurrency
+
 from .contracts import BrowserJourneyResult
 
 
@@ -14,7 +16,7 @@ def attached_page(cdp_url: str, trace_path: Path) -> Iterator[object]:
     from playwright.sync_api import sync_playwright
 
     trace_path.parent.mkdir(parents=True, exist_ok=True)
-    with sync_playwright() as playwright:
+    with concurrency("pytorch-fit-browser-cdp", strict=True), sync_playwright() as playwright:
         browser = playwright.chromium.connect_over_cdp(cdp_url)
         if not browser.contexts:
             browser.close()
@@ -73,9 +75,7 @@ def registration_contract_journey(
         )
 
 
-def leaderboard_journey(
-    *, cdp_url: str, member_url: str, trace_path: Path
-) -> BrowserJourneyResult:
+def leaderboard_journey(*, cdp_url: str, member_url: str, trace_path: Path) -> BrowserJourneyResult:
     with attached_page(cdp_url, trace_path) as page:
         page.goto(f"{member_url}/leaderboards", wait_until="networkidle")
         response = page.evaluate(
@@ -91,9 +91,7 @@ def leaderboard_journey(
             "api_ok": response.get("status") == 200,
             "entries_present": bool(body.get("entries")),
             "private_fields_absent": not any(marker in serialized for marker in private_markers),
-            "leaderboard_heading": page.get_by_role(
-                "heading", name="Season rankings"
-            ).is_visible(),
+            "leaderboard_heading": page.get_by_role("heading", name="Season rankings").is_visible(),
         }
         return BrowserJourneyResult(
             name="leaderboard",

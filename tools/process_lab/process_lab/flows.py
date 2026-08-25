@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -10,6 +11,8 @@ from typing import Any
 
 from prefect import flow, task
 from prefect.artifacts import create_markdown_artifact
+from prefect.concurrency.sync import concurrency
+from prefect.events import emit_event
 
 from .browser import leaderboard_journey, login_journey, registration_contract_journey
 from .service_checks import check_endpoint, fetch_openapi, run_schemathesis, sanitized
@@ -23,18 +26,50 @@ if PRODUCT_SRC not in sys.path:
 def _product_environment() -> dict[str, str]:
     environment = os.environ.copy()
     current = environment.get("PYTHONPATH", "")
-    environment["PYTHONPATH"] = PRODUCT_SRC if not current else f"{PRODUCT_SRC}{os.pathsep}{current}"
+    environment["PYTHONPATH"] = (
+        PRODUCT_SRC if not current else f"{PRODUCT_SRC}{os.pathsep}{current}"
+    )
     return environment
+
+
+def _event_resource(kind: str, label: str) -> dict[str, str]:
+    slug = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")[:80]
+    return {
+        "prefect.resource.id": f"pytorch-fit.{kind}.{slug}",
+        "prefect.resource.name": label,
+        "pytorch-fit.scope": "local-process-lab",
+    }
+
+
+def emit_lab_event(event: str, kind: str, label: str, payload: dict[str, Any]) -> None:
+    """Emit bounded metadata only; callers must never include secrets or private records."""
+    emit_event(event=event, resource=_event_resource(kind, label), payload=sanitized(payload))
 
 
 @task(name="FastAPI health")
 def fastapi_health(settings: LabSettings) -> dict[str, Any]:
-    return check_endpoint("fastapi", f"{settings.api_url}/healthz").as_dict()
+    with concurrency("pytorch-fit-api-read", strict=True):
+        result = check_endpoint("fastapi", f"{settings.api_url}/healthz").as_dict()
+    emit_lab_event(
+        "pytorch-fit.api.checked" if result["ok"] else "pytorch-fit.api.failed",
+        "api",
+        "FastAPI health",
+        {"ok": result["ok"], "status_code": result["status_code"]},
+    )
+    return result
 
 
 @task(name="OpenAPI contract")
 def openapi_contract(settings: LabSettings) -> dict[str, Any]:
-    return fetch_openapi(settings.api_url, settings.artifact_root / "openapi.json").as_dict()
+    with concurrency("pytorch-fit-api-read", strict=True):
+        result = fetch_openapi(settings.api_url, settings.artifact_root / "openapi.json").as_dict()
+    emit_lab_event(
+        "pytorch-fit.artifact.created" if result["ok"] else "pytorch-fit.api.failed",
+        "artifact",
+        "OpenAPI contract",
+        {"ok": result["ok"], "artifact": result["artifact"]},
+    )
+    return result
 
 
 @task(name="Schemathesis API verification", retries=0)
@@ -100,7 +135,9 @@ def browser_lifecycle_flow(include_login: bool = False) -> dict[str, Any]:
     payload = {"journeys": results, "ok": all(item["ok"] for item in results)}
     create_markdown_artifact(
         key="pytorch-fit-browser-lifecycle",
-        markdown="# Browser lifecycle\n\n```json\n" + json.dumps(sanitized(payload), indent=2) + "\n```",
+        markdown="# Browser lifecycle\n\n```json\n"
+        + json.dumps(sanitized(payload), indent=2)
+        + "\n```",
     )
     return payload
 
@@ -114,15 +151,23 @@ def member_surface(
 ) -> dict[str, Any]:
     """Observe a real member-facing route while retaining data dependencies for the DAG."""
     del upstream
-    result = check_endpoint(label, f"{settings.member_url}{path}").as_dict()
-    return {**result, "path": path, "kind": "product_route"}
+    with concurrency("pytorch-fit-api-read", strict=True):
+        result = check_endpoint(label, f"{settings.member_url}{path}").as_dict()
+    payload = {**result, "path": path, "kind": "product_route"}
+    emit_lab_event(
+        "pytorch-fit.route.checked" if result["ok"] else "pytorch-fit.route.failed",
+        "route",
+        label,
+        {"path": path, "ok": result["ok"], "status_code": result["status_code"]},
+    )
+    return payload
 
 
 @task(name="Human-controlled gate", task_run_name="{label}")
 def member_human_gate(label: str, reason: str, upstream: object) -> dict[str, Any]:
     """Render an explicit stop/approval node; the Process Lab never performs this write."""
     del upstream
-    return {
+    payload = {
         "name": label,
         "kind": "human_gate",
         "status": "blocked_by_design",
@@ -130,6 +175,13 @@ def member_human_gate(label: str, reason: str, upstream: object) -> dict[str, An
         "writes_performed": False,
         "ok": True,
     }
+    emit_lab_event(
+        "pytorch-fit.human-gate.reached",
+        "human-gate",
+        label,
+        {"status": payload["status"], "writes_performed": False},
+    )
+    return payload
 
 
 @task(name="Member journey summary")
@@ -151,28 +203,20 @@ def member_experience_flow() -> dict[str, Any]:
     settings.ensure_local_dirs()
 
     landing = member_surface(settings, "1 · Discover landing page", "/")
-    registration = member_surface(
-        settings, "2 · Review registration", "/register", landing
-    )
+    registration = member_surface(settings, "2 · Review registration", "/register", landing)
     account_creation = member_human_gate(
         "3 · Submit account details",
         "Account creation requires the user's explicit form submission and verification.",
         registration,
     )
     login = member_surface(settings, "4 · Sign in", "/login", account_creation)
-    membership = member_surface(
-        settings, "5 · Verify membership access", "/membership", login
-    )
-    dashboard = member_surface(
-        settings, "6 · Open personal dashboard", "/dashboard", membership
-    )
+    membership = member_surface(settings, "5 · Verify membership access", "/membership", login)
+    dashboard = member_surface(settings, "6 · Open personal dashboard", "/dashboard", membership)
 
     evidence = member_surface(
         settings, "7A · Review career evidence", "/career/evidence", dashboard
     )
-    resumes = member_surface(
-        settings, "8A · Build and review resume", "/career/resumes", evidence
-    )
+    resumes = member_surface(settings, "8A · Build and review resume", "/career/resumes", evidence)
     opportunities = member_surface(
         settings, "9A · Discover opportunities", "/jobs/opportunities", resumes
     )
@@ -182,9 +226,7 @@ def member_experience_flow() -> dict[str, Any]:
         opportunities,
     )
 
-    events = member_surface(
-        settings, "7B · Browse chapter events", "/events", dashboard
-    )
+    events = member_surface(settings, "7B · Browse chapter events", "/events", dashboard)
     event_gate = member_human_gate(
         "8B · Confirm event interest or registration",
         "The member must approve any event interest or registration write.",
@@ -194,16 +236,12 @@ def member_experience_flow() -> dict[str, Any]:
     leaderboard = member_surface(
         settings, "7C · View private-safe leaderboard", "/leaderboards", dashboard
     )
-    trust = member_surface(
-        settings, "8C · Review privacy and trust", "/trust", leaderboard
-    )
+    trust = member_surface(settings, "8C · Review privacy and trust", "/trust", leaderboard)
 
     profile = member_surface(
         settings, "7D · Review personal profile", "/dashboard/profile", dashboard
     )
-    settings_page = member_surface(
-        settings, "8D · Configure member settings", "/settings", profile
-    )
+    settings_page = member_surface(settings, "8D · Configure member settings", "/settings", profile)
 
     feedback_gate = member_human_gate(
         "9 · Confirm privacy-safe feedback",
@@ -244,6 +282,72 @@ def member_experience_flow() -> dict[str, Any]:
     return summary
 
 
+@flow(name="PyTorch FIT account and membership", log_prints=True)
+def account_membership_flow() -> dict[str, Any]:
+    settings = LabSettings.from_env()
+    landing = member_surface(settings, "Discover landing page", "/")
+    registration = member_surface(settings, "Review registration", "/register", landing)
+    submit_gate = member_human_gate(
+        "Submit account details",
+        "Account creation and verification require the user's explicit action.",
+        registration,
+    )
+    login = member_surface(settings, "Sign in", "/login", submit_gate)
+    membership = member_surface(settings, "Verify membership access", "/membership", login)
+    dashboard = member_surface(settings, "Open personal dashboard", "/dashboard", membership)
+    return member_journey_summary(
+        [landing, registration, submit_gate, login, membership, dashboard]
+    )
+
+
+@flow(name="PyTorch FIT career and opportunities", log_prints=True)
+def career_opportunities_flow() -> dict[str, Any]:
+    settings = LabSettings.from_env()
+    dashboard = member_surface(settings, "Open personal dashboard", "/dashboard")
+    evidence = member_surface(settings, "Review career evidence", "/career/evidence", dashboard)
+    resumes = member_surface(settings, "Build and review resume", "/career/resumes", evidence)
+    opportunities = member_surface(
+        settings, "Discover opportunities", "/jobs/opportunities", resumes
+    )
+    gate = member_human_gate(
+        "Approve application action",
+        "Uploads, Continue, and final submission remain user-controlled.",
+        opportunities,
+    )
+    return member_journey_summary([dashboard, evidence, resumes, opportunities, gate])
+
+
+@flow(name="PyTorch FIT events and community", log_prints=True)
+def events_community_flow() -> dict[str, Any]:
+    settings = LabSettings.from_env()
+    dashboard = member_surface(settings, "Open personal dashboard", "/dashboard")
+    events = member_surface(settings, "Browse chapter events", "/events", dashboard)
+    gate = member_human_gate(
+        "Confirm event interest or registration",
+        "Event interest and registration writes require member approval.",
+        events,
+    )
+    leaderboard = member_surface(
+        settings, "View private-safe leaderboard", "/leaderboards", dashboard
+    )
+    return member_journey_summary([dashboard, events, gate, leaderboard])
+
+
+@flow(name="PyTorch FIT privacy profile and feedback", log_prints=True)
+def privacy_feedback_flow() -> dict[str, Any]:
+    settings = LabSettings.from_env()
+    dashboard = member_surface(settings, "Open personal dashboard", "/dashboard")
+    trust = member_surface(settings, "Review privacy and trust", "/trust", dashboard)
+    profile = member_surface(settings, "Review personal profile", "/dashboard/profile", dashboard)
+    settings_page = member_surface(settings, "Configure member settings", "/settings", profile)
+    gate = member_human_gate(
+        "Confirm privacy-safe feedback",
+        "Feedback is sent only after the member confirms the bounded diagnostic.",
+        [trust, settings_page],
+    )
+    return member_journey_summary([dashboard, trust, profile, settings_page, gate])
+
+
 @task(name="Access-gated scraper CLI", timeout_seconds=240)
 def scraper_cli(seed_url: str, output_dir: Path, max_pages: int) -> dict[str, Any]:
     command = [
@@ -260,15 +364,16 @@ def scraper_cli(seed_url: str, output_dir: Path, max_pages: int) -> dict[str, An
         "2",
         "--visible",
     ]
-    completed = subprocess.run(
-        command,
-        cwd=REPO_ROOT,
-        env=_product_environment(),
-        capture_output=True,
-        text=True,
-        timeout=240,
-        check=False,
-    )
+    with concurrency("pytorch-fit-live-scraper", strict=True):
+        completed = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            env=_product_environment(),
+            capture_output=True,
+            text=True,
+            timeout=240,
+            check=False,
+        )
     if completed.returncode:
         raise RuntimeError((completed.stderr or completed.stdout).strip())
     artifact = output_dir / "latest-run.json"
@@ -281,7 +386,7 @@ def scraper_replay_summary(first_artifact: str, second_artifact: str) -> dict[st
     second = json.loads(Path(second_artifact).read_text(encoding="utf-8"))
     first_layouts = {item["layout_fingerprint"] for item in first.get("learned_layouts", [])}
     second_layouts = {item["layout_fingerprint"] for item in second.get("learned_layouts", [])}
-    return {
+    payload = {
         "first_pages": len(first.get("visited_urls", [])),
         "second_pages": len(second.get("visited_urls", [])),
         "same_layouts": first_layouts == second_layouts,
@@ -289,6 +394,13 @@ def scraper_replay_summary(first_artifact: str, second_artifact: str) -> dict[st
         "latest_artifact": second_artifact,
         "token_claim": "deterministic extraction uses zero model tokens; provider usage is reported separately",
     }
+    emit_lab_event(
+        "pytorch-fit.scraper.cache-compared",
+        "scraper",
+        "Deterministic replay",
+        {"same_layouts": payload["same_layouts"], "second_pages": payload["second_pages"]},
+    )
+    return payload
 
 
 @flow(name="PyTorch FIT scraper cache and token economy", log_prints=True)
@@ -332,7 +444,8 @@ def compile_evidence(crawl_artifact: str, output_path: Path) -> dict[str, Any]:
     if not projects:
         raise ValueError("The crawl artifact contains no extracted evidence text.")
     provider = get_configured_provider()
-    classification, report, profile = interpret(provider, projects=projects)
+    with concurrency("pytorch-fit-model-planning", strict=True):
+        classification, report, profile = interpret(provider, projects=projects)
     result = {
         "classification": classification.model_dump(mode="json"),
         "report": {
@@ -348,6 +461,12 @@ def compile_evidence(crawl_artifact: str, output_path: Path) -> dict[str, Any]:
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    emit_lab_event(
+        "pytorch-fit.artifact.created",
+        "artifact",
+        "Compiled career evidence",
+        {"artifact": str(output_path), "source_count": len(projects)},
+    )
     return {"artifact": str(output_path), **result}
 
 
@@ -400,18 +519,25 @@ def resume_cli(gh_user: str, role: str, output_dir: Path) -> dict[str, Any]:
         "--output",
         str(output_dir),
     ]
-    completed = subprocess.run(
-        command,
-        cwd=REPO_ROOT,
-        env=_product_environment(),
-        capture_output=True,
-        text=True,
-        timeout=300,
-        check=False,
-    )
+    with concurrency("pytorch-fit-artifact-build", strict=True):
+        completed = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            env=_product_environment(),
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
     if completed.returncode:
         raise RuntimeError((completed.stderr or completed.stdout).strip())
     artifacts = sorted(str(path) for path in output_dir.rglob("*") if path.is_file())
+    emit_lab_event(
+        "pytorch-fit.artifact.created",
+        "artifact",
+        "Resume build",
+        {"artifact_count": len(artifacts), "output_dir": str(output_dir)},
+    )
     return {"summary": completed.stdout.strip(), "artifacts": artifacts}
 
 
@@ -423,7 +549,8 @@ def resume_build_flow(gh_user: str, role: str) -> dict[str, Any]:
     result = resume_cli(gh_user, role, output_dir)
     create_markdown_artifact(
         key="pytorch-fit-resume-build",
-        markdown="# Resume build artifacts\n\n" + "\n".join(f"- `{p}`" for p in result["artifacts"]),
+        markdown="# Resume build artifacts\n\n"
+        + "\n".join(f"- `{p}`" for p in result["artifacts"]),
     )
     return result
 
@@ -432,6 +559,10 @@ FLOW_REGISTRY = {
     "api-contracts": api_contract_flow,
     "browser-lifecycle": browser_lifecycle_flow,
     "member-experience": member_experience_flow,
+    "account-membership": account_membership_flow,
+    "career-opportunities": career_opportunities_flow,
+    "events-community": events_community_flow,
+    "privacy-feedback": privacy_feedback_flow,
     "scraper-economy": scraper_economy_flow,
     "evidence-compilation": evidence_compilation_flow,
     "resume-build": resume_build_flow,

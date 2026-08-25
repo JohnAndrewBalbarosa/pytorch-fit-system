@@ -31,7 +31,11 @@ def load_lab_module(name: str):
 
 def test_process_lab_is_not_imported_by_product_sources():
     offenders = []
-    for root in (ROOT / "src", ROOT / "platform" / "web" / "app", ROOT / "platform" / "web" / "lib"):
+    for root in (
+        ROOT / "src",
+        ROOT / "platform" / "web" / "app",
+        ROOT / "platform" / "web" / "lib",
+    ):
         for path in root.rglob("*"):
             if path.suffix not in {".py", ".ts", ".tsx", ".mjs"}:
                 continue
@@ -77,6 +81,13 @@ def test_artifact_guard_rejects_embedded_lab_references(tmp_path):
     assert guard.forbidden_artifacts(tmp_path) == ["server.js::content:process_lab"]
 
 
+@pytest.mark.parametrize("dependency", ["prefect", "questionary"])
+def test_artifact_guard_rejects_embedded_lab_dependencies(tmp_path, dependency):
+    guard = load_lab_module("artifact_guard")
+    (tmp_path / "server.js").write_text(f"load {dependency}", encoding="utf-8")
+    assert guard.forbidden_artifacts(tmp_path) == [f"server.js::content:{dependency}"]
+
+
 def test_artifact_guard_requires_real_artifact_directory(tmp_path):
     guard = load_lab_module("artifact_guard")
     with pytest.raises(FileNotFoundError):
@@ -113,3 +124,59 @@ def test_member_experience_is_a_real_prefect_dag_entrypoint():
     ):
         assert f'"{route}"' in flows
     assert '"member-experience"' in cli
+
+
+def test_prefect_workspace_configuration_covers_native_sections():
+    configuration = (LAB_PACKAGE / "configuration.py").read_text(encoding="utf-8")
+    flows = (LAB_PACKAGE / "flows.py").read_text(encoding="utf-8")
+    browser = (LAB_PACKAGE / "browser.py").read_text(encoding="utf-8")
+    cli = (LAB_PACKAGE / "cli.py").read_text(encoding="utf-8")
+    launcher = (LAB_PACKAGE / "launcher.py").read_text(encoding="utf-8")
+    for resource in (
+        "VARIABLES",
+        "ProcessLabServices",
+        "ProcessLabSafetyPolicy",
+        "GLOBAL_LIMITS",
+        "WORK_POOL",
+        "QUEUES",
+        "DEPLOYMENT_QUEUES",
+        "Automation",
+        "EventTrigger",
+    ):
+        assert resource in configuration
+    assert 'job_variables={"working_dir": str(REPO_ROOT)}' in configuration
+    assert "if deployment_name == DIAGNOSTIC_DEPLOYMENT:" in configuration
+    assert 'os.environ.setdefault("PREFECT_API_URL", "http://127.0.0.1:4200/api")' in cli
+    assert 'os.environ["PREFECT_API_URL"] = environment["PREFECT_API_URL"]' in launcher
+    for workflow in (
+        "account-membership",
+        "career-opportunities",
+        "events-community",
+        "privacy-feedback",
+    ):
+        assert f'"{workflow}"' in flows
+    for limit in (
+        "pytorch-fit-api-read",
+        "pytorch-fit-artifact-build",
+        "pytorch-fit-browser-cdp",
+        "pytorch-fit-live-scraper",
+        "pytorch-fit-model-planning",
+    ):
+        assert limit in configuration or limit in flows or limit in browser
+    assert "emit_event(" in flows
+
+
+def test_prefect_operations_documentation_explains_each_native_section():
+    operations = (ROOT / "tools" / "process_lab" / "PREFECT-OPERATIONS.md").read_text(
+        encoding="utf-8"
+    )
+    for section in (
+        "Variables",
+        "Blocks",
+        "Work Pools",
+        "Concurrency",
+        "Automations",
+        "Event Feed",
+    ):
+        assert section in operations
+    assert "No custom dashboard" in operations
