@@ -22,7 +22,6 @@ import { BrandMark } from "@/components/figma/brand";
 import { Counter } from "@/components/figma/counter";
 import { FigmaParticleHero } from "@/components/figma/particle-hero";
 import { Reveal } from "@/components/figma/reveal";
-import { DevAccess } from "@/components/dev-access";
 
 const faq = [
   {
@@ -149,8 +148,6 @@ function Hero() {
             Explore the system
           </Link>
         </div>
-        <div className="mx-auto max-w-md"><DevAccess /></div>
-
         <div className="mx-auto mt-20 grid max-w-4xl grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/5 md:grid-cols-4">
           {[
             { value: 1284, suffix: "", label: "Members" },

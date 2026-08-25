@@ -15,9 +15,8 @@ python scripts/dev_frontend.py
 The launcher first ensures the versioned synthetic scenario in `.cache/demo/product.sqlite3`, then
 starts FastAPI on `127.0.0.1:8000`, the member portal on `127.0.0.1:3000`, and the
 officer/developer portal on `127.0.0.1:3001`. Both portals use the same Next.js codebase with
-separate build directories and demo identities. The launcher creates a temporary server-to-server
-developer token and enables the passwordless local workspaces. The bypass is
-rejected when `NODE_ENV=production`; it does not grant any job-application permission.
+separate build directories. The launcher creates a temporary server-to-server developer token;
+normal authentication still uses Supabase and no passwordless product bypass is shipped.
 
 Local mode is an editable demo with one primary synthetic student and four supporting lifecycle
 personas. Supabase mode is production and never falls back to demo records. Inspect or restore the
@@ -37,9 +36,8 @@ documented in [`docs/HYBRID-TRUST-ARCHITECTURE.md`](../../docs/HYBRID-TRUST-ARCH
   omit diagnostics and officer payloads; production officer access additionally requires
   `member_profiles.is_officer` or an admin role.
 - Next.js route handlers proxy only allowlisted FastAPI endpoints to a fixed loopback base URL.
-- `scripts/dev_frontend.py` enables the explicit development-only sign-in bypass and opens the
-  dashboard directly. The bypass requires both `PYTORCH_FIT_DEV_ACCESS=1` and
-  `PYTORCH_FIT_DEV_BYPASS_SIGN_IN=1`, and is always disabled when `NODE_ENV=production`.
+- `tools/process_lab` can start local Supabase and exercise normal sign-in externally through
+  Playwright/CDP. Product routes contain no test session or sign-in bypass.
 - FastAPI owns ingestion, persistent snapshots, job automation, and permission enforcement.
 - `PYTORCH_FIT_DATA_PROVIDER=local|supabase` selects exactly one provider. Local mode normalizes
   the existing FastAPI/SQLite services; production mode uses the authenticated Supabase RPC.

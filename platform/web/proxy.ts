@@ -3,24 +3,6 @@ import { createServerClient } from "@supabase/ssr";
 import { isOfficerOnlyPath, memberDestination, portalAudience, portalOrigin } from "@/lib/portal";
 
 const protectedPrefixes = ["/dashboard", "/career", "/jobs", "/connections", "/events", "/leaderboards", "/settings", "/trust", "/reports", "/membership", "/admin"];
-const DEV_SESSION_COOKIE = "pytorch_fit_dev_session";
-
-const developmentAccessEnabled = () =>
-  process.env.NODE_ENV !== "production" && process.env.PYTORCH_FIT_DEV_ACCESS === "1";
-
-const signInBypassEnabled = () =>
-  developmentAccessEnabled() && process.env.PYTORCH_FIT_DEV_BYPASS_SIGN_IN === "1";
-
-function attachDevelopmentSession(response: NextResponse) {
-  response.cookies.set(DEV_SESSION_COOKIE, "local-developer", {
-    httpOnly: true,
-    sameSite: "strict",
-    secure: false,
-    path: "/",
-    maxAge: 60 * 60 * 12,
-  });
-  return response;
-}
 
 function redirectToMember(request: NextRequest) {
   const destination = memberDestination(request.nextUrl.pathname);
@@ -30,25 +12,9 @@ function redirectToMember(request: NextRequest) {
 }
 
 export async function proxy(request: NextRequest) {
-  const { pathname, searchParams } = request.nextUrl;
-  if (pathname === "/login" && signInBypassEnabled()) {
-    const requestedNext = searchParams.get("next");
-    const destination = requestedNext?.startsWith("/") && !requestedNext.startsWith("//")
-      ? requestedNext
-      : "/dashboard";
-    return attachDevelopmentSession(NextResponse.redirect(new URL(destination, request.url)));
-  }
+  const { pathname } = request.nextUrl;
   if (!protectedPrefixes.some((prefix) => pathname.startsWith(prefix))) return NextResponse.next();
   const audience = portalAudience();
-  if (signInBypassEnabled()) {
-    if (audience === "member" && isOfficerOnlyPath(pathname)) return redirectToMember(request);
-    return attachDevelopmentSession(NextResponse.next());
-  }
-  const localSession = request.cookies.get(DEV_SESSION_COOKIE)?.value === "local-developer";
-  if (localSession && developmentAccessEnabled()) {
-    if (audience === "member" && isOfficerOnlyPath(pathname)) return redirectToMember(request);
-    return NextResponse.next();
-  }
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (supabaseUrl && supabaseKey) {
@@ -85,4 +51,4 @@ export async function proxy(request: NextRequest) {
   return NextResponse.redirect(login);
 }
 
-export const config = { matcher: ["/login", "/dashboard/:path*", "/career/:path*", "/jobs/:path*", "/connections/:path*", "/events/:path*", "/leaderboards/:path*", "/settings/:path*", "/trust/:path*", "/reports/:path*", "/membership/:path*", "/admin/:path*"] };
+export const config = { matcher: ["/dashboard/:path*", "/career/:path*", "/jobs/:path*", "/connections/:path*", "/events/:path*", "/leaderboards/:path*", "/settings/:path*", "/trust/:path*", "/reports/:path*", "/membership/:path*", "/admin/:path*"] };

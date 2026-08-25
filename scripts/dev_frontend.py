@@ -22,7 +22,6 @@ def main() -> int:
     environment.setdefault("PYTORCH_FIT_MEMBER_URL", "http://127.0.0.1:3000")
     environment.setdefault("PYTORCH_FIT_OFFICER_URL", "http://127.0.0.1:3001")
     environment.setdefault("PYTORCH_FIT_DEV_ACCESS", "1")
-    environment.setdefault("PYTORCH_FIT_DEV_BYPASS_SIGN_IN", "1")
     environment.setdefault("PYTORCH_FIT_DEV_API_TOKEN", secrets.token_urlsafe(32))
     npm = "npm.cmd" if os.name == "nt" else "npm"
     subprocess.run(

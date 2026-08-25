@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from threading import Lock
 from typing import TYPE_CHECKING, Any
 
 from .base import LLMProvider, LLMUnavailableError
@@ -44,6 +45,29 @@ class LiteLLMProvider(LLMProvider):
         self._config = config
         self._route = litellm_model_route(config.provider, config.model)
         self.name = f"litellm:{config.provider}"
+        self._usage_lock = Lock()
+        self._usage = {
+            "calls": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "model": self._route,
+        }
+
+    def usage_snapshot(self) -> dict[str, int | str | None]:
+        with self._usage_lock:
+            return dict(self._usage)
+
+    def _record_usage(self, response: Any) -> None:
+        usage = getattr(response, "usage", None)
+        prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
+        completion = int(getattr(usage, "completion_tokens", 0) or 0)
+        total = int(getattr(usage, "total_tokens", 0) or prompt + completion)
+        with self._usage_lock:
+            self._usage["calls"] = int(self._usage["calls"]) + 1
+            self._usage["prompt_tokens"] = int(self._usage["prompt_tokens"]) + prompt
+            self._usage["completion_tokens"] = int(self._usage["completion_tokens"]) + completion
+            self._usage["total_tokens"] = int(self._usage["total_tokens"]) + total
 
     def _request_options(self) -> dict[str, Any]:
         options: dict[str, Any] = {
@@ -82,6 +106,7 @@ class LiteLLMProvider(LLMProvider):
             max_tokens=max_tokens,
             **self._request_options(),
         )
+        self._record_usage(response)
         content = response.choices[0].message.content
         if isinstance(content, str):
             return content

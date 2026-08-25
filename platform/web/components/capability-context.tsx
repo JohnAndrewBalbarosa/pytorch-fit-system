@@ -9,7 +9,7 @@ import { fetchJson, queryKeys } from "@/lib/client-api";
 const CapabilityContext = createContext<CapabilityManifest>(lockedCapabilityManifest());
 
 export function CapabilityProvider({ children }: { children: React.ReactNode }) {
-  const query = useQuery({ queryKey: queryKeys.capabilities, queryFn: () => fetchJson<CapabilityManifest>("/api/dev-capabilities", { cache: "no-store" }) });
+  const query = useQuery({ queryKey: queryKeys.capabilities, queryFn: () => fetchJson<CapabilityManifest>("/api/capabilities", { cache: "no-store" }) });
   return <CapabilityContext.Provider value={query.data || lockedCapabilityManifest()}>{children}</CapabilityContext.Provider>;
 }
 

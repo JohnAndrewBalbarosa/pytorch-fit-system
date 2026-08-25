@@ -29,6 +29,16 @@ class LLMProvider(ABC):
 
     name: str = "abstract"
 
+    def usage_snapshot(self) -> dict[str, int | str | None]:
+        """Provider-reported usage for observability; never estimate missing token counts."""
+        return {
+            "calls": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "model": None,
+        }
+
     @abstractmethod
     def complete(self, prompt: str, system: str | None = None, max_tokens: int = 1024) -> str:
         """Return a single text completion."""

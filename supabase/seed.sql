@@ -12,18 +12,18 @@ SELECT id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticat
   '{"provider":"email","providers":["email"]}'::jsonb,
   jsonb_build_object('display_name', display_name, 'demo_data', true), now(), now()
 FROM (VALUES
-  ('00000000-0000-4000-8000-000000000001'::uuid, 'demo.owner@example.test', 'Alex Rivera'),
-  ('00000000-0000-4000-8000-000000000101'::uuid, 'mika@example.test', 'Mika Santos'),
-  ('00000000-0000-4000-8000-000000000102'::uuid, 'jules@example.test', 'Jules Cruz'),
-  ('00000000-0000-4000-8000-000000000103'::uuid, 'ari@example.test', 'Ari Reyes'),
-  ('00000000-0000-4000-8000-000000000104'::uuid, 'nia@example.test', 'Nia Lim'),
-  ('00000000-0000-4000-8000-000000000105'::uuid, 'ren@example.test', 'Ren Garcia'),
-  ('00000000-0000-4000-8000-000000000106'::uuid, 'sam@example.test', 'Sam Flores'),
-  ('00000000-0000-4000-8000-000000000107'::uuid, 'kai@example.test', 'Kai Mendoza'),
-  ('00000000-0000-4000-8000-000000000108'::uuid, 'lee@example.test', 'Lee Navarro'),
-  ('00000000-0000-4000-8000-000000000109'::uuid, 'rio@example.test', 'Rio Torres'),
-  ('00000000-0000-4000-8000-000000000110'::uuid, 'aya@example.test', 'Aya Ramos'),
-  ('00000000-0000-4000-8000-000000000111'::uuid, 'noa@example.test', 'Noa Bautista')
+  ('00000000-0000-4000-8000-000000000001'::uuid, 'demo.owner@fit.edu.ph', 'Alex Rivera'),
+  ('00000000-0000-4000-8000-000000000101'::uuid, 'mika@fit.edu.ph', 'Mika Santos'),
+  ('00000000-0000-4000-8000-000000000102'::uuid, 'jules@fit.edu.ph', 'Jules Cruz'),
+  ('00000000-0000-4000-8000-000000000103'::uuid, 'ari@fit.edu.ph', 'Ari Reyes'),
+  ('00000000-0000-4000-8000-000000000104'::uuid, 'nia@fit.edu.ph', 'Nia Lim'),
+  ('00000000-0000-4000-8000-000000000105'::uuid, 'ren@fit.edu.ph', 'Ren Garcia'),
+  ('00000000-0000-4000-8000-000000000106'::uuid, 'sam@fit.edu.ph', 'Sam Flores'),
+  ('00000000-0000-4000-8000-000000000107'::uuid, 'kai@fit.edu.ph', 'Kai Mendoza'),
+  ('00000000-0000-4000-8000-000000000108'::uuid, 'lee@fit.edu.ph', 'Lee Navarro'),
+  ('00000000-0000-4000-8000-000000000109'::uuid, 'rio@fit.edu.ph', 'Rio Torres'),
+  ('00000000-0000-4000-8000-000000000110'::uuid, 'aya@fit.edu.ph', 'Aya Ramos'),
+  ('00000000-0000-4000-8000-000000000111'::uuid, 'noa@fit.edu.ph', 'Noa Bautista')
 ) AS demo(id, email, display_name)
 ON CONFLICT (id) DO UPDATE SET raw_user_meta_data = EXCLUDED.raw_user_meta_data, updated_at = now();
 

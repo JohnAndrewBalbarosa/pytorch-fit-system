@@ -1,0 +1,10 @@
+tools/process_lab/
+tests/
+.schemathesis/
+out/
+.cache/
+.careerlens-chrome-cdp/
+platform/web/.next*/
+**/*-trace.zip
+**/*.spec.ts
+**/*.test.ts

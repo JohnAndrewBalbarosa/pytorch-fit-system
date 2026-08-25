@@ -1,4 +1,3 @@
-import { cookies } from "next/headers";
 import type { UserTier } from "@/lib/permissions";
 import { portalAudience, type PortalAudience } from "@/lib/portal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -28,25 +27,6 @@ function tierFor(role: ProductRole | "anonymous", isOfficer: boolean): UserTier 
 
 export async function currentViewer(): Promise<ViewerContext> {
   const audience = portalAudience();
-  const jar = await cookies();
-  const localSession = jar.get("pytorch_fit_dev_session")?.value === "local-developer";
-  if (developmentAccessEnabled() && (localSession || process.env.PYTORCH_FIT_DEV_BYPASS_SIGN_IN === "1")) {
-    const isOfficer = audience === "officer";
-    const role: ProductRole = isOfficer ? "admin" : "member";
-    return {
-      userId: process.env.PYTORCH_FIT_DEV_USER_ID || (isOfficer
-        ? "00000000-0000-4000-8000-000000000002"
-        : "00000000-0000-4000-8000-000000000001"),
-      audience,
-      role,
-      isOfficer,
-      isAdmin: isOfficer,
-      canViewDiagnostics: isOfficer,
-      userTier: tierFor(role, isOfficer),
-      localDevelopment: true,
-    };
-  }
-
   try {
     const client = await createSupabaseServerClient();
     const { data: auth } = await client.auth.getUser();
@@ -67,7 +47,7 @@ export async function currentViewer(): Promise<ViewerContext> {
       isAdmin,
       canViewDiagnostics: isOfficer,
       userTier: tierFor(role, isOfficer),
-      localDevelopment: false,
+      localDevelopment: developmentAccessEnabled(),
     };
   } catch {
     return anonymousViewer(audience);

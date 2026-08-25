@@ -20,7 +20,8 @@ def test_provider_normalizes_google_call_without_environment_mutation(monkeypatc
     def completion(**kwargs):
         captured.update(kwargs)
         return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content="READY"))]
+            choices=[SimpleNamespace(message=SimpleNamespace(content="READY"))],
+            usage=SimpleNamespace(prompt_tokens=4, completion_tokens=2, total_tokens=6),
         )
 
     monkeypatch.setitem(sys.modules, "litellm", SimpleNamespace(completion=completion))
@@ -39,3 +40,10 @@ def test_provider_normalizes_google_call_without_environment_mutation(monkeypatc
         {"role": "system", "content": "test"},
         {"role": "user", "content": "health"},
     ]
+    assert provider.usage_snapshot() == {
+        "calls": 1,
+        "prompt_tokens": 4,
+        "completion_tokens": 2,
+        "total_tokens": 6,
+        "model": "gemini/gemini-2.5-flash",
+    }

@@ -23,6 +23,7 @@ venv/
 
 # Test / coverage caches
 .pytest_cache/
+.schemathesis/
 .coverage
 htmlcov/
 
@@ -36,6 +37,7 @@ node_modules/
 .next/
 .next-member/
 .next-officer/
+.next-production-check/
 .next-dev*.log
 coverage/
 *.tsbuildinfo

@@ -16,7 +16,6 @@ import tempfile
 import threading
 import traceback
 import uuid
-import json
 from pathlib import Path
 from typing import Annotated
 
@@ -28,9 +27,23 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from ..core.config import get_settings
+from ..core.models import Mode
+from ..job_application import (
+    DEFAULT_MONGODB_DATABASE,
+    DEFAULT_MONGODB_URI,
+    DevelopmentQuestionBridge,
+    DevelopmentQuestionResponse,
+    FunnelEventCreate,
+    JobDemandDraft,
+    MarketFitCampaign,
+    MarketOpportunityCreate,
+    MarketOpportunityUpdate,
+    MongoQuestionnaireRepository,
+)
+from ..job_finder import JobScrapeArtifactStore
 from ..llm import LLMUnavailableError
 from ..llm.local_config import get_configured_provider, local_ai_status
-from ..core.models import Mode
+from ..metrics.usage_counter import add_pages_scraped, bump_download, read_counters
 from ..orchestration.pipeline import BuildInputs, Pipeline
 from ..role import StaticRolePicker
 from ..sources.social.auth import SessionStore
@@ -50,69 +63,106 @@ from .auth import (
     provider_configuration_status,
 )
 from .cdo_advisor import AdvisorAnalyzeRequest, analyze_for_injection
-from .mock_data import PROTOTYPE_DATA
-from .job_scraping_demo import current_session_artifact
 from .job_finder_control import (
-    approve_resume_intervention as approve_job_finder_resume_intervention,
     approve_question_answers,
     capture_target_preview,
     confirm_external_intervention,
-    control_state as job_finder_control_state,
-    disconnect_provider as disconnect_job_finder_provider,
     focus_intervention,
-    focus_target as focus_job_finder_target,
-    release_intervention as release_job_finder_intervention,
-    reopen_goal_item as reopen_job_finder_goal_item,
-    reopen_intervention as reopen_job_finder_intervention,
     recheck_intervention,
+)
+from .job_finder_control import (
+    approve_resume_intervention as approve_job_finder_resume_intervention,
+)
+from .job_finder_control import (
+    control_state as job_finder_control_state,
+)
+from .job_finder_control import (
+    disconnect_provider as disconnect_job_finder_provider,
+)
+from .job_finder_control import (
+    focus_target as focus_job_finder_target,
+)
+from .job_finder_control import (
+    release_intervention as release_job_finder_intervention,
+)
+from .job_finder_control import (
+    reopen_goal_item as reopen_job_finder_goal_item,
+)
+from .job_finder_control import (
+    reopen_intervention as reopen_job_finder_intervention,
+)
+from .job_finder_control import (
     retry_intervention as retry_job_finder_intervention,
+)
+from .job_finder_control import (
     start_session as start_job_site_session,
 )
 from .job_finder_supervisor import (
     DEFAULT_ARTIFACT_DIR,
     DEFAULT_DATABASE,
-    approve_item_review as approve_job_finder_item_review,
-    confirm_item as confirm_job_finder_item,
-    goal_store as job_finder_goal_store,
-    launch_goal as launch_job_finder_goal,
-    release_item as release_job_finder_item,
     retry_resolved_intervention,
+)
+from .job_finder_supervisor import (
+    approve_item_review as approve_job_finder_item_review,
+)
+from .job_finder_supervisor import (
+    confirm_item as confirm_job_finder_item,
+)
+from .job_finder_supervisor import (
+    goal_store as job_finder_goal_store,
+)
+from .job_finder_supervisor import (
+    launch_goal as launch_job_finder_goal,
+)
+from .job_finder_supervisor import (
+    release_item as release_job_finder_item,
+)
+from .job_finder_supervisor import (
     retry_item as retry_job_finder_item,
+)
+from .job_finder_supervisor import (
     start_goal as create_job_finder_goal,
+)
+from .job_finder_supervisor import (
     stop_goal as stop_job_finder_goal,
 )
+from .job_market_api import router as job_market_router
+from .local_ai_api import router as local_ai_router
 from .market_fit_control import (
     approve_demands as approve_market_fit_demands,
+)
+from .market_fit_control import (
     assess_opportunity as assess_market_fit_opportunity,
+)
+from .market_fit_control import (
     draft_demands as draft_market_fit_demands,
+)
+from .market_fit_control import (
     prepare_interview as prepare_market_fit_interview,
+)
+from .market_fit_control import (
     state as market_fit_state,
+)
+from .market_fit_control import (
     store as market_fit_store,
+)
+from .market_fit_control import (
     update_campaign as update_market_fit_campaign,
 )
-from .job_market_api import router as job_market_router
-from .org_event_api import router as org_event_router
-from .local_ai_api import router as local_ai_router
+from .mock_data import PROTOTYPE_DATA
 from .onboarding import OnboardingService
-from ..job_finder import JobScrapeArtifactStore, render_rule_overlay
-from ..job_application import (
-    DEFAULT_MONGODB_DATABASE,
-    DEFAULT_MONGODB_URI,
-    DevelopmentQuestionBridge,
-    DevelopmentQuestionResponse,
-    MongoQuestionnaireRepository,
-    FunnelEventCreate,
-    JobDemandDraft,
-    MarketFitCampaign,
-    MarketOpportunityCreate,
-    MarketOpportunityUpdate,
-)
-from ..metrics.usage_counter import add_pages_scraped, bump_download, read_counters
+from .org_event_api import router as org_event_router
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-app = FastAPI(title="resume-build-chopper")
+app = FastAPI(
+    title="resume-build-chopper",
+    description=(
+        "Production service API for resume generation, evidence processing, job automation, "
+        "organization events, analytics, and provider-neutral AI configuration."
+    ),
+)
 app.include_router(job_market_router)
 app.include_router(org_event_router)
 app.include_router(local_ai_router)
@@ -189,34 +239,9 @@ def prototype(request: Request) -> HTMLResponse:
     )
 
 
-@app.get("/developer/scraping", response_class=HTMLResponse)
-def developer_scraping(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "developer_scraping.html", {})
-
-
-@app.get("/developer/event-pipeline", response_class=HTMLResponse)
-def developer_event_pipeline(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "developer_event_pipeline.html", {})
-
-
 def _latest_job_scrape_artifact():
     store = JobScrapeArtifactStore(_ARTIFACT_ROOT / "job-finder-runs")
-    return store.latest() or current_session_artifact()
-
-
-@app.get("/developer/job-scraping", response_class=HTMLResponse)
-def developer_job_scraping(request: Request) -> HTMLResponse:
-    artifact = _latest_job_scrape_artifact()
-    return templates.TemplateResponse(
-        request,
-        "developer_job_scraping.html",
-        {
-            "artifact": artifact,
-            "model_output": artifact.model_output.model_dump(mode="json"),
-            "scraping_output": artifact.scraping_output.model_dump(mode="json"),
-            "raw_json": json.dumps(artifact.model_dump(mode="json"), indent=2, default=str),
-        },
-    )
+    return store.latest()
 
 
 @app.get("/setup", response_class=HTMLResponse)
@@ -720,15 +745,12 @@ def api_disconnect_job_finder_session(provider: str, website_logout: bool = Fals
         return JSONResponse({"error": f"Could not disconnect provider: {exc}"}, status_code=503)
 
 
-@app.get("/developer/job-scraping/dom", response_class=HTMLResponse)
-def developer_job_scraping_dom() -> HTMLResponse:
-    artifact = _latest_job_scrape_artifact()
-    return HTMLResponse(render_rule_overlay(artifact.rendered_dom or "", artifact.model_output))
-
-
 @app.get("/api/job-scraping/latest")
-def api_latest_job_scraping() -> dict:
-    return _latest_job_scrape_artifact().model_dump(mode="json")
+def api_latest_job_scraping():
+    artifact = _latest_job_scrape_artifact()
+    if artifact is None:
+        return JSONResponse({"error": "No real job-scraping artifact is available."}, status_code=404)
+    return artifact.model_dump(mode="json")
 
 
 @app.get("/api/auth/status")
@@ -872,7 +894,6 @@ def disconnect_social(vendor: str) -> dict[str, object]:
 
 
 @app.get("/build-form", response_class=HTMLResponse)
-@app.get("/developer/resume-builder", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
     settings = get_settings()
     roles = StaticRolePicker(settings.roles_path).list_available()

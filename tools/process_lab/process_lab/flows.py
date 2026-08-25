@@ -1,0 +1,315 @@
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+from prefect import flow, task
+from prefect.artifacts import create_markdown_artifact
+
+from .browser import leaderboard_journey, login_journey, registration_contract_journey
+from .service_checks import check_endpoint, fetch_openapi, run_schemathesis, sanitized
+from .settings import REPO_ROOT, LabSettings
+
+PRODUCT_SRC = str(REPO_ROOT / "src")
+if PRODUCT_SRC not in sys.path:
+    sys.path.insert(0, PRODUCT_SRC)
+
+
+def _product_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    current = environment.get("PYTHONPATH", "")
+    environment["PYTHONPATH"] = PRODUCT_SRC if not current else f"{PRODUCT_SRC}{os.pathsep}{current}"
+    return environment
+
+
+@task(name="FastAPI health")
+def fastapi_health(settings: LabSettings) -> dict[str, Any]:
+    return check_endpoint("fastapi", f"{settings.api_url}/healthz").as_dict()
+
+
+@task(name="OpenAPI contract")
+def openapi_contract(settings: LabSettings) -> dict[str, Any]:
+    return fetch_openapi(settings.api_url, settings.artifact_root / "openapi.json").as_dict()
+
+
+@task(name="Schemathesis API verification", retries=0)
+def schemathesis_contract(settings: LabSettings) -> dict[str, Any]:
+    return run_schemathesis(
+        settings.api_url, settings.artifact_root / "schemathesis-report.txt"
+    ).as_dict()
+
+
+@flow(name="PyTorch FIT API contracts", log_prints=True)
+def api_contract_flow(run_property_checks: bool = False) -> dict[str, Any]:
+    settings = LabSettings.from_env()
+    settings.ensure_local_dirs()
+    results = [fastapi_health(settings), openapi_contract(settings)]
+    if run_property_checks:
+        results.append(schemathesis_contract(settings))
+    payload = {"checks": results, "ok": all(item["ok"] for item in results)}
+    create_markdown_artifact(
+        key="pytorch-fit-api-contracts",
+        markdown="# API contract run\n\n```json\n" + json.dumps(payload, indent=2) + "\n```",
+    )
+    return payload
+
+
+@task(name="Registration form contract")
+def registration_contract(settings: LabSettings, run_id: str) -> dict[str, Any]:
+    return registration_contract_journey(
+        cdp_url=settings.cdp_url,
+        member_url=settings.member_url,
+        trace_path=settings.artifact_root / run_id / "registration-trace.zip",
+    ).as_dict()
+
+
+@task(name="Member login")
+def member_login(settings: LabSettings, run_id: str) -> dict[str, Any]:
+    return login_journey(
+        cdp_url=settings.cdp_url,
+        member_url=settings.member_url,
+        email=os.getenv("PROCESS_LAB_EMAIL", ""),
+        password=os.getenv("PROCESS_LAB_PASSWORD", ""),
+        trace_path=settings.artifact_root / run_id / "login-trace.zip",
+    ).as_dict()
+
+
+@task(name="Leaderboard privacy and rendering")
+def leaderboard_check(settings: LabSettings, run_id: str) -> dict[str, Any]:
+    return leaderboard_journey(
+        cdp_url=settings.cdp_url,
+        member_url=settings.member_url,
+        trace_path=settings.artifact_root / run_id / "leaderboard-trace.zip",
+    ).as_dict()
+
+
+@flow(name="PyTorch FIT browser lifecycle", log_prints=True)
+def browser_lifecycle_flow(include_login: bool = False) -> dict[str, Any]:
+    settings = LabSettings.from_env()
+    settings.ensure_local_dirs()
+    run_id = f"browser-{int(time.time())}"
+    results = [registration_contract(settings, run_id)]
+    if include_login:
+        results.append(member_login(settings, run_id))
+        results.append(leaderboard_check(settings, run_id))
+    payload = {"journeys": results, "ok": all(item["ok"] for item in results)}
+    create_markdown_artifact(
+        key="pytorch-fit-browser-lifecycle",
+        markdown="# Browser lifecycle\n\n```json\n" + json.dumps(sanitized(payload), indent=2) + "\n```",
+    )
+    return payload
+
+
+@task(name="Access-gated scraper CLI", timeout_seconds=240)
+def scraper_cli(seed_url: str, output_dir: Path, max_pages: int) -> dict[str, Any]:
+    command = [
+        sys.executable,
+        "-m",
+        "resume_builder.cli",
+        "crawl-site",
+        seed_url,
+        "--output-dir",
+        str(output_dir),
+        "--max-pages",
+        str(max_pages),
+        "--max-depth",
+        "2",
+        "--visible",
+    ]
+    completed = subprocess.run(
+        command,
+        cwd=REPO_ROOT,
+        env=_product_environment(),
+        capture_output=True,
+        text=True,
+        timeout=240,
+        check=False,
+    )
+    if completed.returncode:
+        raise RuntimeError((completed.stderr or completed.stdout).strip())
+    artifact = output_dir / "latest-run.json"
+    return {"command": command, "artifact": str(artifact), "summary": completed.stdout.strip()}
+
+
+@task(name="Deterministic scraper replay comparison")
+def scraper_replay_summary(first_artifact: str, second_artifact: str) -> dict[str, Any]:
+    first = json.loads(Path(first_artifact).read_text(encoding="utf-8"))
+    second = json.loads(Path(second_artifact).read_text(encoding="utf-8"))
+    first_layouts = {item["layout_fingerprint"] for item in first.get("learned_layouts", [])}
+    second_layouts = {item["layout_fingerprint"] for item in second.get("learned_layouts", [])}
+    return {
+        "first_pages": len(first.get("visited_urls", [])),
+        "second_pages": len(second.get("visited_urls", [])),
+        "same_layouts": first_layouts == second_layouts,
+        "replayed_layouts": sorted(second_layouts),
+        "latest_artifact": second_artifact,
+        "token_claim": "deterministic extraction uses zero model tokens; provider usage is reported separately",
+    }
+
+
+@flow(name="PyTorch FIT scraper cache and token economy", log_prints=True)
+def scraper_economy_flow(seed_url: str, max_pages: int = 5) -> dict[str, Any]:
+    settings = LabSettings.from_env()
+    settings.ensure_local_dirs()
+    output_dir = settings.artifact_root / f"scraper-{int(time.time())}"
+    first = scraper_cli(seed_url, output_dir, max_pages)
+    first_snapshot = output_dir / "first-run.json"
+    first_snapshot.write_text(Path(first["artifact"]).read_text(encoding="utf-8"), encoding="utf-8")
+    second = scraper_cli(seed_url, output_dir, max_pages)
+    comparison = scraper_replay_summary(str(first_snapshot), second["artifact"])
+    create_markdown_artifact(
+        key="pytorch-fit-scraper-economy",
+        markdown="# Scraper cache comparison\n\n```json\n"
+        + json.dumps(comparison, indent=2)
+        + "\n```",
+    )
+    return comparison
+
+
+@task(name="Compile scraped career evidence", timeout_seconds=180)
+def compile_evidence(crawl_artifact: str, output_path: Path) -> dict[str, Any]:
+    """Call the production P3 interpreter; the lab only adapts the crawler artifact."""
+    from resume_builder.extraction.models import CleanedSource
+    from resume_builder.interpretation import interpret
+    from resume_builder.llm.local_config import get_configured_provider
+
+    payload = json.loads(Path(crawl_artifact).read_text(encoding="utf-8"))
+    projects = [
+        CleanedSource(
+            source_id=str(page["url"]),
+            kind="website",
+            title=str(page["url"]),
+            text=str(page.get("content", "")),
+            degraded=page.get("extraction_method") != "ai_rules",
+        )
+        for page in payload.get("extracted_pages", [])
+        if str(page.get("content", "")).strip()
+    ]
+    if not projects:
+        raise ValueError("The crawl artifact contains no extracted evidence text.")
+    provider = get_configured_provider()
+    classification, report, profile = interpret(provider, projects=projects)
+    result = {
+        "classification": classification.model_dump(mode="json"),
+        "report": {
+            **report.model_dump(mode="json"),
+            "success_rate": report.success_rate,
+        },
+        "profile": profile.model_dump(mode="json"),
+        "source_ids": [project.source_id for project in projects],
+        "model_usage": {
+            **provider.usage_snapshot(),
+            "measurement": "provider_reported",
+        },
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    return {"artifact": str(output_path), **result}
+
+
+@task(name="Leaderboard human-review gate")
+def leaderboard_human_gate(evidence: dict[str, Any]) -> dict[str, Any]:
+    projects = evidence.get("classification", {}).get("projects", [])
+    return {
+        "status": "blocked",
+        "candidate_count": len(projects),
+        "source_ids": evidence.get("source_ids", []),
+        "reason": "An officer must review provenance before any points are awarded.",
+        "writes_performed": False,
+    }
+
+
+@flow(name="PyTorch FIT scraped evidence compilation", log_prints=True)
+def evidence_compilation_flow(crawl_artifact: str) -> dict[str, Any]:
+    settings = LabSettings.from_env()
+    settings.ensure_local_dirs()
+    compiled = compile_evidence(
+        crawl_artifact,
+        settings.artifact_root / f"evidence-{int(time.time())}" / "compiled-evidence.json",
+    )
+    gate = leaderboard_human_gate(compiled)
+    create_markdown_artifact(
+        key="pytorch-fit-evidence-compilation",
+        markdown="# Evidence compilation\n\n"
+        + f"Sources: {len(compiled['source_ids'])}\n\n"
+        + f"Tag success rate: {compiled['report']['success_rate']:.1%}\n\n"
+        + f"Leaderboard: **{gate['status']}** — {gate['reason']}",
+    )
+    return {"compiled": compiled, "leaderboard_gate": gate}
+
+
+@task(name="Resume production CLI", timeout_seconds=300)
+def resume_cli(gh_user: str, role: str, output_dir: Path) -> dict[str, Any]:
+    command = [
+        sys.executable,
+        "-m",
+        "resume_builder.cli",
+        "build",
+        "--mode",
+        "static",
+        "--gh-user",
+        gh_user,
+        "--role",
+        role,
+        "--formats",
+        "html,md,json,pdf",
+        "--output",
+        str(output_dir),
+    ]
+    completed = subprocess.run(
+        command,
+        cwd=REPO_ROOT,
+        env=_product_environment(),
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+    if completed.returncode:
+        raise RuntimeError((completed.stderr or completed.stdout).strip())
+    artifacts = sorted(str(path) for path in output_dir.rglob("*") if path.is_file())
+    return {"summary": completed.stdout.strip(), "artifacts": artifacts}
+
+
+@flow(name="PyTorch FIT evidence to resume", log_prints=True)
+def resume_build_flow(gh_user: str, role: str) -> dict[str, Any]:
+    settings = LabSettings.from_env()
+    settings.ensure_local_dirs()
+    output_dir = settings.artifact_root / f"resume-{int(time.time())}"
+    result = resume_cli(gh_user, role, output_dir)
+    create_markdown_artifact(
+        key="pytorch-fit-resume-build",
+        markdown="# Resume build artifacts\n\n" + "\n".join(f"- `{p}`" for p in result["artifacts"]),
+    )
+    return result
+
+
+FLOW_REGISTRY = {
+    "api-contracts": api_contract_flow,
+    "browser-lifecycle": browser_lifecycle_flow,
+    "scraper-economy": scraper_economy_flow,
+    "evidence-compilation": evidence_compilation_flow,
+    "resume-build": resume_build_flow,
+}
+
+
+@flow(name="PyTorch FIT end-to-end career process", log_prints=True)
+def end_to_end_flow(seed_url: str, gh_user: str, role: str) -> dict[str, Any]:
+    scraper = scraper_economy_flow(seed_url=seed_url, max_pages=5)
+    evidence = evidence_compilation_flow(crawl_artifact=scraper["latest_artifact"])
+    return {
+        "api": api_contract_flow(run_property_checks=False),
+        "browser": browser_lifecycle_flow(include_login=False),
+        "scraper": scraper,
+        "evidence": evidence,
+        "resume": resume_build_flow(gh_user=gh_user, role=role),
+        "leaderboard_gate": evidence["leaderboard_gate"],
+    }
+
+
+FLOW_REGISTRY["end-to-end"] = end_to_end_flow

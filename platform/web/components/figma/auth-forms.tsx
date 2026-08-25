@@ -8,7 +8,6 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AuthShell } from "./auth-shell";
-import { DevAccess } from "@/components/dev-access";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { loginSchema, registerSchema, type LoginValues, type RegisterValues } from "@/lib/auth-schema";
 
@@ -99,7 +98,6 @@ export function LoginForm() {
       <div className="mt-8 text-center text-sm text-[#FFF7ED]/50">
         New to the chapter? <Link className="text-[#e8590c] hover:underline" href="/register">Register</Link>
       </div>
-      <DevAccess />
     </AuthShell>
   );
 }

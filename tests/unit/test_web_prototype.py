@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from resume_builder.web import app as web_app
 from resume_builder.web.app import app
@@ -42,46 +42,18 @@ def test_prototype_visualizes_full_scraping_flow():
     assert "Sidebar is now SPA navigation" not in html
 
 
-def test_developer_scraping_inspector_is_separate_from_careerlens_ui():
-    response = TestClient(app).get("/developer/scraping")
-
-    assert response.status_code == 200
-    html = response.text
-    assert "Website-agnostic scraper inspector" in html
-    assert "resume-build scrape --visual --delay-ms 900" in html
-    assert "RESUME_BUILD_PLAYWRIGHT_VISUAL" in html
-    assert "Actual website, actual scraper logic" in html
-    assert "/developer/job-scraping" in html
-
-
-def test_job_scraping_visualization_shows_current_session_model_output(tmp_path, monkeypatch):
-    monkeypatch.setattr(web_app, "_ARTIFACT_ROOT", tmp_path)
-
-    response = TestClient(app).get("/developer/job-scraping")
-
-    assert response.status_code == 200
-    html = response.text
-    assert "Website-agnostic DOM rule visualization" in html
-    assert "Current Codex session" in html
-    assert "Annotated rendered DOM" in html
-    assert "/developer/job-scraping/dom" in html
-    assert "Backend Engineer" in html
-    assert "Raw model + execution JSON" in html
-
-
-def test_job_scraping_dom_overlay_marks_deterministic_actions(tmp_path, monkeypatch):
-    monkeypatch.setattr(web_app, "_ARTIFACT_ROOT", tmp_path)
-
-    response = TestClient(app).get("/developer/job-scraping/dom")
-
-    assert response.status_code == 200
-    html = response.text
-    assert "AI DOM decisions" in html
-    assert 'data-codex-label="FILL"' in html
-    assert 'data-codex-label="CLICK"' in html
-    assert 'data-codex-label="EXTRACT + CRAWL"' in html
-    assert 'data-codex-label="CRAWL NEXT"' in html
-    assert 'data-codex-label="IGNORE"' in html
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/developer/scraping",
+        "/developer/event-pipeline",
+        "/developer/job-scraping",
+        "/developer/job-scraping/dom",
+        "/developer/resume-builder",
+    ],
+)
+def test_developer_workbenches_are_not_shipped_by_product_app(path):
+    assert TestClient(app).get(path).status_code == 404
 
 
 def test_latest_job_scraping_api_returns_visualization_artifact(tmp_path, monkeypatch):
@@ -89,11 +61,8 @@ def test_latest_job_scraping_api_returns_visualization_artifact(tmp_path, monkey
 
     response = TestClient(app).get("/api/job-scraping/latest")
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["source_label"].startswith("Current Codex session")
-    assert any(rule["role"] == "job_card" for rule in payload["model_output"]["rules"])
-    assert payload["scraping_output"]["listings"][0]["title"] == "Backend Engineer"
+    assert response.status_code == 404
+    assert response.json() == {"error": "No real job-scraping artifact is available."}
 
 
 def test_dashboard_renders_get_started_auth_controls():

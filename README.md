@@ -2,7 +2,8 @@
 
 The canonical product frontend is [`platform/web`](platform/web/README.md). Run
 `python scripts/dev_frontend.py` to launch it with the FastAPI service and an explicitly
-development-only local access session.
+configured data/auth provider. For black-box developer verification with local Supabase, Prefect,
+Schemathesis, and the normal CDP browser, use [`tools/process_lab`](tools/process_lab/README.md).
 
 > Built by the **PyTorch FEU Institute of Technology (FEU Tech) Student Chapter**.
 > 📖 **Master spec (NotebookLM source of truth):** [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md)

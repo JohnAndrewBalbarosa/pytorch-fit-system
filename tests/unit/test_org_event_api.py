@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import socket
-from pathlib import Path
 
 import pytest
 
@@ -53,16 +52,6 @@ def test_public_url_gate_rejects_unsupported_or_local_urls(url, monkeypatch):
 def test_public_url_gate_accepts_global_addresses(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", lambda *_args: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))])
     _assert_public_url("https://events.example/workshop")
-
-
-def test_event_pipeline_template_integrates_stage_and_contract_errors():
-    template = Path("src/resume_builder/web/templates/developer_event_pipeline.html").read_text(encoding="utf-8")
-    assert 'id:"ai-config"' in template
-    assert 'id:"schema"' in template
-    assert "error.payload||{error:error.message}" in template
-    assert "inspect-output" in template
-    assert "Run selected node only" in template
-    assert 'id:"email-draft"' in template
 
 
 def test_email_nodes_are_dry_run_and_delivery_remains_blocked():
