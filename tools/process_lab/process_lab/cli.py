@@ -28,7 +28,7 @@ def main() -> int:
     server = subparsers.add_parser("server", help="Start Prefect's maintained local UI/API.")
     server.add_argument("--host", default="127.0.0.1")
     run = subparsers.add_parser("run", help="Run one fixed workflow.")
-    run.add_argument("workflow", choices=["api-contracts", "browser-lifecycle", "scraper-economy", "evidence-compilation", "resume-build", "end-to-end"])
+    run.add_argument("workflow", choices=["api-contracts", "browser-lifecycle", "member-experience", "scraper-economy", "evidence-compilation", "resume-build", "end-to-end"])
     run.add_argument("--seed-url", default="")
     run.add_argument("--crawl-artifact", default="")
     run.add_argument("--gh-user", default="")
@@ -70,6 +70,8 @@ def main() -> int:
         result = selected(run_property_checks=args.property_checks)
     elif args.workflow == "browser-lifecycle":
         result = selected(include_login=args.include_login)
+    elif args.workflow == "member-experience":
+        result = selected()
     elif args.workflow == "scraper-economy":
         if not args.seed_url:
             parser.error("--seed-url is required for scraper-economy")

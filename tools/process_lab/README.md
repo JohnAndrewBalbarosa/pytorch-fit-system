@@ -46,12 +46,19 @@ Available fixed workflows:
 
 ```bash
 pytorch-fit-process-lab list
+pytorch-fit-process-lab run member-experience
 pytorch-fit-process-lab run api-contracts --property-checks
 pytorch-fit-process-lab run scraper-economy --seed-url https://example.com
 pytorch-fit-process-lab run evidence-compilation --crawl-artifact out/process-lab/.../latest-run.json
 pytorch-fit-process-lab run resume-build --gh-user USER --role ROLE_ID
 pytorch-fit-process-lab run end-to-end --seed-url URL --gh-user USER --role ROLE_ID
 ```
+
+`member-experience` is the n8n-style visual overview for an ordinary user. Open its Prefect flow
+run to see the dependency graph: landing and account access lead to the personal dashboard, then
+branch into career evidence/resumes/opportunities, chapter events, leaderboards/privacy, and
+profile/settings. Writes such as account creation, event registration, feedback delivery, uploads,
+and job submission appear as explicit human-gate nodes and are never executed by the lab.
 
 ## Release boundary
 

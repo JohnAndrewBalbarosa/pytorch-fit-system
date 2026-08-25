@@ -91,3 +91,25 @@ def test_release_ignore_files_exclude_process_lab():
         assert ".schemathesis/" in value
         assert "platform/web/.next*/" in value
         assert "**/*-trace.zip" in value
+
+
+def test_member_experience_is_a_real_prefect_dag_entrypoint():
+    flows = (LAB_PACKAGE / "flows.py").read_text(encoding="utf-8")
+    cli = (LAB_PACKAGE / "cli.py").read_text(encoding="utf-8")
+    assert '@flow(name="PyTorch FIT major member experience"' in flows
+    assert '"member-experience": member_experience_flow' in flows
+    assert 'task_run_name="{label}"' in flows
+    for route in (
+        "/membership",
+        "/dashboard",
+        "/career/evidence",
+        "/career/resumes",
+        "/jobs/opportunities",
+        "/events",
+        "/leaderboards",
+        "/trust",
+        "/dashboard/profile",
+        "/settings",
+    ):
+        assert f'"{route}"' in flows
+    assert '"member-experience"' in cli

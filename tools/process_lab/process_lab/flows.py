@@ -105,6 +105,145 @@ def browser_lifecycle_flow(include_login: bool = False) -> dict[str, Any]:
     return payload
 
 
+@task(name="Member process node", task_run_name="{label}")
+def member_surface(
+    settings: LabSettings,
+    label: str,
+    path: str,
+    upstream: object | None = None,
+) -> dict[str, Any]:
+    """Observe a real member-facing route while retaining data dependencies for the DAG."""
+    del upstream
+    result = check_endpoint(label, f"{settings.member_url}{path}").as_dict()
+    return {**result, "path": path, "kind": "product_route"}
+
+
+@task(name="Human-controlled gate", task_run_name="{label}")
+def member_human_gate(label: str, reason: str, upstream: object) -> dict[str, Any]:
+    """Render an explicit stop/approval node; the Process Lab never performs this write."""
+    del upstream
+    return {
+        "name": label,
+        "kind": "human_gate",
+        "status": "blocked_by_design",
+        "reason": reason,
+        "writes_performed": False,
+        "ok": True,
+    }
+
+
+@task(name="Member journey summary")
+def member_journey_summary(branches: list[dict[str, Any]]) -> dict[str, Any]:
+    route_nodes = [node for node in branches if node.get("kind") == "product_route"]
+    gates = [node for node in branches if node.get("kind") == "human_gate"]
+    return {
+        "route_nodes": len(route_nodes),
+        "reachable_routes": sum(bool(node.get("ok")) for node in route_nodes),
+        "human_gates": [node["name"] for node in gates],
+        "ok": all(bool(node.get("ok")) for node in branches),
+    }
+
+
+@flow(name="PyTorch FIT major member experience", log_prints=True)
+def member_experience_flow() -> dict[str, Any]:
+    """n8n-style overview of the major journeys an ordinary member can take."""
+    settings = LabSettings.from_env()
+    settings.ensure_local_dirs()
+
+    landing = member_surface(settings, "1 · Discover landing page", "/")
+    registration = member_surface(
+        settings, "2 · Review registration", "/register", landing
+    )
+    account_creation = member_human_gate(
+        "3 · Submit account details",
+        "Account creation requires the user's explicit form submission and verification.",
+        registration,
+    )
+    login = member_surface(settings, "4 · Sign in", "/login", account_creation)
+    membership = member_surface(
+        settings, "5 · Verify membership access", "/membership", login
+    )
+    dashboard = member_surface(
+        settings, "6 · Open personal dashboard", "/dashboard", membership
+    )
+
+    evidence = member_surface(
+        settings, "7A · Review career evidence", "/career/evidence", dashboard
+    )
+    resumes = member_surface(
+        settings, "8A · Build and review resume", "/career/resumes", evidence
+    )
+    opportunities = member_surface(
+        settings, "9A · Discover opportunities", "/jobs/opportunities", resumes
+    )
+    application_gate = member_human_gate(
+        "10A · Approve application action",
+        "Resume selection, uploads, Continue, and final submission remain user-controlled.",
+        opportunities,
+    )
+
+    events = member_surface(
+        settings, "7B · Browse chapter events", "/events", dashboard
+    )
+    event_gate = member_human_gate(
+        "8B · Confirm event interest or registration",
+        "The member must approve any event interest or registration write.",
+        events,
+    )
+
+    leaderboard = member_surface(
+        settings, "7C · View private-safe leaderboard", "/leaderboards", dashboard
+    )
+    trust = member_surface(
+        settings, "8C · Review privacy and trust", "/trust", leaderboard
+    )
+
+    profile = member_surface(
+        settings, "7D · Review personal profile", "/dashboard/profile", dashboard
+    )
+    settings_page = member_surface(
+        settings, "8D · Configure member settings", "/settings", profile
+    )
+
+    feedback_gate = member_human_gate(
+        "9 · Confirm privacy-safe feedback",
+        "A report is sent only after the member intentionally confirms the bounded diagnostic.",
+        [application_gate, event_gate, trust, settings_page],
+    )
+    summary = member_journey_summary(
+        [
+            landing,
+            registration,
+            account_creation,
+            login,
+            membership,
+            dashboard,
+            evidence,
+            resumes,
+            opportunities,
+            application_gate,
+            events,
+            event_gate,
+            leaderboard,
+            trust,
+            profile,
+            settings_page,
+            feedback_gate,
+        ]
+    )
+    create_markdown_artifact(
+        key="pytorch-fit-major-member-experience",
+        markdown=(
+            "# Major member experience DAG\n\n"
+            "The run graph is the visual source of truth. It follows real product routes and "
+            "shows explicit human-controlled gates for writes.\n\n```json\n"
+            + json.dumps(summary, indent=2)
+            + "\n```"
+        ),
+    )
+    return summary
+
+
 @task(name="Access-gated scraper CLI", timeout_seconds=240)
 def scraper_cli(seed_url: str, output_dir: Path, max_pages: int) -> dict[str, Any]:
     command = [
@@ -292,6 +431,7 @@ def resume_build_flow(gh_user: str, role: str) -> dict[str, Any]:
 FLOW_REGISTRY = {
     "api-contracts": api_contract_flow,
     "browser-lifecycle": browser_lifecycle_flow,
+    "member-experience": member_experience_flow,
     "scraper-economy": scraper_economy_flow,
     "evidence-compilation": evidence_compilation_flow,
     "resume-build": resume_build_flow,
