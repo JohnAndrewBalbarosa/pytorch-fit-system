@@ -59,3 +59,25 @@ export type MembershipStatus = {
   updatedAt: string;
   demo: boolean;
 };
+
+export const operationalEventSchema = z.object({
+  eventId: z.string().uuid(),
+  correlationId: z.string().uuid(),
+  component: z.string().regex(/^[a-z0-9_.-]{2,100}$/),
+  stage: z.string().regex(/^[a-z0-9_.-]{2,100}$/),
+  code: z.string().regex(/^[a-z0-9_.-]{2,120}$/),
+  severity: z.enum(["info", "warning", "error", "critical"]),
+  outcome: z.enum(["succeeded", "stopped", "failed"]),
+  retryable: z.boolean(),
+  occurredAt: z.string().datetime(),
+  route: z.string().startsWith("/").max(240),
+  appVersion: z.string().max(80).optional(),
+  extensionVersion: z.string().max(80).optional(),
+  sourceDomain: z.string().max(160).optional(),
+  layoutFingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  details: z.object({
+    message: z.string().max(300).optional(),
+    componentMarkers: z.array(z.string().max(120)).max(40).optional(),
+  }).strict().optional(),
+}).strict();
+export type OperationalEventInput = z.infer<typeof operationalEventSchema>;

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./client-automation": "./client-automation/index.ts",
     "./career-evidence": "./career-evidence/index.ts",
     "./identity": "./identity/index.ts",
     "./job-discovery": "./job-discovery/index.ts",

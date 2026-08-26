@@ -15,7 +15,29 @@ import {
   type FeedbackUpdate,
   type MemberPrivacySettings,
   type MembershipStatus,
+  operationalEventSchema,
+  type OperationalEventInput,
 } from "@pytorch-fit/domain-protocol/privacy-feedback";
+
+export async function createOperationalEvent(viewer: ViewerContext, input: unknown) {
+  if (!viewer.userId) throw new Error("Authentication required.");
+  const parsed = operationalEventSchema.parse(input);
+  const privacy = await readPrivacySettings(viewer.userId);
+  const value: OperationalEventInput = privacy.automaticErrorReports ? parsed : { ...parsed, details: undefined };
+  if (configuredProductProvider() === "local") {
+    const db = openFeedbackDatabase();
+    try {
+      db.exec("CREATE TABLE IF NOT EXISTS operational_events (event_id TEXT PRIMARY KEY,reporter_id TEXT NOT NULL,payload TEXT NOT NULL,occurred_at TEXT NOT NULL) STRICT");
+      db.prepare("INSERT OR IGNORE INTO operational_events VALUES (?,?,?,?)").run(value.eventId, viewer.userId, JSON.stringify(value), value.occurredAt);
+      db.prepare("DELETE FROM operational_events WHERE occurred_at < ?").run(new Date(Date.now() - 30 * 86_400_000).toISOString());
+    } finally { db.close(); }
+    return { accepted: true, eventId: value.eventId };
+  }
+  const client = await createSupabaseServerClient();
+  const { error } = await client.rpc("ingest_operational_event", { requested: value });
+  if (error) throw new Error(error.message);
+  return { accepted: true, eventId: value.eventId };
+}
 
 export async function readPrivacySettings(userId: string): Promise<MemberPrivacySettings> {
   if (configuredProductProvider() === "local") return readLocalDemoState(userId).privacySettings;

@@ -204,6 +204,42 @@ separate systems even when they share the same learn-once/replay-many pattern.
    an open, access-clear Indeed Applied page with `tools/job_finder/sync_indeed_applied.py`; never
    infer confirmation from search cards, drafts, Review pages, or employer status controls.
 
+## Logic Documentation Router
+
+Use the repository structure as the first routing signal. Do not read every design document before
+changing one feature. Start at [`docs/logic/README.md`](docs/logic/README.md), select the document
+whose `code_paths` cover the code being changed, and read that document completely.
+
+```text
+apps/                    deployable portal, extension, and academic-record applications
+domains/protocol/        strict cross-boundary schemas and public types
+domains/server/          trusted server decisions, persistence, and provider integrations
+domains/client/          browser UI and untrusted client orchestration
+design-system/           reusable presentation primitives only
+development/             local-only tooling excluded from production
+docs/logic/              decision-boundary invariants, feedback signals, and test catalog
+legacy/python/           non-production parity references during TypeScript migration
+tests/                   cross-workspace architecture and documentation contracts
+supabase/migrations/     authoritative database/RLS/RPC evolution
+```
+
+For every change to pre-existing behavior:
+
+1. Update the matching logic document first: states, invariants, input/output contract, failure
+   modes, emitted operational events, and acceptance tests.
+2. Change shared protocol schemas before server and client implementations.
+3. Update every test named by the logic document and add a regression test for the changed logic.
+4. If the behavior introduces a genuinely new decision boundary, create a narrowly named document
+   in the matching `docs/logic/<domain>/` folder and register it in the logic index. Do not create a
+   catch-all agent or testing document.
+5. Keep runtime feedback symmetric: record bounded success, stop, and failure outcomes with a
+   correlation ID. A feature is incomplete if failures can disappear without either a local queue,
+   a server-side event, or an explicit human handoff.
+
+`tests/node/logic-doc-contracts.test.mjs` validates the catalog metadata and referenced paths. Logic
+documents explain what must remain true; tests remain executable code and must not be copied into
+Markdown.
+
 ## Every Prompt Save Rule
 
 For every user prompt that causes codebase changes, the agent must save the work before ending the turn:

@@ -47,7 +47,7 @@ test("production packages never import development tooling or dummy identities",
 test("workspace packages expose concepts, not implementation filenames", () => {
   for (const directory of ["domains/client", "domains/server", "domains/protocol"]) {
     const manifest = JSON.parse(readFileSync(join(root, directory, "package.json"), "utf8"));
-    assert.ok(Object.keys(manifest.exports).every((name) => name.split("/").length === 2));
+    assert.ok(Object.keys(manifest.exports).every((name) => name.split("/").length <= 3 && !/\.(?:ts|tsx|js|mjs)$/.test(name)));
   }
 });
 

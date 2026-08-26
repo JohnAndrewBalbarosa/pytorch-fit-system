@@ -51,6 +51,7 @@ import type {
   Connection,
   EvidenceItem,
   EvidenceSource,
+  EvidenceSubmissionEnvelope,
   ProductViewData,
 } from "@pytorch-fit/domain-protocol/career-evidence";
 import {
@@ -65,6 +66,8 @@ import {
   resumeTemplates,
   type ResumeTemplateId,
 } from "@pytorch-fit/domain-client/resumes";
+import { collectEvidenceFromExtension, ExtensionCapabilityOverlay } from "@pytorch-fit/domain-client/client-automation";
+import type { EvidenceIntegrityCase } from "@pytorch-fit/domain-protocol/organization";
 
 const sourceTone = (source: EvidenceSource) =>
   source.connectionStatus === "connected"
@@ -93,6 +96,7 @@ function SourceDialog({
   const [notice, setNotice] = useState("");
   const [url, setUrl] = useState(source.configuredUrl || "");
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState<EvidenceSubmissionEnvelope | null>(null);
   const connected = source.connectionStatus === "connected";
   const method =
     source.connectionMethod === "website_session"
@@ -102,6 +106,9 @@ function SourceDialog({
         : source.connectionMethod === "upload"
           ? "Private upload"
           : "Manual entry";
+  const extensionRequired = source.connectionMethod === "website_session";
+  const extensionSource = source.id === "facebook" || source.id === "linkedin" || source.id === "github" ? source.id : null;
+  const extensionSupported = extensionSource !== null;
   const run = async (action: "connect" | "sync" | "disconnect") => {
     setBusy(true);
     setNotice("");
@@ -133,6 +140,33 @@ function SourceDialog({
     } finally {
       setBusy(false);
     }
+  };
+  const collect = async () => {
+    if (!extensionSource) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      const result = await collectEvidenceFromExtension(extensionSource);
+      setPreview(result);
+      setNotice(`Preview ready: ${result.items.length} bounded item${result.items.length === 1 ? "" : "s"}. Review every item before submitting.`);
+    } catch (error) {
+      setPreview(null);
+      setNotice(error instanceof Error ? error.message : "Evidence collection stopped safely.");
+    } finally { setBusy(false); }
+  };
+  const submitPreview = async () => {
+    if (!preview) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      const response = await fetch("/api/evidence/submissions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(preview) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Evidence submission failed.");
+      setPreview(null);
+      onChanged({ ...source, status: "verified", connectionStatus: "connected", evidenceCount: (source.evidenceCount || 0) + (payload.duplicate ? 0 : payload.claimIds.length), lastSyncedAt: new Date().toISOString() });
+      setNotice(payload.duplicate ? "This exact evidence revision was already submitted." : `${payload.claimIds.length} claim${payload.claimIds.length === 1 ? "" : "s"} sent for officer review.`);
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Evidence submission failed."); }
+    finally { setBusy(false); }
   };
   return (
     <AppDialog
@@ -201,30 +235,14 @@ function SourceDialog({
           {notice}
         </div>
       )}
-      <div className="mt-6 flex flex-wrap gap-2">
-        {connected ? (
-          <>
-            <Button disabled={!canWrite || busy} onClick={() => run("sync")}>
-              <RefreshCw size={16} />
-              Sync selected evidence
-            </Button>
-            <Button
-              disabled={!canWrite || busy}
-              onClick={() => run("disconnect")}
-              variant="secondary"
-            >
-              Disconnect
-            </Button>
-          </>
-        ) : (
-          <Button disabled={!canWrite || busy} onClick={() => run("connect")}>
-            <Plug size={16} />
-            {source.connectionStatus === "verification_required"
-              ? "Resume verification"
-              : "Connect source"}
-          </Button>
-        )}
-      </div>
+      {preview && <div className="mt-5 rounded-xl border border-accent/30 bg-elevated p-4"><p className="font-semibold">Review collected evidence</p><p className="mt-1 text-xs text-muted">Nothing is approved or awarded yet. Submitting creates immutable pending claims.</p><ul className="mt-3 max-h-64 space-y-3 overflow-auto">{preview.items.map((item) => <li className="rounded-lg border border-border bg-surface p-3" key={`${item.sourceUrl}:${item.title}`}><p className="text-sm font-semibold">{item.title}</p><p className="mt-1 line-clamp-3 text-xs text-muted">{item.text}</p><a className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-accent" href={item.sourceUrl} rel="noreferrer" target="_blank">Open source <ExternalLink size={12}/></a></li>)}</ul></div>}
+      {extensionRequired ? <ExtensionCapabilityOverlay capability={`${source.label} collection`} requiredCapability={source.id}><div className="mt-6 flex flex-wrap gap-2">
+        <Button disabled={!canWrite || busy || !extensionSupported} onClick={collect}><RefreshCw size={16}/>{preview ? "Collect a fresh preview" : "Preview visible source tab"}</Button>
+        {preview && <Button disabled={!canWrite || busy} onClick={submitPreview} variant="secondary"><ShieldCheck size={16}/>Submit reviewed items</Button>}
+        {connected && <Button disabled={!canWrite || busy} onClick={() => run("disconnect")} variant="outline">Disconnect</Button>}
+      </div></ExtensionCapabilityOverlay> : <div className="mt-6 flex flex-wrap gap-2">
+        {connected ? <><Button disabled={!canWrite || busy} onClick={() => run("sync")}><RefreshCw size={16}/>Sync selected evidence</Button><Button disabled={!canWrite || busy} onClick={() => run("disconnect")} variant="secondary">Disconnect</Button></> : <Button disabled={!canWrite || busy} onClick={() => run("connect")}><Plug size={16}/>Connect source</Button>}
+      </div>}
     </AppDialog>
   );
 }
@@ -530,6 +548,19 @@ function EvidenceDialog({
   );
 }
 
+function MemberIntegrityNotice() {
+  const [cases, setCases] = useState<EvidenceIntegrityCase[]>([]);
+  const [note, setNote] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = () => fetch("/api/evidence/integrity", { cache: "no-store" }).then(async (response) => response.ok ? response.json() as Promise<EvidenceIntegrityCase[]> : []).then(setCases).catch(() => undefined);
+  useEffect(() => { void load(); }, []);
+  if (!cases.length) return null;
+  const active = cases[0];
+  const appealOpen = active.appeal?.state === "open";
+  return <Card className="border-warning/30 bg-warning/10"><div className="flex items-start gap-3"><AlertTriangle className="mt-0.5 text-warning"/><div className="flex-1"><h2 className="font-bold">Leaderboard eligibility review</h2><p className="mt-2 text-sm leading-6 text-muted">{active.reason}</p><p className="mt-1 text-xs text-muted">Decision {new Date(active.imposedAt).toLocaleString()} · claim {active.claimId}</p>{appealOpen ? <p className="mt-4 rounded-lg border border-border bg-surface p-3 text-sm">Your appeal is open. An officer must review it before eligibility can change.</p> : <div className="mt-4"><Label htmlFor="integrity-appeal">Appeal note</Label><Textarea id="integrity-appeal" maxLength={1200} onChange={(event) => setNote(event.target.value)} placeholder="Explain which submitted source supports a review." value={note}/><Button className="mt-3" disabled={busy || note.trim().length < 10} onClick={async () => { setBusy(true); setNotice(""); try { const response = await fetch("/api/evidence/integrity", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sanctionId: active.sanctionId, note }) }); const body = await response.json(); if (!response.ok) throw new Error(body.error || "Appeal could not be opened."); setNote(""); setNotice("Appeal opened for officer review."); await load(); } catch (error) { setNotice(error instanceof Error ? error.message : "Appeal could not be opened."); } finally { setBusy(false); } }}>Open one appeal</Button></div>}{notice && <p aria-live="polite" className="mt-3 text-sm">{notice}</p>}</div></div></Card>;
+}
+
 export function CareerEvidenceView({
   data,
   canWrite,
@@ -616,6 +647,7 @@ export function CareerEvidenceView({
   };
   return (
     <div className="space-y-4">
+      <MemberIntegrityNotice />
       <Card className="overflow-hidden border-accent/25 bg-accentSoft">
         <CardHeader>
           <div>

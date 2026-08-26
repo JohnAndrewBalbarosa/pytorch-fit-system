@@ -7,13 +7,16 @@ export const identitySettingsSchema = z.object({ username: leaderboardUsernameSc
 });
 
 export type LeaderboardIdentitySettings = z.infer<typeof identitySettingsSchema> & { reviewRequired: boolean; preview: string };
-export type LeaderboardEntry = { rank: number; displayLabel: string; tier: string; division: string; points: number; streak: number; verifiedSkills: string[]; isCurrentUser: boolean };
+export const leaderboardViewSchema = z.enum(["both", "verified", "pending"]);
+export type LeaderboardView = z.infer<typeof leaderboardViewSchema>;
+export type LeaderboardEntry = { rank: number; displayLabel: string; tier: string; division: string; points: number; verifiedPoints: number; pendingPoints: number; streak: number; verifiedSkills: string[]; isCurrentUser: boolean };
 export type LeaderboardPayload = {
   season: { slug: string; label: string; state: "active" | "completed"; startsAt: string; endsAt: string };
   entries: LeaderboardEntry[];
   page: number; pageSize: number; total: number;
   skills: Array<{ slug: string; label: string }>;
   seasons: Array<{ slug: string; label: string; state: "active" | "completed" }>;
+  view: LeaderboardView;
   meta: { mode: "local_demo" | "production"; label: string };
 };
 export type MemberOverview = {

@@ -9,3 +9,4 @@ export * from "./read-supabase";
 export * from "./run-command";
 export * from "./select-repository";
 export * from "./store-local";
+export * from "./submit-evidence";

@@ -37,6 +37,50 @@ async function send(category: Category, description: string, error?: string) {
   return payload as { id: string };
 }
 
+type QueuedOperationalEvent = { payload: Record<string, unknown>; attempt: number };
+const operationalQueue: QueuedOperationalEvent[] = [];
+let operationalFlushActive = false;
+
+async function flushOperationalQueue() {
+  if (operationalFlushActive) return;
+  operationalFlushActive = true;
+  try {
+    while (operationalQueue.length) {
+      const current = operationalQueue[0];
+      try {
+        const response = await fetch("/api/operations/events", { method: "POST", headers: { "Content-Type": "application/json", "X-Operational-Event": "1" }, body: JSON.stringify(current.payload) });
+        if (!response.ok) throw new Error("Operational event could not be sent.");
+        operationalQueue.shift();
+      } catch {
+        current.attempt += 1;
+        if (current.attempt >= 3) operationalQueue.shift();
+        else window.setTimeout(() => void flushOperationalQueue(), 500 * (2 ** current.attempt));
+        break;
+      }
+    }
+  } finally { operationalFlushActive = false; }
+}
+
+async function sendOperational(code: string, outcome: "succeeded" | "stopped" | "failed", error?: string, detailed = false) {
+  const eventId = crypto.randomUUID();
+  const payload = {
+    eventId,
+    correlationId: crypto.randomUUID(),
+    component: "portal.browser",
+    stage: "runtime",
+    code,
+    severity: outcome === "failed" ? "error" : "info",
+    outcome,
+    retryable: false,
+    occurredAt: new Date().toISOString(),
+    route: window.location.pathname,
+    ...(detailed && error ? { details: { message: redactError(error), componentMarkers: uiState().componentMarkers } } : {}),
+  };
+  operationalQueue.push({ payload, attempt: 0 });
+  if (operationalQueue.length > 50) operationalQueue.shift();
+  await flushOperationalQueue();
+}
+
 export function FeedbackReporter() {
   const [open, setOpen] = useState(false);
   const [category, setCategory] = useState<Category>("bug");
@@ -52,12 +96,26 @@ export function FeedbackReporter() {
       .then((value) => { automaticEnabled.current = Boolean(value?.automaticErrorReports); }).catch(() => undefined);
     const handler = (event: ErrorEvent) => {
       const fingerprint = `${event.message}:${event.filename}:${event.lineno}`;
-      if (!automaticEnabled.current || sentErrors.current.has(fingerprint)) return;
+      if (sentErrors.current.has(fingerprint)) return;
       sentErrors.current.add(fingerprint);
-      send("automatic_error", "A browser error was detected automatically.", event.message).catch(() => undefined);
+      sendOperational("window_error", "failed", event.message, automaticEnabled.current).catch(() => undefined);
+    };
+    const rejectionHandler = (event: PromiseRejectionEvent) => {
+      const message = event.reason instanceof Error ? event.reason.message : "Unhandled promise rejection";
+      const fingerprint = `promise:${message}`;
+      if (sentErrors.current.has(fingerprint)) return;
+      sentErrors.current.add(fingerprint);
+      sendOperational("unhandled_rejection", "failed", message, automaticEnabled.current).catch(() => undefined);
+    };
+    const operationalHandler = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (!detail || typeof detail.code !== "string" || !["succeeded", "stopped", "failed"].includes(detail.outcome)) return;
+      sendOperational(detail.code, detail.outcome, undefined, false).catch(() => undefined);
     };
     window.addEventListener("error", handler);
-    return () => window.removeEventListener("error", handler);
+    window.addEventListener("unhandledrejection", rejectionHandler);
+    window.addEventListener("PYTORCH_FIT_OPERATIONAL_EVENT", operationalHandler);
+    return () => { window.removeEventListener("error", handler); window.removeEventListener("unhandledrejection", rejectionHandler); window.removeEventListener("PYTORCH_FIT_OPERATIONAL_EVENT", operationalHandler); };
   }, []);
 
   return <>

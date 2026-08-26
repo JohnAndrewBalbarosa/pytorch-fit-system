@@ -91,6 +91,19 @@ test("all Supabase migrations and the deterministic showcase seed execute", asyn
   assert.deepEqual(Object.keys(current!).sort(), ["displayLabel","division","isCurrentUser","points","rank","streak","tier","verifiedSkills"].sort());
   const serialized = JSON.stringify(ladder.rows[0].payload);
   for (const forbidden of ["memberId","member_id","email","avatar","bio","department","resume","evidence","sourceUrl","diagnostics","00000000-0000-4000"]) assert.equal(serialized.includes(forbidden), false, forbidden);
+  await db.query(`SELECT submit_evidence_envelope(jsonb_build_object(
+    'schemaVersion',1,'source','github','origin','extension_scrape','pageUrl','https://github.com/demo-member',
+    'collectedAt',now(),'adapterVersion','test-v1','layoutFingerprint',repeat('a',64),'contentHash','sha256:${"d".repeat(64)}',
+    'items',jsonb_build_array(jsonb_build_object('title','Pending project evidence','text','A bounded project description.',
+      'sourceUrl','https://github.com/demo-member/project','postedAt',NULL,'mediaUrls','[]'::jsonb,'evidenceKind','project',
+      'department','academics','proposedLevel','contributor')),'warnings','[]'::jsonb
+  ))`);
+  const pending = await db.query<{ payload: { view: string; entries: Array<{ isCurrentUser: boolean; points: number; verifiedPoints: number; pendingPoints: number }> } }>("SELECT member_leaderboard('2026-q3',NULL,1,25,'pending') AS payload");
+  assert.equal(pending.rows[0].payload.view, "pending");
+  const pendingCurrent = pending.rows[0].payload.entries.find((entry) => entry.isCurrentUser);
+  assert.equal(pendingCurrent?.points, 40);
+  assert.equal(pendingCurrent?.pendingPoints, 40);
+  assert.ok((pendingCurrent?.verifiedPoints || 0) > 0);
   await db.exec("RESET ROLE");
   await db.exec(`INSERT INTO leaderboard_seasons(slug,label,starts_at,ends_at,state,rank_policy_version) VALUES ('archive-test','Archive Test',now()-interval '60 days',now()-interval '1 hour','active',1)`);
   await db.exec("SET ROLE authenticated");
@@ -105,6 +118,7 @@ test("all Supabase migrations and the deterministic showcase seed execute", asyn
   await db.exec("RESET ROLE");
   await db.exec("SET ROLE anon");
   await assert.rejects(() => db.query("SELECT member_leaderboard(NULL,NULL,1,25)"));
+  await assert.rejects(() => db.query("SELECT member_leaderboard(NULL,NULL,1,25,'both')"));
   await assert.rejects(() => db.query("SELECT * FROM leaderboard"));
   await db.exec("RESET ROLE");
   await db.exec("SET ROLE service_role");
@@ -114,7 +128,7 @@ test("all Supabase migrations and the deterministic showcase seed execute", asyn
     'scraperVersion','visible-scraper-v1','scrapedAt',now(),'department','academics','points',250
   ))`);
   await db.exec("RESET ROLE");
-  const accepted = await db.query<{ count: number }>("SELECT count(*)::int AS count FROM evidence_claims WHERE provenance='scraped_verified' AND content_hash='sha256:" + "b".repeat(64) + "'");
+  const accepted = await db.query<{ count: number }>("SELECT count(*)::int AS count FROM evidence_claims WHERE provenance='scraped_pending' AND approved_points=0 AND content_hash='sha256:" + "b".repeat(64) + "'");
   assert.equal(accepted.rows[0].count, 1);
   await db.exec("SET ROLE service_role");
   await assert.rejects(() => db.query(`SELECT accept_scraped_evidence(jsonb_build_object(

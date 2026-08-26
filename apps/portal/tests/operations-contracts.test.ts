@@ -34,6 +34,8 @@ test("external event packages are strict and remain explicitly external", () => 
 test("event and evidence mutations reject unknown authority actions", () => {
   assert.equal(eventActionSchema.safeParse({ action: "record_sado_approval", detail: "SADO-2026-104" }).success, true);
   assert.equal(eventActionSchema.safeParse({ action: "mark_email_sent" }).success, false);
-  assert.equal(evidenceReviewSchema.safeParse({ decision: "approve" }).success, true);
+  assert.equal(evidenceReviewSchema.safeParse({ decision: "approve", level: "contributor" }).success, true);
+  assert.equal(evidenceReviewSchema.safeParse({ decision: "approve" }).success, false);
+  assert.equal(evidenceReviewSchema.safeParse({ decision: "confirm_tampering", reason: "Confirmed against the immutable submitted revision." }).success, true);
   assert.equal(evidenceReviewSchema.safeParse({ decision: "auto_verify" }).success, false);
 });

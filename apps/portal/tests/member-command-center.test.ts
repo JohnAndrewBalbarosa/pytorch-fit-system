@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { identitySettingsSchema, leaderboardUsernameSchema, rankForPoints } from "@pytorch-fit/domain-protocol/leaderboards";
+import { identitySettingsSchema, leaderboardUsernameSchema, leaderboardViewSchema, rankForPoints } from "@pytorch-fit/domain-protocol/leaderboards";
 
 test("all 250-point rank boundaries map from Bronze III through Master I", () => {
   const tiers = ["Bronze","Silver","Gold","Platinum","Diamond","Master"];
@@ -13,6 +13,11 @@ test("all 250-point rank boundaries map from Bronze III through Master I", () =>
     ordinal += 1;
   }
   assert.deepEqual(rankForPoints(100_000), { tier: "Master", division: "I", floor: 4250, ceiling: null });
+});
+
+test("leaderboard verification views are explicit and closed to silent broadening", () => {
+  for (const view of ["both", "verified", "pending"]) assert.equal(leaderboardViewSchema.safeParse(view).success, true);
+  for (const view of ["all", "estimated", "official_only"]) assert.equal(leaderboardViewSchema.safeParse(view).success, false);
 });
 
 test("leaderboard identities enforce safe usernames and explicit real-name consent", () => {

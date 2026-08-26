@@ -25,9 +25,10 @@ try {
   }, { username: settings.username, mode: "anonymous", realNameConsent: false });
   assert.equal(anonymous.status, 200);
   const ladder = await page.evaluate(async () => (await fetch("/api/member/leaderboard")).json());
+  assert.equal(ladder.view, "both");
   const current = ladder.entries.find((entry) => entry.isCurrentUser);
   assert.match(current.displayLabel, /^Member #[A-F0-9]{5}$/);
-  assert.deepEqual(Object.keys(current).sort(), ["displayLabel","division","isCurrentUser","points","rank","streak","tier","verifiedSkills"].sort());
+  assert.deepEqual(Object.keys(current).sort(), ["displayLabel","division","isCurrentUser","pendingPoints","points","rank","streak","tier","verifiedPoints","verifiedSkills"].sort());
   await page.goto(`${baseUrl}/leaderboards`);
   await page.locator("[data-current-user=true]").waitFor();
   const report = await page.evaluate(async () => {
