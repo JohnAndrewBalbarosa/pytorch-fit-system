@@ -1,9 +1,9 @@
 # PyTorch FIT System — AI Career Intelligence Platform
 
-The canonical product frontend is [`platform/web`](platform/web/README.md). Run
-`python scripts/dev_frontend.py` to launch it with the FastAPI service and an explicitly
-configured data/auth provider. For black-box developer verification with local Supabase, Prefect,
-Schemathesis, and the normal CDP browser, use [`tools/process_lab`](tools/process_lab/README.md).
+The canonical product frontend is [`apps/portal`](apps/portal/README.md). Run `npm run setup` once,
+then `npm run dev` for the member site, officer site, local Supabase, automatic synthetic sessions,
+and Prefect. See the [repository architecture](docs/ARCHITECTURE.md) and
+[Process Lab guide](development/process-lab/README.md).
 
 > Built by the **PyTorch FEU Institute of Technology (FEU Tech) Student Chapter**.
 > 📖 **Master spec (NotebookLM source of truth):** [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md)

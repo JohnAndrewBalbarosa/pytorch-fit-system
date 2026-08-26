@@ -1,6 +1,7 @@
 # `web/` — FastAPI service and legacy CareerLens UI
 
-> **Frontend ownership:** `platform/web` is the canonical product frontend. This package owns the
+> **Frontend ownership:** `apps/portal` is the canonical product entry point, backed by the
+> feature packages under `domains`. This package owns the
 > local API, automation services, and temporary legacy/developer pages. New product UI must be
 > implemented in Next.js. Set `PYTORCH_FIT_FRONTEND_URL=http://127.0.0.1:3000` during cutover so
 > legacy entry routes redirect to their canonical replacements.

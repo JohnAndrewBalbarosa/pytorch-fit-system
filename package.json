@@ -1,0 +1,28 @@
+{
+  "name": "pytorch-fit-workspace",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0 <25"
+  },
+  "workspaces": [
+    "apps/portal",
+    "domains/client",
+    "domains/server",
+    "domains/protocol",
+    "design-system",
+    "development/local-access",
+    "development/local-workspace",
+    "development/prefect-dashboard"
+  ],
+  "scripts": {
+    "setup": "node development/local-workspace/setup.mjs",
+    "dev": "node development/local-workspace/start.mjs",
+    "dev:portal": "npm run dev --workspace @pytorch-fit/portal -- --hostname 0.0.0.0 --port 3000",
+    "dev:manual-login": "node development/local-workspace/start.mjs --manual-login",
+    "dev:process-lab": "node development/local-workspace/start-process-lab.mjs",
+    "build": "npm run build --workspace @pytorch-fit/portal",
+    "typecheck": "npm run typecheck --workspace @pytorch-fit/portal",
+    "test:boundaries": "node --test tests/node/workspace-boundaries.test.mjs",
+    "test": "npm run test:boundaries && npm run test:portal-hosts --workspace @pytorch-fit/portal && npm run test:capabilities --workspace @pytorch-fit/portal && npm run test:product --workspace @pytorch-fit/portal"
+  }
+}

@@ -14,6 +14,6 @@ legitimate Playwright storage state visibly, then rerun headlessly. Verification
 Protocol (`CHROME_CDP_URL`, default `http://127.0.0.1:9222`) and saves storage state after the
 legitimate Microsoft/FEU login completes.
 
-Because this folder is a sibling of `platform/web`, set `NODE_PATH=platform/web/node_modules` when
-running its `tsx` entry points from the repository root. `run.ts` performs the normal headless scrape
+Run the `tsx` entry points through the root workspace scripts, which resolve dependencies from
+`apps/portal`. `run.ts` performs the normal headless scrape
 and writes a normalized academic snapshot JSON.

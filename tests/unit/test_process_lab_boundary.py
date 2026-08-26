@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-LAB_PACKAGE = ROOT / "tools" / "process_lab" / "process_lab"
+LAB_PACKAGE = ROOT / "development" / "process-lab" / "process_lab"
 
 
 def load_lab_module(name: str):
@@ -33,8 +33,8 @@ def test_process_lab_is_not_imported_by_product_sources():
     offenders = []
     for root in (
         ROOT / "src",
-        ROOT / "platform" / "web" / "app",
-        ROOT / "platform" / "web" / "lib",
+        ROOT / "apps" / "portal" / "app",
+        ROOT / "domains",
     ):
         for path in root.rglob("*"):
             if path.suffix not in {".py", ".ts", ".tsx", ".mjs"}:
@@ -46,12 +46,12 @@ def test_process_lab_is_not_imported_by_product_sources():
 
 
 def test_product_web_has_no_test_session_or_developer_named_capability_route():
-    web_root = ROOT / "platform" / "web"
+    web_root = ROOT / "apps" / "portal"
     assert not (web_root / "app" / "api" / "dev-session" / "route.ts").exists()
     assert not (web_root / "app" / "api" / "dev-capabilities" / "route.ts").exists()
     product_text = "\n".join(
         path.read_text(encoding="utf-8", errors="replace")
-        for base in (web_root / "app", web_root / "components", web_root / "lib")
+        for base in (web_root / "app", ROOT / "domains", ROOT / "design-system")
         for path in base.rglob("*")
         if path.suffix in {".ts", ".tsx"}
     )
@@ -81,7 +81,18 @@ def test_artifact_guard_rejects_embedded_lab_references(tmp_path):
     assert guard.forbidden_artifacts(tmp_path) == ["server.js::content:process_lab"]
 
 
-@pytest.mark.parametrize("dependency", ["prefect", "questionary", "process-lab-tutorial"])
+def test_artifact_guard_ignores_build_cache_but_scans_deployable_output(tmp_path):
+    guard = load_lab_module("artifact_guard")
+    (tmp_path / "cache").mkdir()
+    (tmp_path / "cache" / "compiler.sst").write_text("prefect source index", encoding="utf-8")
+    (tmp_path / "server").mkdir()
+    (tmp_path / "server" / "route.js").write_text("production", encoding="utf-8")
+    assert guard.forbidden_artifacts(tmp_path) == []
+    (tmp_path / "server" / "route.js").write_text("load process_lab", encoding="utf-8")
+    assert guard.forbidden_artifacts(tmp_path) == ["server/route.js::content:process_lab"]
+
+
+@pytest.mark.parametrize("dependency", ["prefect", "questionary", "process_lab"])
 def test_artifact_guard_rejects_embedded_lab_dependencies(tmp_path, dependency):
     guard = load_lab_module("artifact_guard")
     (tmp_path / "server.js").write_text(f"load {dependency}", encoding="utf-8")
@@ -97,10 +108,10 @@ def test_artifact_guard_requires_real_artifact_directory(tmp_path):
 def test_release_ignore_files_exclude_process_lab():
     for name in (".dockerignore", ".vercelignore"):
         value = (ROOT / name).read_text(encoding="utf-8")
-        assert "tools/process_lab/" in value
+        assert "development/" in value
         assert "tests/" in value
         assert ".schemathesis/" in value
-        assert "platform/web/.next*/" in value
+        assert "apps/portal/.next*/" in value
         assert "**/*-trace.zip" in value
 
 
@@ -167,7 +178,7 @@ def test_prefect_workspace_configuration_covers_native_sections():
 
 
 def test_prefect_operations_documentation_explains_each_native_section():
-    operations = (ROOT / "tools" / "process_lab" / "PREFECT-OPERATIONS.md").read_text(
+    operations = (ROOT / "development" / "process-lab" / "PREFECT-OPERATIONS.md").read_text(
         encoding="utf-8"
     )
     for section in (
@@ -179,30 +190,34 @@ def test_prefect_operations_documentation_explains_each_native_section():
         "Event Feed",
     ):
         assert section in operations
-    assert "No custom dashboard" in operations
+    assert "pinned Prefect 3.8.3" in operations
 
 
-def test_beginner_tutorial_stays_isolated_and_uses_react_joyride():
-    tutorial = ROOT / "tools" / "process_lab" / "tutorial"
-    package = (tutorial / "package.json").read_text(encoding="utf-8")
-    source = (tutorial / "src" / "main.jsx").read_text(encoding="utf-8")
+def test_prefect_dashboard_tour_is_a_pinned_development_patch():
+    dashboard = ROOT / "development" / "prefect-dashboard"
+    patch = (dashboard / "patches" / "prefect-3.8.3-joyride.patch").read_text(
+        encoding="utf-8"
+    )
+    builder = (dashboard / "build-dashboard.mjs").read_text(encoding="utf-8")
     cli = (LAB_PACKAGE / "cli.py").read_text(encoding="utf-8")
     launcher = (LAB_PACKAGE / "launcher.py").read_text(encoding="utf-8")
-    assert '"react-joyride"' in package
-    assert 'from "react-joyride"' in source
-    assert "pytorch-fit-process-lab demo" in source
+    assert 'from "react-joyride"' in patch
+    assert "d8f54b5c4857e933c31aac97e8ef56ea732c5138" in builder
+    assert "PREFECT_UI_STATIC_DIRECTORY" in launcher
     assert 'subparsers.add_parser(\n        "demo"' in cli
     assert "def run_demo_stack()" in launcher
     assert '"PYTORCH_FIT_DATA_PROVIDER": "local"' in launcher
     assert '"PREFECT_HOME": str(prefect_home)' in launcher
     assert "_run_managed_stack(environment, start_worker=False)" in launcher
     assert "_run_managed_stack(environment, start_worker=True)" in launcher
-    assert "TUTORIAL_ROOT" in launcher
+    assert "TUTORIAL_ROOT" not in launcher
 
 
-def test_beginner_documentation_has_one_command_and_two_modes():
-    tutorial = (ROOT / "tools" / "process_lab" / "BEGINNER-TUTORIAL.md").read_text(encoding="utf-8")
-    assert "pytorch-fit-process-lab demo" in tutorial
-    assert "pytorch-fit-process-lab up" in tutorial
-    assert "Docker is not required" in tutorial
-    assert "You do not need to configure those sections by hand" in tutorial
+def test_beginner_documentation_has_root_commands_and_two_modes():
+    readme = (ROOT / "development" / "process-lab" / "README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "npm run dev" in readme
+    assert "npm run dev:manual-login" in readme
+    assert "pytorch-fit-process-lab up" in readme
+    assert "You do not need to configure those sections by hand" in readme

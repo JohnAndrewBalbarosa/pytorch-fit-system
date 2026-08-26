@@ -3,7 +3,9 @@
 ## System
 PyTorch FEU Tech Campus Platform uses a restrained product UI with an obsidian-first dark mode, soft off-white light mode, and PyTorch orange as the only primary accent. Typography uses Plus Jakarta Sans with system fallbacks.
 
-`platform/web` is the canonical implementation of this system. Career, job automation, analytics,
+`apps/portal` is the canonical product entry point. Feature UI lives in `domains/client`, server
+decisions live in `domains/server`, and shared request/response shapes live in `domains/protocol`.
+Career, job automation, analytics,
 and chapter modules share the same shell and tokens; legacy CareerLens teal/blue templates are not
 an alternate product theme.
 
