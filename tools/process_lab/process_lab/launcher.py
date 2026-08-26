@@ -13,6 +13,9 @@ import requests
 
 from .settings import REPO_ROOT, LabSettings
 
+TUTORIAL_ROOT = REPO_ROOT / "tools" / "process_lab" / "tutorial"
+TUTORIAL_URL = "http://127.0.0.1:4173"
+
 
 def prerequisites() -> dict[str, str | None]:
     docker = shutil.which("docker")
@@ -57,6 +60,17 @@ def require_prerequisites() -> None:
         )
 
 
+def require_demo_prerequisites() -> None:
+    values = prerequisites()
+    missing = [name for name in ("npm", "prefect") if values[name] is None]
+    if missing:
+        raise RuntimeError(
+            "Missing beginner demo prerequisites: "
+            + ", ".join(missing)
+            + ". Install them before starting the local lab."
+        )
+
+
 def _supabase_command() -> list[str]:
     installed = shutil.which("supabase")
     if installed:
@@ -91,29 +105,45 @@ def _supabase_environment() -> dict[str, str]:
 
 
 def _open_cdp_tab(cdp_url: str, url: str) -> None:
-    requests.put(f"{cdp_url}/json/new?{quote(url, safe=':/')}", timeout=5).raise_for_status()
+    requests.put(f"{cdp_url}/json/new?{quote(url, safe=':/?=&')}", timeout=5).raise_for_status()
 
 
-def run_local_stack() -> int:
-    require_prerequisites()
-    settings = LabSettings.from_env()
-    settings.ensure_local_dirs()
-    supabase = _supabase_environment()
+def _ensure_tutorial_dependencies(npm: str) -> None:
+    vite = TUTORIAL_ROOT / "node_modules" / ".bin" / ("vite.cmd" if os.name == "nt" else "vite")
+    if vite.is_file():
+        return
+    subprocess.run(
+        [npm, "install", "--ignore-scripts", "--no-audit", "--no-fund"],
+        cwd=TUTORIAL_ROOT,
+        check=True,
+    )
+
+
+def _base_environment() -> dict[str, str]:
+    prefect_home = REPO_ROOT / ".cache" / "process-lab" / "prefect"
+    prefect_home.mkdir(parents=True, exist_ok=True)
     environment = os.environ.copy()
     environment.update(
         {
-            "NEXT_PUBLIC_SUPABASE_URL": supabase["API_URL"],
-            "NEXT_PUBLIC_SUPABASE_ANON_KEY": supabase["ANON_KEY"],
-            "SUPABASE_SERVICE_ROLE_KEY": supabase.get("SERVICE_ROLE_KEY", ""),
-            "PYTORCH_FIT_DATA_PROVIDER": "supabase",
-            "PYTORCH_FIT_DEV_ACCESS": "0",
             "PYTHONPATH": str(REPO_ROOT / "src"),
             "PREFECT_API_URL": "http://127.0.0.1:4200/api",
+            "PREFECT_HOME": str(prefect_home),
         }
     )
     # In-process Prefect SDK calls and child Prefect CLI calls must target the same
     # dedicated local server as the worker, not Prefect's temporary-server fallback.
     os.environ["PREFECT_API_URL"] = environment["PREFECT_API_URL"]
+    os.environ["PREFECT_HOME"] = environment["PREFECT_HOME"]
+    return environment
+
+
+def _run_managed_stack(environment: dict[str, str], *, start_worker: bool) -> int:
+    settings = LabSettings.from_env()
+    settings.ensure_local_dirs()
+    npm = shutil.which("npm")
+    if npm is None:
+        raise RuntimeError("npm is required for the beginner tutorial.")
+    _ensure_tutorial_dependencies(npm)
     processes = [
         subprocess.Popen(
             [sys.executable, "scripts/dev_frontend.py"], cwd=REPO_ROOT, env=environment
@@ -121,6 +151,11 @@ def run_local_stack() -> int:
         subprocess.Popen(
             [sys.executable, "-m", "prefect", "server", "start", "--host", "127.0.0.1"],
             cwd=REPO_ROOT,
+            env=environment,
+        ),
+        subprocess.Popen(
+            [npm, "run", "dev", "--", "--host", "127.0.0.1", "--port", "4173"],
+            cwd=TUTORIAL_ROOT,
             env=environment,
         ),
     ]
@@ -134,55 +169,87 @@ def run_local_stack() -> int:
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, stop)
     try:
-        deadline = time.monotonic() + 45
+        deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
             try:
                 product_ready = requests.get(f"{settings.api_url}/healthz", timeout=1).ok
                 prefect_ready = requests.get("http://127.0.0.1:4200/api/health", timeout=1).ok
-                if product_ready and prefect_ready:
+                tutorial_ready = requests.get(TUTORIAL_URL, timeout=1).ok
+                if product_ready and prefect_ready and tutorial_ready:
                     break
             except requests.RequestException:
                 pass
             time.sleep(0.25)
         else:
             raise RuntimeError(
-                "Local product or Prefect services did not become ready within 45 seconds."
+                "Local product, Prefect, or beginner tutorial did not become ready within 60 seconds."
             )
         from .configuration import WORK_POOL, configure_workspace
 
         configure_workspace()
-        processes.append(
-            subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "prefect",
-                    "worker",
-                    "start",
-                    "--pool",
-                    WORK_POOL,
-                    "--limit",
-                    "2",
-                    "--name",
-                    "pytorch-fit-local-worker",
-                    "--install-policy",
-                    "never",
-                ],
-                cwd=REPO_ROOT,
-                env=environment,
+        from .flows import member_experience_flow
+
+        state = member_experience_flow(return_state=True)
+        run_id = state.state_details.flow_run_id
+        if not run_id:
+            raise RuntimeError("Prefect did not return the beginner flow-run ID.")
+        if start_worker:
+            processes.append(
+                subprocess.Popen(
+                    [
+                        sys.executable,
+                        "-m",
+                        "prefect",
+                        "worker",
+                        "start",
+                        "--pool",
+                        WORK_POOL,
+                        "--limit",
+                        "2",
+                        "--name",
+                        "pytorch-fit-local-worker",
+                        "--install-policy",
+                        "never",
+                    ],
+                    cwd=REPO_ROOT,
+                    env=environment,
+                )
             )
-        )
         from resume_builder.web.shared_browser import ensure_shared_browser
 
         ensure_shared_browser()
+        _open_cdp_tab(settings.cdp_url, f"{TUTORIAL_URL}/?run={run_id}")
         _open_cdp_tab(settings.cdp_url, f"{settings.member_url}/")
-        _open_cdp_tab(settings.cdp_url, f"{settings.api_url}/docs")
-        subprocess.run(
-            [sys.executable, "-m", "process_lab.cli", "open"],
-            cwd=REPO_ROOT,
-            env=environment,
-            check=False,
-        )
         return max(process.wait() for process in processes)
     finally:
         stop()
+
+
+def run_local_stack() -> int:
+    require_prerequisites()
+    supabase = _supabase_environment()
+    environment = _base_environment()
+    environment.update(
+        {
+            "NEXT_PUBLIC_SUPABASE_URL": supabase["API_URL"],
+            "NEXT_PUBLIC_SUPABASE_ANON_KEY": supabase["ANON_KEY"],
+            "SUPABASE_SERVICE_ROLE_KEY": supabase.get("SERVICE_ROLE_KEY", ""),
+            "PYTORCH_FIT_DATA_PROVIDER": "supabase",
+            "PYTORCH_FIT_DEV_ACCESS": "0",
+        }
+    )
+    return _run_managed_stack(environment, start_worker=True)
+
+
+def run_demo_stack() -> int:
+    """Start the beginner-safe stack with synthetic data and no Docker dependency."""
+    require_demo_prerequisites()
+    environment = _base_environment()
+    environment.update(
+        {
+            "PYTORCH_FIT_DATA_PROVIDER": "local",
+            "PYTORCH_FIT_DEV_ACCESS": "1",
+            "PYTORCH_FIT_NO_BROWSER": "1",
+        }
+    )
+    return _run_managed_stack(environment, start_worker=False)

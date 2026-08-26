@@ -13,6 +13,7 @@ FORBIDDEN_SUFFIXES = {".spec.ts", ".test.ts", ".trace.zip", "-trace.zip"}
 FORBIDDEN_CONTENT = (
     b"process_lab",
     b"pytorch-fit-process-lab",
+    b"process-lab-tutorial",
     b"prefect",
     b"questionary",
     b"schemathesis",

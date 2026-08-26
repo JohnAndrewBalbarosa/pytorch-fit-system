@@ -5,6 +5,17 @@ resource below are developer tooling; none is included in the production Next.js
 
 ## First setup and normal use
 
+For a beginner walkthrough with safe synthetic data and no Docker requirement:
+
+```bash
+pytorch-fit-process-lab demo
+```
+
+This opens the isolated React Joyride tutorial at `http://127.0.0.1:4173`, runs a fresh major-member
+workflow, and links the tutorial directly to its DAG. See [BEGINNER-TUTORIAL.md](BEGINNER-TUTORIAL.md).
+
+For local Supabase Auth/RLS verification, use the full stack below.
+
 Start the Prefect server and product services, then configure the workspace:
 
 ```bash
@@ -15,7 +26,8 @@ pytorch-fit-process-lab open
 
 `configure` is idempotent. It updates only resources named or tagged `pytorch-fit` and never deletes
 unrelated Prefect resources. `up` performs the same configuration automatically, starts the local
-Process worker, and opens the workflow chooser.
+Process worker, runs the overview DAG, and opens the beginner tutorial. `demo` configures the same
+resources and runs the DAG directly without starting the queued worker.
 
 ## What the Prefect sections contain
 
@@ -43,8 +55,9 @@ at once. Its queues separate resource profiles:
 | `pipeline` | 1 | Scraping, evidence compilation, and resume artifacts |
 | `diagnostics` | 1 | FastAPI health and OpenAPI verification |
 
-The launcher starts `pytorch-fit-local-worker`. If runs remain `Late` or `Scheduled`, confirm that
-this worker is online and polling `pytorch-fit-local-process`.
+Full `up` mode starts `pytorch-fit-local-worker`. Beginner `demo` mode intentionally leaves it
+offline because its fresh overview DAG runs directly. If a full-mode deployment remains `Late` or
+`Scheduled`, confirm that the worker is online and polling `pytorch-fit-local-process`.
 
 ### Deployments
 

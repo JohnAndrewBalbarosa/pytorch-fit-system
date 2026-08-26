@@ -28,8 +28,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Local-only PyTorch FIT process lab.")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("list", help="List fixed Prefect workflows.")
-    subparsers.add_parser("doctor", help="Report external Process Lab prerequisites.")
+    doctor = subparsers.add_parser("doctor", help="Report external Process Lab prerequisites.")
+    doctor.add_argument(
+        "--demo", action="store_true", help="Check only the beginner demo prerequisites."
+    )
     subparsers.add_parser("configure", help="Create or update managed Prefect resources.")
+    subparsers.add_parser(
+        "demo", help="Start the beginner tutorial with safe synthetic local data."
+    )
     subparsers.add_parser(
         "up", help="Start local Supabase, product services, browser tabs, and Prefect UI."
     )
@@ -87,12 +93,18 @@ def main() -> int:
 
         values = prerequisites()
         print(json.dumps(values, indent=2))
+        if args.demo:
+            return 0 if values["npm"] and values["prefect"] else 1
         return 0 if all(values.values()) else 1
     if args.command == "configure":
         from .configuration import configure_workspace
 
         print(json.dumps(configure_workspace(), indent=2))
         return 0
+    if args.command == "demo":
+        from .launcher import run_demo_stack
+
+        return run_demo_stack()
     if args.command == "up":
         from .launcher import run_local_stack
 

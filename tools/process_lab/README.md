@@ -3,6 +3,18 @@
 This is a separate, local-only developer tool. Product code never imports it and production
 packages must exclude the entire `tools/process_lab` tree.
 
+## Beginner quick start
+
+From the repository root, run one command:
+
+```bash
+.cache/process-lab/venv/bin/pytorch-fit-process-lab demo
+```
+
+This safe synthetic-data mode does not need Docker. It configures Prefect automatically, creates a
+fresh major-member DAG, and opens a local React Joyride **Start Here** tutorial at
+`http://127.0.0.1:4173`. See [BEGINNER-TUTORIAL.md](BEGINNER-TUTORIAL.md) for the short walkthrough.
+
 It uses maintained frameworks instead of product-side test hooks:
 
 - Prefect UI for flow graphs, task states, retries, parameters, logs, and artifacts.
@@ -20,13 +32,16 @@ login wall, 403/429, or layout drift stops the relevant external-site workflow.
 ```bash
 python -m venv .cache/process-lab/venv
 .cache/process-lab/venv/bin/pip install -e . -e tools/process_lab
+.cache/process-lab/venv/bin/pytorch-fit-process-lab doctor --demo
+.cache/process-lab/venv/bin/pytorch-fit-process-lab demo
 .cache/process-lab/venv/bin/pytorch-fit-process-lab doctor
 .cache/process-lab/venv/bin/pytorch-fit-process-lab up
 ```
 
 `doctor` accepts an installed Supabase CLI or the maintained CLI through `npx`; Docker must be
 running before `up` starts the local Supabase stack.
-`up` starts the visible local Prefect server and configures every managed resource automatically.
+`demo` is the recommended beginner path. `up` starts the same tutorial and managed Prefect resources
+with local Supabase for Auth/RLS verification.
 
 In another terminal, attach to the existing browser and run a workflow:
 

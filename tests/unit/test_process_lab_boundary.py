@@ -81,7 +81,7 @@ def test_artifact_guard_rejects_embedded_lab_references(tmp_path):
     assert guard.forbidden_artifacts(tmp_path) == ["server.js::content:process_lab"]
 
 
-@pytest.mark.parametrize("dependency", ["prefect", "questionary"])
+@pytest.mark.parametrize("dependency", ["prefect", "questionary", "process-lab-tutorial"])
 def test_artifact_guard_rejects_embedded_lab_dependencies(tmp_path, dependency):
     guard = load_lab_module("artifact_guard")
     (tmp_path / "server.js").write_text(f"load {dependency}", encoding="utf-8")
@@ -180,3 +180,29 @@ def test_prefect_operations_documentation_explains_each_native_section():
     ):
         assert section in operations
     assert "No custom dashboard" in operations
+
+
+def test_beginner_tutorial_stays_isolated_and_uses_react_joyride():
+    tutorial = ROOT / "tools" / "process_lab" / "tutorial"
+    package = (tutorial / "package.json").read_text(encoding="utf-8")
+    source = (tutorial / "src" / "main.jsx").read_text(encoding="utf-8")
+    cli = (LAB_PACKAGE / "cli.py").read_text(encoding="utf-8")
+    launcher = (LAB_PACKAGE / "launcher.py").read_text(encoding="utf-8")
+    assert '"react-joyride"' in package
+    assert 'from "react-joyride"' in source
+    assert "pytorch-fit-process-lab demo" in source
+    assert 'subparsers.add_parser(\n        "demo"' in cli
+    assert "def run_demo_stack()" in launcher
+    assert '"PYTORCH_FIT_DATA_PROVIDER": "local"' in launcher
+    assert '"PREFECT_HOME": str(prefect_home)' in launcher
+    assert "_run_managed_stack(environment, start_worker=False)" in launcher
+    assert "_run_managed_stack(environment, start_worker=True)" in launcher
+    assert "TUTORIAL_ROOT" in launcher
+
+
+def test_beginner_documentation_has_one_command_and_two_modes():
+    tutorial = (ROOT / "tools" / "process_lab" / "BEGINNER-TUTORIAL.md").read_text(encoding="utf-8")
+    assert "pytorch-fit-process-lab demo" in tutorial
+    assert "pytorch-fit-process-lab up" in tutorial
+    assert "Docker is not required" in tutorial
+    assert "You do not need to configure those sections by hand" in tutorial
