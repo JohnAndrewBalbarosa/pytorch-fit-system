@@ -45,7 +45,7 @@ Migrate an approved local profile:
 
 ```bash
 .venv/bin/python tools/job_finder/migrate_questionnaire_to_mongodb.py \
-  --source .cache/binance-bap-approved-answers.json
+  --source var/state/job-applications/binance-bap-approved-answers.json
 ```
 
 The source JSON remains a recoverable runtime fallback and migration input. The unattended runner

@@ -1,0 +1,20 @@
+{
+  "name": "@pytorch-fit/academic-records",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "tsx --test ../../domains/server/career-evidence/academic-records/*.test.ts",
+    "login": "tsx session-login.ts",
+    "scrape": "tsx run.ts",
+    "inject": "tsx inject-run.ts"
+  },
+  "dependencies": {
+    "@pytorch-fit/domain-protocol": "0.1.0",
+    "@pytorch-fit/domain-server": "0.1.0",
+    "playwright": "^1.45.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.0"
+  }
+}

@@ -1,13 +1,13 @@
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { run, stopTogether, waitFor } from "./processes.mjs";
+import { runtimePath, workspaceRoot as root } from "./runtime-paths.mjs";
 
 if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
   throw new Error("The local workspace cannot run in production or Vercel.");
 }
 
-const root = resolve(import.meta.dirname, "../..");
-const python = resolve(root, `.cache/process-lab/venv/${process.platform === "win32" ? "Scripts/python.exe" : "bin/python"}`);
+const python = runtimePath("environments", "process-lab", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
 const supabase = process.platform === "win32" ? "npx.cmd" : "npx";
 const supabasePrefix = ["--yes", "supabase@latest"];
 const manual = process.argv.includes("--manual-login");
@@ -29,9 +29,11 @@ const environment = {
   PYTORCH_FIT_MEMBER_URL: "http://members.localhost:3000",
   PYTORCH_FIT_OFFICER_URL: "http://officers.localhost:3000",
   PYTORCH_FIT_NO_BROWSER: "1",
+  PYTORCH_FIT_VAR_ROOT: runtimePath(),
+  PYTORCH_FIT_ARTIFACT_ROOT: resolve(root, "out"),
   PREFECT_API_URL: "http://127.0.0.1:4200/api",
-  PREFECT_HOME: resolve(root, ".cache/process-lab/prefect"),
-  PREFECT_UI_STATIC_DIRECTORY: resolve(root, ".cache/process-lab/prefect-ui"),
+  PREFECT_HOME: runtimePath("state", "process-lab", "prefect"),
+  PREFECT_UI_STATIC_DIRECTORY: runtimePath("cache", "process-lab", "prefect-ui"),
   PREFECT_SERVER_UI_V2_ENABLED: "true",
 };
 
@@ -51,7 +53,7 @@ try {
     waitFor("http://members.localhost:3000/login"),
     waitFor("http://127.0.0.1:4200/api/health"),
   ]);
-  const lab = resolve(root, `.cache/process-lab/venv/${process.platform === "win32" ? "Scripts/pytorch-fit-process-lab.exe" : "bin/pytorch-fit-process-lab"}`);
+  const lab = runtimePath("environments", "process-lab", process.platform === "win32" ? "Scripts/pytorch-fit-process-lab.exe" : "bin/pytorch-fit-process-lab");
   execFileSync(lab, ["configure"], { cwd: root, env: environment, stdio: "inherit" });
   execFileSync(lab, ["open", "--workflow", "member-experience"], { cwd: root, env: environment, stdio: "inherit" });
   if (!manual) processes.push(run("node", [resolve(root, "development/local-access/watch-login.mjs")], { cwd: root, env: environment }));

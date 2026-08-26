@@ -20,7 +20,7 @@ requiring developers to re-enter them. The local seed creates accounts once; log
 new account.
 
 If the Prefect patch no longer matches the pinned commit, the build fails instead of modifying an
-unknown upstream UI. Remove only `.cache/process-lab/prefect-ui-source` to rebuild the recoverable
+unknown upstream UI. Remove only `var/cache/process-lab/prefect-ui-source` to rebuild the recoverable
 checkout from the tracked patch.
 
 The dashboard tour does not alter Prefect Cloud and is not shipped with the member/officer portal.

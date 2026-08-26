@@ -91,7 +91,7 @@ Run in the foreground:
 
 ```bash
 node --no-warnings tools/job_finder/indeed_event_watcher.mjs \
-  --manifest .cache/binance-current-manifest.json \
+  --manifest var/state/job-applications/binance-current-manifest.json \
   --max-tabs 6
 ```
 
@@ -118,4 +118,4 @@ without a separate, explicit user decision acknowledging that it will mutate bro
 background. Prefer a foreground command or a bounded transient unit for application runs.
 
 The watcher state contains only task identity, Chrome target IDs, and consumed manifest task IDs:
-`.cache/indeed-event-watcher-state.json`.
+`var/state/job-applications/indeed-event-watcher.json`.

@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main() -> int:
     environment = os.environ.copy()
-    environment.setdefault("PYTHONPATH", str(ROOT / "src"))
+    environment.setdefault("PYTHONPATH", str(ROOT / "legacy" / "python"))
     environment.setdefault("PYTORCH_FIT_API_URL", "http://127.0.0.1:8000")
     environment.setdefault("PYTORCH_FIT_FRONTEND_URL", "http://members.localhost:3000")
     environment.setdefault("PYTORCH_FIT_MEMBER_URL", "http://members.localhost:3000")

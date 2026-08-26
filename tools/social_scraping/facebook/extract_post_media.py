@@ -20,7 +20,7 @@ from pathlib import Path
 # --- bootstrap ---
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists())
 sys.path.insert(0, str(ROOT / "tools"))
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "legacy" / "python"))
 from social_scraping.common.paths import FB_JSON, FB_MEDIA  # noqa: E402
 
 MIN_WIDTH = 400  # px — isolates the large post photo(s) from avatars (40px),

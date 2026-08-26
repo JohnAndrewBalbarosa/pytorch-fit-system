@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists())
 sys.path.insert(0, str(ROOT / "tools"))
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "legacy" / "python"))
 from social_scraping.common.paths import FB_JSON as OUT, FB_SHOTS  # noqa: E402
 
 SHOT_DIR = FB_SHOTS / "posts"

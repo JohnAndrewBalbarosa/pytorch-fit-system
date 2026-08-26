@@ -32,7 +32,7 @@ def load_lab_module(name: str):
 def test_process_lab_is_not_imported_by_product_sources():
     offenders = []
     for root in (
-        ROOT / "src",
+        ROOT / "legacy" / "python",
         ROOT / "apps" / "portal" / "app",
         ROOT / "domains",
     ):

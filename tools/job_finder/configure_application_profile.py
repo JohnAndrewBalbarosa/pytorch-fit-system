@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 ROOT = next(path for path in Path(__file__).resolve().parents if (path / "pyproject.toml").exists())
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "legacy" / "python"))
 
 from resume_builder.job_application.persistence import ApplicationProfileStore  # noqa: E402
 
@@ -19,7 +19,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--database",
         type=Path,
-        default=ROOT / ".cache" / "application-submissions.sqlite3",
+        default=ROOT / "var" / "state" / "job-applications" / "submissions.sqlite3",
     )
     commands = parser.add_subparsers(dest="command", required=True)
 

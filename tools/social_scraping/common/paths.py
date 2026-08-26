@@ -8,7 +8,7 @@ script bootstraps with::
     from pathlib import Path
     ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists())
     sys.path.insert(0, str(ROOT / "tools"))
-    sys.path.insert(0, str(ROOT / "src"))
+    sys.path.insert(0, str(ROOT / "legacy" / "python"))
     from social_scraping.common.paths import OUT, DATA, MEDIA, SHOTS, RESUMES, DIAGNOSTICS
 
 then uses the resolved artifact directories below.
@@ -29,7 +29,7 @@ def repo_root() -> Path:
 
 
 ROOT: Path = repo_root()
-SRC: Path = ROOT / "src"
+SRC: Path = ROOT / "legacy" / "python"
 
 OUT: Path = ROOT / "out"
 DATA: Path = OUT / "data"

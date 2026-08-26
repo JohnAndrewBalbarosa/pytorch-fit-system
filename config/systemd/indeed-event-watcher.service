@@ -6,11 +6,11 @@ After=default.target
 Type=simple
 WorkingDirectory=/home/xy/Desktop/projects/pytorch-fit-system
 Environment=PATH=/home/xy/.nvm/versions/node/v24.10.0/bin:/usr/local/bin:/usr/bin
-ExecStart=/usr/bin/env node --no-warnings tools/job_finder/indeed_event_watcher.mjs --cdp-url http://127.0.0.1:9222 --database .cache/application-submissions.sqlite3 --state .cache/indeed-event-watcher-state.json --manifest .cache/binance-current-manifest.json --manifest out/indeed-unattended/candidate-manifest-latest.json --max-tabs 6
+ExecStart=/usr/bin/env node --no-warnings tools/job_finder/indeed_event_watcher.mjs --cdp-url http://127.0.0.1:9222 --database var/state/job-applications/submissions.sqlite3 --state var/state/job-applications/indeed-event-watcher.json --manifest var/state/job-applications/binance-current-manifest.json --manifest out/indeed-unattended/candidate-manifest-latest.json --max-tabs 6
 Restart=always
 RestartSec=5
-StandardOutput=append:/home/xy/Desktop/projects/pytorch-fit-system/out/indeed-event-watcher.log
-StandardError=append:/home/xy/Desktop/projects/pytorch-fit-system/out/indeed-event-watcher.log
+StandardOutput=append:/home/xy/Desktop/projects/pytorch-fit-system/var/log/job-applications/indeed-event-watcher.log
+StandardError=append:/home/xy/Desktop/projects/pytorch-fit-system/var/log/job-applications/indeed-event-watcher.log
 
 [Install]
 WantedBy=default.target

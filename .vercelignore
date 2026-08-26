@@ -7,6 +7,7 @@ tests/
 .schemathesis/
 out/
 .cache/
+var/
 .careerlens-chrome-cdp/
 apps/portal/.next*/
 **/*-trace.zip

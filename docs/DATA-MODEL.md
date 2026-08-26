@@ -205,7 +205,7 @@ Constraint: at least one of `url` or `details` must be non-null.
 
 #### `activity_contexts`
 Structured JSON output from the LinkIngestor / RAG step.
-Maps 1:1 to `ActivityContext` in `platform/org-ops/types.ts`.
+Maps 1:1 to `ActivityContext` in `domains/protocol/organization/workflow-shape.ts`.
 `facts` column is JSONB; has a GIN index for key/value queries.
 Populated by service_role (AI pipeline) — no client INSERT policy.
 
@@ -217,13 +217,13 @@ No code deployment required to change routing.
 #### `department_briefs`
 Per-department compacted context + AI-generated draft.
 One brief per `(activity_id, department)`.
-Maps to `DepartmentBrief` in `platform/org-ops/types.ts`.
+Maps to `DepartmentBrief` in `domains/protocol/organization/workflow-shape.ts`.
 Officers edit the draft in-place before approval.
 
 #### `approvals`
 One verdict row per `(activity_id, department)`.
 Unanimous approval across all required departments (from `routing_rules`) is needed before the pipeline advances.
-Maps to `ApprovalVerdict` in `platform/org-ops/types.ts`.
+Maps to `ApprovalVerdict` in `domains/protocol/organization/workflow-shape.ts`.
 Effectively immutable: re-approvals require DELETE + INSERT at service_role level.
 
 #### `dispatch_records`
@@ -354,7 +354,7 @@ Not exposed to end users.
 
 ## TypeScript ↔ SQL Enum Mapping
 
-Some TypeScript enum values in `platform/org-ops/types.ts` use kebab-case (JavaScript convention). SQL uses snake_case.
+Some TypeScript enum values in `domains/protocol/organization/workflow-shape.ts` use kebab-case (JavaScript convention). SQL uses snake_case.
 
 | TypeScript value | SQL value |
 |---|---|

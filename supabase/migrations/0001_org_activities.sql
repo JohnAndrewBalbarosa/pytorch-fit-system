@@ -9,7 +9,7 @@
 -- required for RLS helper functions used throughout all migrations.
 -- Migration 0002 extends member_profiles with public-facing fields.
 --
--- TypeScript contracts in platform/org-ops/types.ts map as follows:
+-- TypeScript contracts in domains/protocol/organization/workflow-shape.ts map as follows:
 --   ActivityCategory   → activity_category enum
 --     "competitive-programming" (TS) → 'competitive_programming' (SQL)
 --   Scope              → activity_scope enum
@@ -33,7 +33,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- ----------------------------------------------------------------
 
 DO $$ BEGIN
-  -- Maps to ActivityCategory in platform/org-ops/types.ts
+  -- Maps to ActivityCategory in domains/protocol/organization/workflow-shape.ts
   -- Note: SQL uses snake_case; TS uses kebab-case for some values.
   CREATE TYPE activity_category AS ENUM (
     'events',
@@ -44,7 +44,7 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
-  -- Maps to Scope in platform/org-ops/types.ts
+  -- Maps to Scope in domains/protocol/organization/workflow-shape.ts
   CREATE TYPE activity_scope AS ENUM (
     'internal',
     'external'
@@ -52,7 +52,7 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
-  -- Maps to Department in platform/org-ops/types.ts
+  -- Maps to Department in domains/protocol/organization/workflow-shape.ts
   -- Note: SQL uses snake_case; TS uses kebab-case for some values.
   CREATE TYPE department AS ENUM (
     'secretariat',
@@ -263,7 +263,7 @@ CREATE INDEX IF NOT EXISTS idx_intake_submissions_submitted_by
 -- ================================================================
 -- TABLE: activity_contexts
 -- Structured output from the LinkIngestor / RAG step.
--- Maps 1:1 to ActivityContext in platform/org-ops/types.ts.
+-- Maps 1:1 to ActivityContext in domains/protocol/organization/workflow-shape.ts.
 -- Populated by the AI pipeline (service_role); never by the client.
 -- ================================================================
 CREATE TABLE IF NOT EXISTS activity_contexts (
@@ -312,7 +312,7 @@ CREATE OR REPLACE TRIGGER trg_routing_rules_updated_at
 -- TABLE: department_briefs
 -- Per-department compacted context + AI-generated draft.
 -- The officer edits the draft before final approval.
--- Maps 1:1 to DepartmentBrief in platform/org-ops/types.ts.
+-- Maps 1:1 to DepartmentBrief in domains/protocol/organization/workflow-shape.ts.
 -- ================================================================
 CREATE TABLE IF NOT EXISTS department_briefs (
   id               uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -344,7 +344,7 @@ CREATE OR REPLACE TRIGGER trg_department_briefs_updated_at
 -- before the pipeline proceeds — PARALLEL + UNANIMOUS semantics
 -- (ORG-OPERATIONS.md §8b pt4).
 --
--- Maps 1:1 to ApprovalVerdict in platform/org-ops/types.ts.
+-- Maps 1:1 to ApprovalVerdict in domains/protocol/organization/workflow-shape.ts.
 --
 -- Re-submission (edit → re-approve) is handled by DELETE + INSERT
 -- or by a new activity revision, not by UPDATE, to preserve

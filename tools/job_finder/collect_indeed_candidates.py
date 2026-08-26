@@ -18,7 +18,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 ROOT = next(path for path in Path(__file__).resolve().parents if (path / "pyproject.toml").exists())
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "legacy" / "python"))
 
 from resume_builder.job_application import (  # noqa: E402
     ApplicationSubmissionHistory,
@@ -849,10 +849,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--database",
         type=Path,
-        default=ROOT / ".cache" / "application-submissions.sqlite3",
+        default=ROOT / "var" / "state" / "job-applications" / "submissions.sqlite3",
     )
     parser.add_argument("--goal-id", default="")
-    parser.add_argument("--queue", type=Path, default=ROOT / ".cache" / "application-verification-queue.json")
+    parser.add_argument("--queue", type=Path, default=ROOT / "var" / "state" / "job-applications" / "verification-queue.json")
     parser.add_argument("--inventory-output", type=Path)
     parser.add_argument("--current-search-only", action="store_true")
     parser.add_argument("--max-pages", type=int, default=3)

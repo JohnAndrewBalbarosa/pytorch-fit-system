@@ -16,7 +16,7 @@ if (command === "ensure" || command === "seed") {
 } else if (command === "status") {
   console.log(JSON.stringify(localDemoStatus(userId), null, 2));
 } else if (command === "reset") {
-  if (!confirmed) throw new Error("Reset requires --confirm. The existing database will be copied to .cache/demo/backups first.");
+  if (!confirmed) throw new Error("Reset requires --confirm. The existing database will be copied to var/state/demo/backups first.");
   console.log(JSON.stringify(resetLocalDemo(userId), null, 2));
 } else {
   throw new Error("Usage: demo-data.ts status|ensure|seed|reset [--confirm] [--quiet]");

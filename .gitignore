@@ -1,6 +1,8 @@
 # Generated artifacts (scraped data, media, screenshots, built resumes)
 /out/
 /.cache/
+/var/*
+!/var/README.md
 
 # Personal inputs (CV, source documents) — never commit
 /private/
@@ -23,6 +25,8 @@ venv/
 
 # Test / coverage caches
 .pytest_cache/
+.hypothesis/
+.ruff_cache/
 .schemathesis/
 .coverage
 htmlcov/

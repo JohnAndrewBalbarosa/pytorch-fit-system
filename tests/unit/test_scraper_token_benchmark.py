@@ -9,7 +9,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-_BENCH = Path(__file__).resolve().parents[2] / "benchmarks" / "scraper_token_cost" / "benchmark.py"
+_BENCH = Path(__file__).resolve().parents[2] / "tests" / "benchmarks" / "scraper_token_cost" / "benchmark.py"
 _spec = importlib.util.spec_from_file_location("scraper_benchmark", _BENCH)
 benchmark = importlib.util.module_from_spec(_spec)
 assert _spec and _spec.loader

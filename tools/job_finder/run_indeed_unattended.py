@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 import requests
 
 ROOT = next(path for path in Path(__file__).resolve().parents if (path / "pyproject.toml").exists())
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "legacy" / "python"))
 
 from resume_builder.job_application import (  # noqa: E402
     ApplicationProfileStore,
@@ -452,7 +452,7 @@ def _profile_store(args: argparse.Namespace) -> ApplicationProfileStore:
     path = getattr(args, "profile_database", None) or getattr(
         args,
         "database",
-        ROOT / ".cache" / "application-submissions.sqlite3",
+        ROOT / "var" / "state" / "job-applications" / "submissions.sqlite3",
     )
     return ApplicationProfileStore(Path(path))
 
@@ -937,7 +937,7 @@ def _run_application(
         layout = capture_unknown_application_layout(
             application_page,
             output_dir=layout_dir,
-            cache_dir=ROOT / ".cache" / "application-layout-rules",
+            cache_dir=ROOT / "var" / "cache" / "job-applications" / "layout-rules",
         )
         queue.enqueue_handoff(
             application_reference=application_reference,
@@ -1416,7 +1416,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--database",
         type=Path,
-        default=ROOT / ".cache" / "application-submissions.sqlite3",
+        default=ROOT / "var" / "state" / "job-applications" / "submissions.sqlite3",
     )
     parser.add_argument(
         "--profile-database",
@@ -1426,7 +1426,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--queue",
         type=Path,
-        default=ROOT / ".cache" / "application-verification-queue.json",
+        default=ROOT / "var" / "state" / "job-applications" / "verification-queue.json",
     )
     parser.add_argument("--output", type=Path, default=ROOT / "out" / "indeed-unattended")
     parser.add_argument("--target-submissions", type=int, default=3)
@@ -1536,7 +1536,7 @@ def _parser() -> argparse.ArgumentParser:
         default=Path(
             os.environ.get(
                 "QUESTIONNAIRE_APPROVED_JSON",
-                ROOT / ".cache" / "binance-bap-approved-answers.json",
+                ROOT / "var" / "state" / "job-applications" / "binance-bap-approved-answers.json",
             )
         ),
         help="Reviewed exact-answer JSON used when the optional MongoDB store is unavailable.",

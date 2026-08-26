@@ -39,7 +39,7 @@ const initialState = (): DemoRuntimeState => ({
 
 export function localDemoDatabasePath() {
   return process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH
-    || path.resolve(process.cwd(), "../../.cache/demo/product.sqlite3");
+    || path.resolve(process.cwd(), "../../var/state/demo/product.sqlite3");
 }
 
 function openDatabase() {

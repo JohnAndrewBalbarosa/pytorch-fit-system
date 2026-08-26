@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { chromium } from "playwright";
 import { localAccounts } from "./accounts.mjs";
 import { assertDevelopmentRuntime, assertLocalUrl } from "./policy.mjs";
+import { runtimePath } from "../local-workspace/runtime-paths.mjs";
 
 const root = resolve(import.meta.dirname, "../..");
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -60,7 +61,7 @@ function playwrightCookie(value, origin) {
 
 async function openRole(role, account) {
   const context = await chromium.launchPersistentContext(
-    resolve(root, `.cache/development/browser-profiles/${role}`),
+    runtimePath("sessions", "browsers", "development", role),
     {
       executablePath: browserExecutable(),
       headless: false,

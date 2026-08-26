@@ -27,11 +27,7 @@
     "demo:ensure": "tsx scripts/demo-data.ts ensure",
     "demo:seed": "tsx scripts/demo-data.ts seed",
     "demo:reset": "tsx scripts/demo-data.ts reset --confirm",
-    "test:tours:e2e": "node tests/product-tour.e2e.mjs",
-    "test:grades": "tsx --test ../../platform/grades/*.test.ts",
-    "grades:login": "set NODE_PATH=%CD%\\node_modules&& tsx ../../platform/grades/session-login.ts",
-    "grades:scrape": "set NODE_PATH=%CD%\\node_modules&& tsx ../../platform/grades/run.ts",
-    "grades:inject": "set NODE_PATH=%CD%\\node_modules&& tsx ../../platform/grades/inject-run.ts"
+    "test:tours:e2e": "node tests/product-tour.e2e.mjs"
   },
   "dependencies": {
     "@pytorch-fit/design-system": "0.1.0",

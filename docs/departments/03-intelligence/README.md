@@ -25,7 +25,7 @@ prompt design, scoring, and the Harvard-principles editorial discipline all live
 ## Files owned
 
 ```
-src/resume_builder/
+legacy/python/resume_builder/
 ├── extractors/
 │   ├── base.py             # Extractor ABC
 │   ├── static_extractor.py # regex keyword scoring (reads regex_patterns.json)

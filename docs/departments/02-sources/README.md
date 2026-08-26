@@ -25,7 +25,7 @@ other two** and is where most of the risk lives.
 ## Files owned
 
 ```
-src/resume_builder/sources/
+legacy/python/resume_builder/sources/
 ├── base.py            # SourceCollector ABC
 ├── github.py          # GitHubSource — runs `gh repo list ...`
 ├── document.py        # DocumentSource — PDF/DOCX/TeX/MD text extraction

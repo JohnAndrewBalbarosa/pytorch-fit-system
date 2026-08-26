@@ -18,7 +18,7 @@ from .browser import leaderboard_journey, login_journey, registration_contract_j
 from .service_checks import check_endpoint, fetch_openapi, run_schemathesis, sanitized
 from .settings import REPO_ROOT, LabSettings
 
-PRODUCT_SRC = str(REPO_ROOT / "src")
+PRODUCT_SRC = str(REPO_ROOT / "legacy" / "python")
 if PRODUCT_SRC not in sys.path:
     sys.path.insert(0, PRODUCT_SRC)
 

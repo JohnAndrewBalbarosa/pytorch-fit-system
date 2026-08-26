@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+VAR_ROOT = Path(os.getenv("PYTORCH_FIT_VAR_ROOT", REPO_ROOT / "var")).resolve()
+ARTIFACT_ROOT = Path(os.getenv("PYTORCH_FIT_ARTIFACT_ROOT", REPO_ROOT / "out")).resolve()
 
 
 @dataclass(frozen=True)
@@ -13,8 +15,8 @@ class LabSettings:
     member_url: str = "http://members.localhost:3000"
     officer_url: str = "http://officers.localhost:3000"
     cdp_url: str = "http://127.0.0.1:9222"
-    artifact_root: Path = REPO_ROOT / "out" / "process-lab"
-    cache_root: Path = REPO_ROOT / ".cache" / "process-lab"
+    artifact_root: Path = ARTIFACT_ROOT / "process-lab"
+    cache_root: Path = VAR_ROOT / "cache" / "process-lab"
 
     @classmethod
     def from_env(cls) -> LabSettings:
@@ -24,10 +26,10 @@ class LabSettings:
             officer_url=os.getenv("PROCESS_LAB_OFFICER_URL", cls.officer_url).rstrip("/"),
             cdp_url=os.getenv("RESUME_BUILD_PLAYWRIGHT_CDP_URL", cls.cdp_url).rstrip("/"),
             artifact_root=Path(
-                os.getenv("PROCESS_LAB_ARTIFACT_ROOT", str(REPO_ROOT / "out" / "process-lab"))
+                os.getenv("PROCESS_LAB_ARTIFACT_ROOT", str(ARTIFACT_ROOT / "process-lab"))
             ).resolve(),
             cache_root=Path(
-                os.getenv("PROCESS_LAB_CACHE_ROOT", str(REPO_ROOT / ".cache" / "process-lab"))
+                os.getenv("PROCESS_LAB_CACHE_ROOT", str(VAR_ROOT / "cache" / "process-lab"))
             ).resolve(),
         )
 

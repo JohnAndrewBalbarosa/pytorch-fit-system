@@ -8,10 +8,12 @@ import subprocess
 import sys
 import time
 import webbrowser
+from pathlib import Path
 
 import requests
 
 from .settings import REPO_ROOT, LabSettings
+
 
 def prerequisites() -> dict[str, str | None]:
     docker = shutil.which("docker")
@@ -101,16 +103,21 @@ def _supabase_environment() -> dict[str, str]:
 
 
 def _base_environment() -> dict[str, str]:
-    prefect_home = REPO_ROOT / ".cache" / "process-lab" / "prefect"
+    var_root = Path(os.getenv("PYTORCH_FIT_VAR_ROOT", REPO_ROOT / "var")).resolve()
+    prefect_home = var_root / "state" / "process-lab" / "prefect"
     prefect_home.mkdir(parents=True, exist_ok=True)
     environment = os.environ.copy()
     environment.update(
         {
-            "PYTHONPATH": str(REPO_ROOT / "src"),
+            "PYTHONPATH": str(REPO_ROOT / "legacy" / "python"),
+            "PYTORCH_FIT_VAR_ROOT": str(var_root),
+            "PYTORCH_FIT_ARTIFACT_ROOT": str(
+                Path(os.getenv("PYTORCH_FIT_ARTIFACT_ROOT", REPO_ROOT / "out")).resolve()
+            ),
             "PREFECT_API_URL": "http://127.0.0.1:4200/api",
             "PREFECT_HOME": str(prefect_home),
             "PREFECT_UI_STATIC_DIRECTORY": str(
-                REPO_ROOT / ".cache" / "process-lab" / "prefect-ui"
+                var_root / "cache" / "process-lab" / "prefect-ui"
             ),
             "PREFECT_SERVER_UI_V2_ENABLED": "true",
         }

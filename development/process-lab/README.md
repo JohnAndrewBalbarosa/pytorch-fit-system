@@ -40,19 +40,19 @@ configuration before opening the fresh DAG. See [PREFECT-OPERATIONS.md](PREFECT-
 
 ```bash
 npm run dev:process-lab
-.cache/process-lab/venv/bin/pytorch-fit-process-lab doctor
-.cache/process-lab/venv/bin/pytorch-fit-process-lab up
-.cache/process-lab/venv/bin/pytorch-fit-process-lab list
-.cache/process-lab/venv/bin/pytorch-fit-process-lab open --workflow member-experience
+var/environments/process-lab/bin/pytorch-fit-process-lab doctor
+var/environments/process-lab/bin/pytorch-fit-process-lab up
+var/environments/process-lab/bin/pytorch-fit-process-lab list
+var/environments/process-lab/bin/pytorch-fit-process-lab open --workflow member-experience
 ```
 
 Browser traces and reports stay under `out/process-lab/`. The Prefect database, source checkout, UI
-build, and browser profiles stay under `.cache/`.
+build caches, state, environments, and browser sessions stay under `var/`.
 
 ## Release boundary
 
 ```bash
-.cache/process-lab/venv/bin/pytorch-fit-process-lab guard-artifact PATH_TO_ARTIFACT
+var/environments/process-lab/bin/pytorch-fit-process-lab guard-artifact PATH_TO_ARTIFACT
 ```
 
 Vercel and Docker ignore all of `development/`, Python sources, tests, traces, and Prefect files.

@@ -9,7 +9,7 @@ type SourceState = Pick<EvidenceSource, "id" | "connectionStatus" | "lastSyncedA
 type MediaRecord = { bytes: Uint8Array; mimeType: string };
 
 function databasePath() {
-  return process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH || path.resolve(process.cwd(), "../../.cache/demo/product.sqlite3");
+  return process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH || path.resolve(process.cwd(), "../../var/state/demo/product.sqlite3");
 }
 
 function database() {

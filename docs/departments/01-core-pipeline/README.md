@@ -25,7 +25,7 @@ This is the **spine** of the product. It owns:
 ## Files owned
 
 ```
-src/resume_builder/
+legacy/python/resume_builder/
 ├── core/
 │   ├── models.py      # CONSTITUTION — domain models shared by all stages
 │   ├── config.py      # Settings, config + template paths

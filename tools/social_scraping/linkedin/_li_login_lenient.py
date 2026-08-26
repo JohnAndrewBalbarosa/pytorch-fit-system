@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists())
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "legacy" / "python"))
 
 VENDOR = "linkedin"
 LOGIN_URL = "https://www.linkedin.com/login"

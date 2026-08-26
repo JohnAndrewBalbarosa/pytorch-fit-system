@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 ROOT = next(path for path in Path(__file__).resolve().parents if (path / "pyproject.toml").exists())
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "legacy" / "python"))
 
 from resume_builder.job_application import (  # noqa: E402
     DEFAULT_SUBMISSION_HISTORY_PATH,

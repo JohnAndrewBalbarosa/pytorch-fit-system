@@ -131,7 +131,7 @@ def test_verified_demand_fit_and_interview_prep_api_flow(tmp_path, monkeypatch):
 
     monkeypatch.setattr(market_fit_control, "DEFAULT_DATABASE", database)
     monkeypatch.setattr(market_fit_control, "DEFAULT_ARTIFACT_DIR", artifact_dir)
-    monkeypatch.setattr(web_app, "get_provider", lambda: FakeLLM())
+    monkeypatch.setattr(web_app, "get_configured_provider", lambda: FakeLLM())
     client = TestClient(app)
     opportunity = client.post(
         "/api/job-finder/market-fit/opportunities",

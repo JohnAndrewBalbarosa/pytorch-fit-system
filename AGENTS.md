@@ -182,7 +182,7 @@ separate systems even when they share the same learn-once/replay-many pattern.
    capability object, never scattered booleans or a global safety-off flag. Known first-party
    integrations such as FEU Tech SOLAR use fixed deterministic selectors and headless execution;
    AI DOM planning is reserved for genuinely website-agnostic flows.
-   Put reusable application checks in `src/resume_builder/job_application/shared/`: access gates,
+   Put reusable application checks in `legacy/python/resume_builder/job_application/shared/`: access gates,
    final-submit readiness, and configurable resume scoring. Website adapters may supply selectors,
    routes, and scoring profiles, but must not copy those shared decisions into vendor modules.
 
@@ -200,7 +200,7 @@ separate systems even when they share the same learn-once/replay-many pattern.
    provider-neutral boundary: observable browser proof, explicit manual confirmation from the user,
    or an authorized email adapter. Email access is optional and must never be assumed; do not store
    message bodies, credentials, cookies, or unrelated mailbox data.
-   Normal runs must use the persistent `.cache/application-submissions.sqlite3` history. Reconcile
+   Normal runs must use the persistent `var/state/job-applications/submissions.sqlite3` history. Reconcile
    an open, access-clear Indeed Applied page with `tools/job_finder/sync_indeed_applied.py`; never
    infer confirmation from search cards, drafts, Review pages, or employer status controls.
 

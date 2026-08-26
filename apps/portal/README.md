@@ -13,7 +13,7 @@ npm run setup
 npm run dev
 ```
 
-The launcher first ensures the versioned synthetic scenario in `.cache/demo/product.sqlite3`, then
+The launcher first ensures the versioned synthetic scenario in `var/state/demo/product.sqlite3`, then
 starts one Next.js process for `members.localhost:3000` and `officers.localhost:3000`. These mirror
 two domains on one Vercel project. Supabase role data enforces access; hostname selection never grants
 officer authority. Automatic synthetic sign-in lives under `development/`, outside this package.
@@ -21,7 +21,7 @@ officer authority. Automatic synthetic sign-in lives under `development/`, outsi
 Local mode is an editable demo with one primary synthetic student and four supporting lifecycle
 personas. Supabase mode is production and never falls back to demo records. Inspect or restore the
 local scenario with `npm run demo:status` and `npm run demo:reset`; reset creates a timestamped
-backup under `.cache/demo/backups/` before restoring the canonical seed.
+backup under `var/state/demo/backups/` before restoring the canonical seed.
 
 Copy `.env.example` to `.env.local` only when running the services separately. Keep API keys and
 the developer token server-side.

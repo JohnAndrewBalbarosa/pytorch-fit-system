@@ -108,15 +108,15 @@ const SNAPSHOT = `(() => {
 function parseArgs(argv) {
   const values = {
     cdpUrl: "http://127.0.0.1:9222",
-    database: resolve(".cache/application-submissions.sqlite3"),
-    state: resolve(".cache/indeed-event-watcher-state.json"),
+    database: resolve("var/state/job-applications/submissions.sqlite3"),
+    state: resolve("var/state/job-applications/indeed-event-watcher.json"),
     manifest: [],
     reconnectSeconds: 5,
     maxTabs: 6,
     autoOpenApply: false,
     resumeRunner: "",
     artifactDir: "",
-    queue: resolve(".cache/application-verification-queue.json"),
+    queue: resolve("var/state/job-applications/verification-queue.json"),
     runnerOutput: resolve("out/indeed-event-resume"),
     phoneCountryCallingCode: "",
     phoneCountryIso: "",

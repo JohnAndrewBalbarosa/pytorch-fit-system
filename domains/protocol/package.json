@@ -9,6 +9,7 @@
     "./job-discovery": "./job-discovery/index.ts",
     "./leaderboards": "./leaderboards/index.ts",
     "./organization": "./organization/index.ts",
+    "./organization/workflow": "./organization/workflow-shape.ts",
     "./privacy-feedback": "./privacy-feedback/index.ts",
     "./resumes": "./resumes/index.ts"
   },

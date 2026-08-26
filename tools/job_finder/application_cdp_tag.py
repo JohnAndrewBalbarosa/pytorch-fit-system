@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 ROOT = next(path for path in Path(__file__).resolve().parents if (path / "pyproject.toml").exists())
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "legacy" / "python"))
 
 from resume_builder.extraction.crawler_dom import fingerprint  # noqa: E402
 from resume_builder.job_application import (  # noqa: E402

@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { run } from "./processes.mjs";
+import { runtimePath, workspaceRoot as root } from "./runtime-paths.mjs";
 
-const root = resolve(import.meta.dirname, "../..");
-const venv = resolve(root, ".cache/process-lab/venv");
+const venv = runtimePath("environments", "process-lab");
 const python = process.platform === "win32" ? "python" : "python3";
 
 function complete(child) {

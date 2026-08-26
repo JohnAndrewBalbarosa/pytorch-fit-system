@@ -276,8 +276,14 @@ def test_reopen_intervention_reattaches_stale_access_target(tmp_path, monkeypatc
 
 
 def test_question_bank_state_uses_json_when_mongodb_is_offline(tmp_path, monkeypatch):
-    fallback = tmp_path / ".cache" / "binance-bap-approved-answers.json"
-    fallback.parent.mkdir()
+    fallback = (
+        tmp_path
+        / "var"
+        / "state"
+        / "job-applications"
+        / "binance-bap-approved-answers.json"
+    )
+    fallback.parent.mkdir(parents=True)
     fallback.write_text(
         json.dumps({"domain": "smartapply.indeed.com", "pages": [{}, {}]}),
         encoding="utf-8",

@@ -4,15 +4,19 @@ The repository is feature-first at the domain level and boundary-first inside `d
 
 ```text
 apps/portal/            Next.js and Vercel entry points
+apps/academic-records/  thin FEU SOLAR login, scrape, and resume-injection commands
 domains/client/         browser-visible feature components and interactions
 domains/server/         Vercel-only feature operations
 domains/protocol/       shared request, response, event, and validation shapes
 design-system/          reusable visual primitives
 supabase/               database migrations, RLS, and deterministic local seed
 development/            local access, Process Lab, and patched Prefect dashboard
-tests/                  cross-package verification
+legacy/python/          retained Python reference engine and organization prototypes
+tests/                  cross-package verification and benchmarks
 docs/                   architecture and operating guidance
-src/                    existing Python reference pending TypeScript parity ports
+config/, tools/, scripts/  shared data, manual/operator tools, and repo automation
+var/                    ignored local cache, state, sessions, environments, logs, and run files
+out/                    ignored human-reviewable reports, captures, and exports
 ```
 
 ## Naming

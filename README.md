@@ -5,6 +5,10 @@ then `npm run dev` for the member site, officer site, local Supabase, automatic 
 and Prefect. See the [repository architecture](docs/ARCHITECTURE.md) and
 [Process Lab guide](development/process-lab/README.md).
 
+Local runtime data has one ignored home: `var/`. Durable SQLite state and browser sessions stay
+there; `out/` is reserved for human-reviewable screenshots, reports, and exports. Override these
+roots with `PYTORCH_FIT_VAR_ROOT` and `PYTORCH_FIT_ARTIFACT_ROOT`.
+
 > Built by the **PyTorch FEU Institute of Technology (FEU Tech) Student Chapter**.
 > 📖 **Master spec (NotebookLM source of truth):** [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md)
 > 🗂️ **Delegation backlog / board:** [`docs/TASKS.md`](docs/TASKS.md)
@@ -99,7 +103,7 @@ incrementally refactor the old Python CLI.
 The prior résumé pipeline still lives here as a **proven blueprint** for the AI Processing layer
 — do not treat it as the running platform:
 
-- Code: [`src/resume_builder/`](src/resume_builder/README.md) (module-level READMEs + diagrams)
+- Code: [`legacy/python/resume_builder/`](legacy/python/resume_builder/README.md) (module-level READMEs + diagrams)
 - Architecture docs: [`docs/departments/`](docs/departments/README.md)
 - How it maps to the new platform: [`docs/SPECIFICATION.md` §18](docs/SPECIFICATION.md)
 
@@ -121,7 +125,7 @@ field when that live field advertises remote support; this does not imply that `
 location value. Unsupported or missing controls stop or fall back to sampling rather than silently
 changing the requested mode.
 
-Detailed development flow: [`src/resume_builder/job_finder/README.md`](src/resume_builder/job_finder/README.md).
+Detailed development flow: [`legacy/python/resume_builder/job_finder/README.md`](legacy/python/resume_builder/job_finder/README.md).
 
 ### Job application sender: tested execution boundary
 
@@ -150,16 +154,16 @@ rejected. An exact company + job-title confirmation prevents another submission 
 the role becomes eligible again. Confirmation is resolved at the end through an abstract provider:
 observable browser proof, an explicit statement from the user, or a separately authorized email
 adapter. The email option is not required and does not grant mailbox access by itself.
-Normal application runs use `.cache/application-submissions.sqlite3`; visible Indeed history can be
+Normal application runs use `var/state/job-applications/submissions.sqlite3`; visible Indeed history can be
 reconciled from an approved Chrome session with
 `python tools/job_finder/sync_indeed_applied.py`.
-Reusable cross-site checks live in `src/resume_builder/job_application/shared/`: access/challenge
+Reusable cross-site checks live in `legacy/python/resume_builder/job_application/shared/`: access/challenge
 classification, final-submit readiness, and configurable role-specific resume matching. Website
 adapters provide only their verified selectors, routes, and profile configuration.
 
 ### Scraper token-cost benchmark
 
-The saved benchmark in [`benchmarks/scraper_token_cost/`](benchmarks/scraper_token_cost/README.md)
+The saved benchmark in [`tests/benchmarks/scraper_token_cost/`](tests/benchmarks/scraper_token_cost/README.md)
 compares naive agent tool-calling against the `AgenticCrawler` pipeline.
 
 Measured evidence:

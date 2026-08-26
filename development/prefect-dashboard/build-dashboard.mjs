@@ -2,10 +2,10 @@ import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
+import { runtimePath, workspaceRoot as root } from "../local-workspace/runtime-paths.mjs";
 
-const root = resolve(import.meta.dirname, "../..");
-const source = resolve(root, ".cache/process-lab/prefect-ui-source");
-const output = resolve(root, ".cache/process-lab/prefect-ui/v2");
+const source = runtimePath("cache", "process-lab", "prefect-ui-source");
+const output = runtimePath("cache", "process-lab", "prefect-ui", "v2");
 const marker = resolve(source, ".pytorch-fit-patch");
 const patch = resolve(import.meta.dirname, "patches/prefect-3.8.3-joyride.patch");
 const expectedCommit = "d8f54b5c4857e933c31aac97e8ef56ea732c5138";
@@ -16,7 +16,7 @@ function command(name, args, cwd = root) {
 }
 
 function cloneSource() {
-  mkdirSync(resolve(root, ".cache/process-lab"), { recursive: true });
+  mkdirSync(runtimePath("cache", "process-lab"), { recursive: true });
   command("git", ["clone", "--depth", "1", "--branch", "3.8.3", "https://github.com/PrefectHQ/prefect.git", source]);
 }
 
@@ -27,7 +27,7 @@ if (actualCommit !== expectedCommit) {
 }
 if (!existsSync(marker) || readFileSync(marker, "utf8").trim() !== patchHash) {
   if (existsSync(marker)) {
-    throw new Error("The tracked Prefect patch changed. Remove .cache/process-lab/prefect-ui-source and rerun setup.");
+    throw new Error("The tracked Prefect patch changed. Remove var/cache/process-lab/prefect-ui-source and rerun setup.");
   }
   command("git", ["apply", "--check", patch], source);
   command("git", ["apply", patch], source);
