@@ -1,12 +1,10 @@
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
 import { createServerClient } from "@supabase/ssr";
 import { chromium } from "playwright";
 import { localAccounts } from "./accounts.mjs";
-import { assertDevelopmentRuntime, assertLocalUrl } from "./policy.mjs";
+import { assertDevelopmentRuntime, assertLocalUrl, developmentBrowserOptions } from "./policy.mjs";
 import { runtimePath } from "../local-workspace/runtime-paths.mjs";
 
-const root = resolve(import.meta.dirname, "../..");
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -62,11 +60,7 @@ function playwrightCookie(value, origin) {
 async function openRole(role, account) {
   const context = await chromium.launchPersistentContext(
     runtimePath("sessions", "browsers", "development", role),
-    {
-      executablePath: browserExecutable(),
-      headless: false,
-      args: ["--no-first-run", "--no-default-browser-check"],
-    },
+    developmentBrowserOptions(browserExecutable()),
   );
   const page = context.pages()[0] || await context.newPage();
   const destination = `${account.origin}/dashboard`;

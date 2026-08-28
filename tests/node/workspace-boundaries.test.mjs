@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { extname, join, relative, resolve } from "node:path";
 import test from "node:test";
-import { assertDevelopmentRuntime, assertLocalUrl } from "../../development/local-access/policy.mjs";
+import { assertDevelopmentRuntime, assertLocalUrl, developmentBrowserOptions } from "../../development/local-access/policy.mjs";
 
 const root = resolve(import.meta.dirname, "../..");
 
@@ -64,4 +64,12 @@ test("local automatic access refuses production, Vercel, and CI", () => {
   assert.throws(() => assertDevelopmentRuntime({ NODE_ENV: "production" }), /unavailable/);
   assert.throws(() => assertDevelopmentRuntime({ VERCEL: "1" }), /unavailable/);
   assert.throws(() => assertDevelopmentRuntime({ CI: "true" }), /unavailable/);
+});
+
+test("local automatic access uses the native maximized browser viewport", () => {
+  const options = developmentBrowserOptions("/browser");
+  assert.equal(options.executablePath, "/browser");
+  assert.equal(options.headless, false);
+  assert.equal(options.viewport, null);
+  assert.ok(options.args.includes("--start-maximized"));
 });

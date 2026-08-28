@@ -4,6 +4,15 @@ export function assertDevelopmentRuntime(environment = process.env) {
   }
 }
 
+export function developmentBrowserOptions(executablePath) {
+  return {
+    executablePath,
+    headless: false,
+    viewport: null,
+    args: ["--no-first-run", "--no-default-browser-check", "--start-maximized"],
+  };
+}
+
 export function assertLocalUrl(raw, label, allowedHosts) {
   if (!raw) throw new Error(`${label} is required.`);
   let url;
