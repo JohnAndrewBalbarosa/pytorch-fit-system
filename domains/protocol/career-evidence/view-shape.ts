@@ -56,6 +56,7 @@ export type EvidenceSource = {
 export type EvidenceItem = {
   id: string;
   sourceId: string;
+  collectionOrigin?: "manual" | "upload" | "automated_scrape" | "legacy_unknown";
   title: string;
   organization: string;
   role: string;
@@ -116,6 +117,7 @@ export type Opportunity = {
   fit: number | null;
   salaryBand?: string;
   nextStage?: string | null;
+  recordOrigin?: "manual" | "automated_scrape" | "legacy_unknown";
 };
 
 export type ChapterEvent = {

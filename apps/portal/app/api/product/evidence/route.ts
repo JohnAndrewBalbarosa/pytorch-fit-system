@@ -40,7 +40,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ item: saved, metadataStripped: true }, { status: 201, headers: { "Cache-Control": "private, no-store" } });
     }
     const body = await request.json().catch(() => ({})) as { item?: unknown; approve?: boolean };
-    const { id: _ignored, ...input } = validatedEvidenceItem(body.item, { approve: body.approve === true });
+    const submitted = body.item && typeof body.item === "object" ? body.item as Record<string, unknown> : {};
+    const { id: _ignored, ...input } = validatedEvidenceItem({ ...submitted, sourceId: "manual" }, { approve: body.approve === true });
     const item = await createEvidence(userId, input);
     return NextResponse.json({ item }, { status: 201, headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {

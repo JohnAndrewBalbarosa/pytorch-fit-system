@@ -12,6 +12,7 @@ export type CapabilityKey =
   | "resume_generate"
   | "analytics_read"
   | "analytics_write"
+  | "opportunities_read"
   | "job_discovery"
   | "application_draft";
 
@@ -65,11 +66,11 @@ export function buildCapabilityManifest(input: CapabilityInputs): CapabilityMani
   const connections = canOwnCareerData
     ? available("Local connection status is available without exposing credentials or session contents.")
     : ownerRequired;
-  const evidenceRead = input.evidenceReady
-    ? readOnly("Normalized career evidence is available for inspection.")
-    : input.visualDemo
-      ? readOnly("Read-only prototype evidence is enabled; collection and generation remain locked.")
-    : locked("No normalized career evidence is available yet.", ["normalized evidence"]);
+  const evidenceRead = canOwnCareerData
+    ? available(input.evidenceReady
+      ? "Career Evidence is open for manual review and editing."
+      : "Career Evidence is open for manual entry; automated collection is gated separately.")
+    : ownerRequired;
   const evidenceScrape = !input.developmentOwner
     ? ownerRequired
     : !input.aiConfigured
@@ -80,11 +81,11 @@ export function buildCapabilityManifest(input: CapabilityInputs): CapabilityMani
   const evidenceWrite = canOwnCareerData
     ? available("You may create and approve your own career evidence through the server gateway.")
     : ownerRequired;
-  const resumeRead = input.resumeArtifactsReady
-    ? readOnly("Existing generated resume artifacts are available for review.")
-    : input.visualDemo
-      ? readOnly("Read-only prototype resume cards are enabled; no artifact can be uploaded or used.")
-    : locked("No generated resume artifact is available.", ["generated resume artifact"]);
+  const resumeRead = canOwnCareerData
+    ? available(input.resumeArtifactsReady
+      ? "Resume Studio is open for manual template review and export."
+      : "Resume Studio is open; add or edit Career Evidence to build its manual snapshot.")
+    : ownerRequired;
   const resumeGenerate = !input.developmentOwner
     ? ownerRequired
     : !input.aiConfigured
@@ -101,6 +102,9 @@ export function buildCapabilityManifest(input: CapabilityInputs): CapabilityMani
         : !input.aiConfigured
           ? locked("Configure the AI endpoint before starting a scraper-connected job pipeline.", ["AI endpoint and model"])
         : locked("Open and verify the approved job-site browser session first.", ["verified job-site session"]);
+  const opportunitiesRead = canOwnCareerData
+    ? available("Opportunities is open for manual review; automated discovery is gated separately.")
+    : ownerRequired;
   const applicationDraft = !privilegedOperator
     ? ownerRequired
     : !input.aiConfigured
@@ -131,6 +135,7 @@ export function buildCapabilityManifest(input: CapabilityInputs): CapabilityMani
       resume_generate: resumeGenerate,
       analytics_read: readOnly("Analytics may query existing snapshots with local filters."),
       analytics_write: locked("Browser analytics is read-only; refresh and import belong to controlled backend ingestion."),
+      opportunities_read: opportunitiesRead,
       job_discovery: jobDiscovery,
       application_draft: applicationDraft,
     },

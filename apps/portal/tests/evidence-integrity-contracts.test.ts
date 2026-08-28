@@ -29,6 +29,14 @@ test("database authority awards points only inside officer review", () => {
   assert.match(migration, /anomaly signals alone never create sanctions/i);
 });
 
+test("manual workspace mutations have trusted provenance columns", () => {
+  const migration = readFileSync(new URL("../../../supabase/migrations/0012_manual_first_workspaces.sql", import.meta.url), "utf8");
+  assert.match(migration, /collection_origin[\s\S]+manual[\s\S]+automated_scrape/);
+  assert.match(migration, /mutation_origin[\s\S]+manual[\s\S]+ai_assisted[\s\S]+extension_scrape/);
+  assert.match(migration, /market_opportunity_revisions[\s\S]+record_origin/);
+  assert.match(migration, /browser payloads cannot choose/i);
+});
+
 test("local evidence submission is idempotent and creates reviewable pending claims", async () => {
   const directory = mkdtempSync(join(tmpdir(), "pytorch-fit-evidence-"));
   const database = join(directory, "product.sqlite3");

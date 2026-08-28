@@ -1,12 +1,37 @@
 import { randomUUID } from "node:crypto";
-import type { EvidenceItem, EvidenceSource } from "@pytorch-fit/domain-protocol/career-evidence";
+import { manualOpportunitySchema, type EvidenceItem, type EvidenceSource, type Opportunity } from "@pytorch-fit/domain-protocol/career-evidence";
 import { configuredProductProvider } from "./select-repository";
-import { createLocalEvidence, saveLocalEvidence, saveLocalMedia, saveLocalSourceState } from "./store-local";
+import { createLocalEvidence, listLocalOpportunities, saveLocalEvidence, saveLocalMedia, saveLocalOpportunity, saveLocalSourceState } from "./store-local";
 import { supportedSourceById } from "./read-source";
 import { createSupabaseAdminClient } from "@pytorch-fit/domain-server/identity";
 
 export type EvidenceCreateInput = Omit<EvidenceItem, "id">;
 export type SourceAction = "connect" | "sync" | "disconnect";
+
+export async function saveManualOpportunity(userId: string, input: unknown): Promise<Opportunity> {
+  const value = manualOpportunitySchema.parse(input);
+  const id = value.id || randomUUID();
+  const opportunity: Opportunity = { ...value, id, recordOrigin: "manual" };
+  if (configuredProductProvider() === "local") {
+    if (value.id && !listLocalOpportunities(userId).some((item) => item.id === value.id)) throw new Error("Manual opportunity is unavailable or not owned by the current user.");
+    return saveLocalOpportunity(userId, opportunity);
+  }
+  const client = createSupabaseAdminClient();
+  if (value.id) {
+    const { data: existing, error: readError } = await client.from("market_opportunities").select("id,company,job_title,location,work_mode,funnel_stage,fit_score,record_origin").eq("id", id).eq("user_id", userId).single();
+    if (readError || !existing || existing.record_origin !== "manual") throw new Error("Manual opportunity is unavailable or not owned by the current user.");
+    const { error } = await client.from("market_opportunities").update({ company: value.company, job_title: value.title, location: value.location, work_mode: value.workMode, funnel_stage: value.stage, fit_score: value.fit }).eq("id", id).eq("user_id", userId).eq("record_origin", "manual");
+    if (error) throw new Error(`Could not update opportunity: ${error.message}`);
+    const { error: revisionError } = await client.from("market_opportunity_revisions").insert({ user_id: userId, opportunity_id: id, mutation_origin: "manual", snapshot: { before: existing, after: opportunity } });
+    if (revisionError) throw new Error(`Opportunity updated but provenance history failed: ${revisionError.message}`);
+  } else {
+    const { error } = await client.from("market_opportunities").insert({ id, user_id: userId, company: value.company, job_title: value.title, location: value.location, work_mode: value.workMode, funnel_stage: value.stage, fit_score: value.fit, record_origin: "manual" });
+    if (error) throw new Error(`Could not create opportunity: ${error.message}`);
+    const { error: revisionError } = await client.from("market_opportunity_revisions").insert({ user_id: userId, opportunity_id: id, mutation_origin: "manual", snapshot: { action: "created", after: opportunity } });
+    if (revisionError) throw new Error(`Opportunity created but provenance history failed: ${revisionError.message}`);
+  }
+  return opportunity;
+}
 
 const sourceKind: Record<string, "project" | "post" | "document" | "manual"> = {
   github: "project",
@@ -27,7 +52,9 @@ async function supabaseSourceId(userId: string, providerKey: string): Promise<st
 }
 
 export async function createEvidence(userId: string, input: EvidenceCreateInput): Promise<EvidenceItem> {
-  if (configuredProductProvider() === "local") return createLocalEvidence(userId, input);
+  const collectionOrigin = input.sourceId === "manual" ? "manual" as const : input.sourceId === "upload" ? "upload" as const : "automated_scrape" as const;
+  const taggedInput = { ...input, collectionOrigin };
+  if (configuredProductProvider() === "local") return createLocalEvidence(userId, taggedInput);
   const client = createSupabaseAdminClient();
   const id = randomUUID();
   const sourceId = await supabaseSourceId(userId, input.sourceId);
@@ -50,9 +77,18 @@ export async function createEvidence(userId: string, input: EvidenceCreateInput)
     review_state: input.verificationState,
     confidence: input.confidence || null,
     source_url: input.sourceUrl || null,
+    collection_origin: collectionOrigin,
   });
   if (error) throw new Error(`Could not create evidence: ${error.message}`);
-  return { ...input, id };
+  const { error: revisionError } = await client.from("career_evidence_revisions").insert({
+    user_id: userId,
+    evidence_item_id: id,
+    actor: "user",
+    mutation_origin: "manual",
+    snapshot: { action: "created", collectionOrigin },
+  });
+  if (revisionError) throw new Error(`Evidence created but provenance history failed: ${revisionError.message}`);
+  return { ...taggedInput, id };
 }
 
 export async function updateEvidence(userId: string, item: EvidenceItem): Promise<EvidenceItem> {
@@ -81,6 +117,7 @@ export async function updateEvidence(userId: string, item: EvidenceItem): Promis
     user_id: userId,
     evidence_item_id: item.id,
     actor: "user",
+    mutation_origin: "manual",
     snapshot: { before: existing, after: item },
   });
   if (revisionError) throw new Error(`Evidence updated but revision history failed: ${revisionError.message}`);

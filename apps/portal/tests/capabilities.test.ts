@@ -34,7 +34,9 @@ test("development ownership never substitutes missing external prerequisites", (
   assert.equal(manifest.capabilities.job_discovery.state, "locked");
   assert.equal(manifest.capabilities.application_draft.state, "locked");
   assert.equal(manifest.capabilities.resume_generate.state, "locked");
-  assert.equal(manifest.capabilities.resume_read.state, "locked");
+  assert.equal(manifest.capabilities.evidence_read.state, "available");
+  assert.equal(manifest.capabilities.resume_read.state, "available");
+  assert.equal(manifest.capabilities.opportunities_read.state, "available");
 });
 
 test("non-owner state fails closed while analytics remains read-only", () => {
@@ -60,5 +62,26 @@ test("authenticated users may edit only their own career evidence", () => {
     aiConfigured: false,
   });
   assert.equal(manifest.capabilities.evidence_write.state, "available");
+  assert.equal(manifest.capabilities.evidence_read.state, "available");
+  assert.equal(manifest.capabilities.resume_read.state, "available");
+  assert.equal(manifest.capabilities.opportunities_read.state, "available");
+  assert.equal(manifest.capabilities.evidence_scrape.state, "locked");
+  assert.equal(manifest.capabilities.resume_generate.state, "locked");
+  assert.equal(manifest.capabilities.job_discovery.state, "locked");
   assert.equal(manifest.capabilities.application_draft.state, "locked");
+});
+
+test("anonymous users cannot use manual career workspaces", () => {
+  const manifest = buildCapabilityManifest({
+    ...base,
+    developmentOwner: false,
+    authenticatedUser: false,
+    evidenceReady: false,
+    resumeArtifactsReady: false,
+    aiConfigured: false,
+    jobSiteConnected: false,
+  });
+  assert.equal(manifest.capabilities.evidence_read.state, "locked");
+  assert.equal(manifest.capabilities.resume_read.state, "locked");
+  assert.equal(manifest.capabilities.opportunities_read.state, "locked");
 });

@@ -85,11 +85,13 @@ const verificationTone = (state: EvidenceItem["verificationState"]) =>
 function SourceDialog({
   source,
   canWrite,
+  canAutomate,
   onChanged,
   onClose,
 }: {
   source: EvidenceSource;
   canWrite: boolean;
+  canAutomate: boolean;
   onChanged: (source: EvidenceSource) => void;
   onClose: () => void;
 }) {
@@ -237,7 +239,7 @@ function SourceDialog({
       )}
       {preview && <div className="mt-5 rounded-xl border border-accent/30 bg-elevated p-4"><p className="font-semibold">Review collected evidence</p><p className="mt-1 text-xs text-muted">Nothing is approved or awarded yet. Submitting creates immutable pending claims.</p><ul className="mt-3 max-h-64 space-y-3 overflow-auto">{preview.items.map((item) => <li className="rounded-lg border border-border bg-surface p-3" key={`${item.sourceUrl}:${item.title}`}><p className="text-sm font-semibold">{item.title}</p><p className="mt-1 line-clamp-3 text-xs text-muted">{item.text}</p><a className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-accent" href={item.sourceUrl} rel="noreferrer" target="_blank">Open source <ExternalLink size={12}/></a></li>)}</ul></div>}
       {extensionRequired ? <ExtensionCapabilityOverlay capability={`${source.label} collection`} requiredCapability={source.id}><div className="mt-6 flex flex-wrap gap-2">
-        <Button disabled={!canWrite || busy || !extensionSupported} onClick={collect}><RefreshCw size={16}/>{preview ? "Collect a fresh preview" : "Preview visible source tab"}</Button>
+        <Button disabled={!canWrite || !canAutomate || busy || !extensionSupported} onClick={collect}><RefreshCw size={16}/>{preview ? "Collect a fresh preview" : "Preview visible source tab"}</Button>
         {preview && <Button disabled={!canWrite || busy} onClick={submitPreview} variant="secondary"><ShieldCheck size={16}/>Submit reviewed items</Button>}
         {connected && <Button disabled={!canWrite || busy} onClick={() => run("disconnect")} variant="outline">Disconnect</Button>}
       </div></ExtensionCapabilityOverlay> : <div className="mt-6 flex flex-wrap gap-2">
@@ -304,6 +306,7 @@ function EvidenceDialog({
             <Badge variant={verificationTone(draft.verificationState)}>
               {draft.verificationState.replaceAll("_", " ")}
             </Badge>
+            <Badge>{(draft.collectionOrigin || (draft.sourceId === "manual" ? "manual" : draft.sourceId === "upload" ? "upload" : "automated_scrape")).replaceAll("_", " ")}</Badge>
             {draft.confidence && (
               <Badge>{draft.confidence}% source match</Badge>
             )}
@@ -564,9 +567,11 @@ function MemberIntegrityNotice() {
 export function CareerEvidenceView({
   data,
   canWrite,
+  canAutomate,
 }: {
   data: ProductViewData;
   canWrite: boolean;
+  canAutomate: boolean;
 }) {
   const evidence = data.evidence;
   const [source, setSource] = useState<EvidenceSource | null>(null);
@@ -844,6 +849,7 @@ export function CareerEvidenceView({
       )}
       {source && (
         <SourceDialog
+          canAutomate={canAutomate}
           canWrite={canWrite}
           onChanged={(updated) => {
             setSources((current) =>

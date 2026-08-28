@@ -22,6 +22,11 @@ Every extension or manual payload is an untrusted proposal. Validate a strict ve
 canonicalize its source URL, enforce size limits, and deduplicate by member plus content hash.
 Persist normalized evidence, not raw DOM or session material.
 
+Manual entry remains available without an AI endpoint or scraper session. The trusted server derives
+manual create/update provenance and records it in revision history; the client cannot relabel a
+manual mutation as scraped. Extension envelopes retain `extension_scrape` origin, so audit views and
+logs can distinguish user-authored facts from automated collection.
+
 New claims start `pending`. The extension may propose an evidence level, but only the server applies
 the published rubric. Official point events are appended atomically only after an officer approves
 the exact immutable claim revision. Client state, extension build metadata, and requested points can

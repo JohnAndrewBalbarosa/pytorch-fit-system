@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -29,9 +30,11 @@ import { useCapability } from "@pytorch-fit/domain-client/onboarding";
 import { Badge } from "@pytorch-fit/design-system/badge";
 import { Button } from "@pytorch-fit/design-system/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@pytorch-fit/design-system/card";
+import { AppDialog } from "@pytorch-fit/design-system/dialog";
+import { Input, Label } from "@pytorch-fit/design-system/input";
 import { Progress } from "@pytorch-fit/design-system/progress";
 import type { CapabilityKey } from "@pytorch-fit/domain-protocol/identity";
-import type { ProductView, ProductViewData } from "@pytorch-fit/domain-protocol/career-evidence";
+import type { Opportunity, ProductView, ProductViewData } from "@pytorch-fit/domain-protocol/career-evidence";
 import { fetchJson, queryKeys } from "@pytorch-fit/domain-client/transport";
 
 type Props = { view: ProductView; capabilityKey: CapabilityKey; safety: string };
@@ -88,9 +91,22 @@ function OperationsView({ data }: { data: ProductViewData }) {
   </section>;
 }
 
-function OpportunitiesView({ data }: { data: ProductViewData }) {
+function OpportunitiesView({ data, canWrite }: { data: ProductViewData; canWrite: boolean }) {
   const demoAction = useDemoAction("opportunities");
-  return <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{data.opportunities?.length ? data.opportunities.map((item) => <Card className="bg-surface" key={item.id}><div className="mb-4 flex items-start justify-between gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accentSoft text-accent"><Target size={20} /></div><Badge>{item.stage.replaceAll("_", " ")}</Badge></div><h2 className="font-bold">{item.title}</h2><p className="mt-1 text-sm text-muted">{item.company}</p><div className="mt-5 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-elevated p-3"><p className="text-muted">Location</p><p className="mt-1 font-semibold">{item.location}</p></div><div className="rounded-lg bg-elevated p-3"><p className="text-muted">Work mode</p><p className="mt-1 font-semibold capitalize">{item.workMode}</p></div></div><div className="mt-3 rounded-lg bg-elevated p-3 text-xs"><p className="text-muted">Observed salary</p><p className="mt-1 font-semibold">{item.salaryBand || "Unknown"}</p></div><div className="mt-4 flex items-center justify-between border-t border-border pt-4"><span className="text-xs text-muted">Evidence fit</span><span className="data-label font-bold text-accent">{item.fit === null ? "Unknown" : `${item.fit}%`}</span></div>{data.meta.mode === "local_demo" && item.nextStage && <Button className="mt-4 w-full" disabled={demoAction.isPending} onClick={() => demoAction.mutate({ action: "advance_opportunity", id: item.id })} size="sm">Move to {item.nextStage.replaceAll("_", " ")}</Button>}</Card>) : <Empty title="No opportunities recorded" detail="The active provider has no stored opportunities." />}</section>;
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<Opportunity | "new" | null>(null);
+  const [draft, setDraft] = useState({ company: "", title: "", location: "", workMode: "unknown", stage: "discovered", fit: "" });
+  const open = (item: Opportunity | "new") => { setEditing(item); setDraft(item === "new" ? { company: "", title: "", location: "", workMode: "unknown", stage: "discovered", fit: "" } : { company: item.company, title: item.title, location: item.location, workMode: item.workMode, stage: item.stage, fit: item.fit === null ? "" : String(item.fit) }); };
+  const save = async () => {
+    const url = editing === "new" ? "/api/product/opportunities" : `/api/product/opportunities/${editing?.id}`;
+    const response = await fetch(url, { method: editing === "new" ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...draft, fit: draft.fit === "" ? null : Number(draft.fit) }) });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Could not save opportunity.");
+    await queryClient.invalidateQueries({ queryKey: queryKeys.product("opportunities") });
+    setEditing(null);
+    toast.success("Manual opportunity saved with manual provenance.");
+  };
+  return <><div className="mb-4 flex justify-end"><Button disabled={!canWrite} onClick={() => open("new")} size="sm"><Target size={15}/>Add manually</Button></div><section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{data.opportunities?.length ? data.opportunities.map((item) => <Card className="bg-surface" key={item.id}><div className="mb-4 flex items-start justify-between gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accentSoft text-accent"><Target size={20} /></div><div className="flex gap-2"><Badge>{(item.recordOrigin || "legacy_unknown").replaceAll("_", " ")}</Badge><Badge>{item.stage.replaceAll("_", " ")}</Badge></div></div><h2 className="font-bold">{item.title}</h2><p className="mt-1 text-sm text-muted">{item.company}</p><div className="mt-5 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-elevated p-3"><p className="text-muted">Location</p><p className="mt-1 font-semibold">{item.location}</p></div><div className="rounded-lg bg-elevated p-3"><p className="text-muted">Work mode</p><p className="mt-1 font-semibold capitalize">{item.workMode}</p></div></div><div className="mt-3 rounded-lg bg-elevated p-3 text-xs"><p className="text-muted">Observed salary</p><p className="mt-1 font-semibold">{item.salaryBand || "Unknown"}</p></div><div className="mt-4 flex items-center justify-between border-t border-border pt-4"><span className="text-xs text-muted">Evidence fit</span><span className="data-label font-bold text-accent">{item.fit === null ? "Unknown" : `${item.fit}%`}</span></div>{item.recordOrigin === "manual" && <Button className="mt-4 w-full" onClick={() => open(item)} size="sm" variant="secondary">Edit manual record</Button>}{data.meta.mode === "local_demo" && item.nextStage && item.recordOrigin !== "manual" && <Button className="mt-4 w-full" disabled={demoAction.isPending} onClick={() => demoAction.mutate({ action: "advance_opportunity", id: item.id })} size="sm">Move to {item.nextStage.replaceAll("_", " ")}</Button>}</Card>) : <Empty title="No opportunities recorded" detail="Add a role manually; automated discovery is optional." />}</section>{editing && <AppDialog description="This record is tagged manual. Automated discovery remains separately gated." onClose={() => setEditing(null)} title={editing === "new" ? "Add opportunity manually" : "Edit manual opportunity"}><div className="space-y-4"><div><Label htmlFor="opp-company">Company</Label><Input id="opp-company" onChange={(event) => setDraft((value) => ({ ...value, company: event.target.value }))} value={draft.company}/></div><div><Label htmlFor="opp-title">Job title</Label><Input id="opp-title" onChange={(event) => setDraft((value) => ({ ...value, title: event.target.value }))} value={draft.title}/></div><div><Label htmlFor="opp-location">Location</Label><Input id="opp-location" onChange={(event) => setDraft((value) => ({ ...value, location: event.target.value }))} value={draft.location}/></div><div className="grid gap-4 sm:grid-cols-2"><div><Label htmlFor="opp-mode">Work mode</Label><select className="mt-1 w-full rounded-lg border border-border bg-elevated p-2" id="opp-mode" onChange={(event) => setDraft((value) => ({ ...value, workMode: event.target.value }))} value={draft.workMode}>{["unknown","remote","hybrid","onsite","any"].map((value) => <option key={value}>{value}</option>)}</select></div><div><Label htmlFor="opp-fit">Evidence fit (optional)</Label><Input id="opp-fit" max="100" min="0" onChange={(event) => setDraft((value) => ({ ...value, fit: event.target.value }))} type="number" value={draft.fit}/></div></div><Button className="w-full" onClick={() => void save().catch((error) => toast.error(error instanceof Error ? error.message : "Could not save opportunity."))}>Save manual record</Button></div></AppDialog>}</>;
 }
 
 function useDemoAction(view: ProductView) {
@@ -116,11 +132,11 @@ function Empty({ title, detail = "The active provider returned no records for th
 
 function EmptyInline({ text }: { text: string }) { return <div className="col-span-full rounded-lg border border-dashed border-border p-5 text-center text-sm text-muted">{text}</div>; }
 
-function ViewBody({ view, data, canWriteEvidence }: { view: ProductView; data: ProductViewData; canWriteEvidence: boolean }) {
-  if (view === "career-evidence") return <CareerEvidenceView canWrite={canWriteEvidence} data={data} />;
+function ViewBody({ view, data, canWriteEvidence, canScrapeEvidence }: { view: ProductView; data: ProductViewData; canWriteEvidence: boolean; canScrapeEvidence: boolean }) {
+  if (view === "career-evidence") return <CareerEvidenceView canAutomate={canScrapeEvidence} canWrite={canWriteEvidence} data={data} />;
   if (view === "resumes") return <ResumeStudioView data={data} />;
   if (view === "job-operations") return <OperationsView data={data} />;
-  if (view === "opportunities") return <OpportunitiesView data={data} />;
+  if (view === "opportunities") return <OpportunitiesView canWrite={true} data={data} />;
   if (view === "connections") return <ConnectionsWorkspaceView data={data} />;
   return <AdvisorView data={data} />;
 }
@@ -128,13 +144,18 @@ function ViewBody({ view, data, canWriteEvidence }: { view: ProductView; data: P
 function ProductContent({ view, capabilityKey, safety }: Props) {
   const capability = useCapability(capabilityKey);
   const evidenceWrite = useCapability("evidence_write");
+  const evidenceScrape = useCapability("evidence_scrape");
+  const resumeGenerate = useCapability("resume_generate");
+  const jobDiscovery = useCapability("job_discovery");
+  const automation = view === "career-evidence" ? evidenceScrape : view === "resumes" ? resumeGenerate : view === "opportunities" ? jobDiscovery : null;
   const query = useQuery({ enabled: capability.state !== "locked", queryKey: queryKeys.product(view), queryFn: () => fetchJson<ProductViewData>(`/api/product/${view}`, { cache: "no-store" }) });
   const data = query.data || null;
   const error = query.error instanceof Error ? query.error.message : "";
   return <>
     {data ? <Header capabilityKey={capabilityKey} data={data} /> : <header className="mb-6 flex items-start justify-between gap-4" data-tour="page-heading"><div><p className="data-label mb-2 text-xs uppercase tracking-widest text-accent">Product workspace</p><h1 className="text-3xl font-bold">Loading visual workspace…</h1></div><Badge data-tour="service-status">Checking access</Badge></header>}
     <Card className="mb-4 border-accent/25 bg-accentSoft" data-tour="permission-boundary"><div className="flex gap-3"><ShieldCheck className="mt-0.5 flex-none text-accent" size={20} /><div><strong>Permission boundary</strong><p className="mt-1 text-sm text-muted">{safety}</p></div></div></Card>
-    <div data-tour="service-data"><CapabilityGate capabilityKey={capabilityKey}><div data-tour="page-content">{error ? <Card className="bg-surface"><div className="flex gap-3"><AlertTriangle className="flex-none text-accent" /><div><CardTitle>Product data unavailable</CardTitle><p className="mt-2 text-sm text-muted">{error}</p></div></div></Card> : data ? <><Stats data={data} /><ViewBody canWriteEvidence={evidenceWrite.state === "available"} data={data} view={view} /><div className="mt-4"><DeveloperDiagnostics data={data.diagnostics} /></div></> : <Card className="bg-surface"><div className="flex items-center gap-3 text-muted"><Server className="animate-pulse" size={20} />Connecting to the active data provider…</div></Card>}</div></CapabilityGate></div>
+    {automation && <Card className="mb-4 bg-surface" data-automation-state={automation.state}><div className="flex items-start gap-3">{automation.state === "available" ? <Sparkles className="mt-0.5 flex-none text-success" size={19}/> : <LockKeyhole className="mt-0.5 flex-none text-warning" size={19}/>}<div><strong>{automation.state === "available" ? "Automation available" : "Manual mode"}</strong><p className="mt-1 text-sm text-muted">{automation.reason}</p>{automation.state === "locked" && automation.missing.length > 0 && <p className="mt-2 text-xs text-muted">Automated tools require: {automation.missing.join(", ")}. Manual workspace actions remain available.</p>}</div></div></Card>}
+    <div data-tour="service-data"><CapabilityGate capabilityKey={capabilityKey}><div data-tour="page-content">{error ? <Card className="bg-surface"><div className="flex gap-3"><AlertTriangle className="flex-none text-accent" /><div><CardTitle>Product data unavailable</CardTitle><p className="mt-2 text-sm text-muted">{error}</p></div></div></Card> : data ? <><Stats data={data} /><ViewBody canScrapeEvidence={evidenceScrape.state === "available"} canWriteEvidence={evidenceWrite.state === "available"} data={data} view={view} /><div className="mt-4"><DeveloperDiagnostics data={data.diagnostics} /></div></> : <Card className="bg-surface"><div className="flex items-center gap-3 text-muted"><Server className="animate-pulse" size={20} />Connecting to the active data provider…</div></Card>}</div></CapabilityGate></div>
   </>;
 }
 

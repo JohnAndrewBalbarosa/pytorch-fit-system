@@ -17,6 +17,7 @@ import { overlayLocalCareerState, readLocalMedia, saveLocalEvidence, saveLocalMe
 import { ensureLocalDemo, readLocalDemoState, updateLocalDemoState } from "@pytorch-fit/domain-server/career-evidence";
 import { localDemoStatus, resetLocalDemo } from "@pytorch-fit/domain-server/career-evidence";
 import { configuredProductProvider } from "@pytorch-fit/domain-server/career-evidence";
+import { saveManualOpportunity } from "@pytorch-fit/domain-server/career-evidence";
 import { developerDiagnostics, isOfficerOnlyProductView, memberSafeProductData } from "@pytorch-fit/domain-server/career-evidence";
 import { isOfficerOnlyPath, memberDestination } from "@pytorch-fit/domain-server/identity";
 
@@ -106,7 +107,7 @@ test("unavailable analytics preserve every dashboard module without fixture valu
   assert.deepEqual(analytics.events.data, { planning: [], approved: [], live: [], concluded: [] });
 });
 
-test("visual demo unlocks previews but never execution capabilities", () => {
+test("visual demo keeps manual workspaces open but never unlocks automation", () => {
   const manifest = buildCapabilityManifest({
     developmentOwner: true,
     identityConnected: false,
@@ -118,8 +119,9 @@ test("visual demo unlocks previews but never execution capabilities", () => {
     aiConfigured: false,
     visualDemo: true,
   });
-  assert.equal(manifest.capabilities.evidence_read.state, "read_only");
-  assert.equal(manifest.capabilities.resume_read.state, "read_only");
+  assert.equal(manifest.capabilities.evidence_read.state, "available");
+  assert.equal(manifest.capabilities.resume_read.state, "available");
+  assert.equal(manifest.capabilities.opportunities_read.state, "available");
   assert.equal(manifest.capabilities.job_discovery.state, "read_only");
   assert.equal(manifest.capabilities.evidence_scrape.state, "locked");
   assert.equal(manifest.capabilities.resume_generate.state, "locked");
@@ -143,6 +145,12 @@ test("career demo exposes clickable source metadata and photo-backed evidence", 
   assert.equal(data.evidence?.items?.length, 6);
   assert.ok(data.evidence?.items?.every((item) => item.mediaUrl.startsWith("/demo/evidence/")));
   assert.ok(data.evidence?.items?.some((item) => item.verificationState === "ai_proposed"));
+});
+
+test("manual evidence API derives manual source instead of trusting browser provenance", () => {
+  const route = readFileSync(new URL("../app/api/product/evidence/route.ts", import.meta.url), "utf8");
+  assert.match(route, /sourceId: "manual"/);
+  assert.doesNotMatch(route, /collectionOrigin:\s*submitted/);
 });
 
 test("local demo has one primary and four supporting lifecycle personas", () => {
@@ -189,6 +197,22 @@ test("local demo runtime persists mutations and reset restores the seed", () => 
   } finally {
     if (previous === undefined) delete process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH;
     else process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH = previous;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("manual opportunities persist with manual provenance and remain editable", async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "pytorch-fit-opportunity-"));
+  const previous = process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH;
+  process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH = path.join(directory, "demo.sqlite3");
+  try {
+    const created = await saveManualOpportunity("member-1", { company: "Example Co", title: "Developer", location: "Remote", workMode: "remote", stage: "saved", fit: null });
+    assert.equal(created.recordOrigin, "manual");
+    const updated = await saveManualOpportunity("member-1", { id: created.id, company: created.company, title: "Junior Developer", location: created.location, workMode: "remote", stage: "saved", fit: null });
+    assert.equal(updated.title, "Junior Developer");
+    assert.equal(updated.recordOrigin, "manual");
+  } finally {
+    if (previous === undefined) delete process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH; else process.env.PYTORCH_FIT_LOCAL_DATABASE_PATH = previous;
     rmSync(directory, { recursive: true, force: true });
   }
 });

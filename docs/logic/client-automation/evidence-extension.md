@@ -20,7 +20,8 @@ related_logic:
 
 The MV3 extension supplies browser access; it is never an evidence authority. The portal detects a
 versioned bridge automatically, but a missing extension disables only scraper-dependent components.
-Manual evidence and resume building remain available.
+Manual evidence, Resume Studio, and the manually reviewable Opportunities workspace remain
+available. Their navigation and data reads never inherit the scraper capability gate.
 
 Collection uses the user's normal visible session. Classify access before inventory and stop for
 login, CAPTCHA, verification, Cloudflare, 403/429, or low confidence. Never capture credentials,

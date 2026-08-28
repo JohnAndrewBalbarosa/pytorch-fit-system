@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { EvidenceItem, EvidenceSource, ProductViewData } from "@pytorch-fit/domain-protocol/career-evidence";
+import type { EvidenceItem, EvidenceSource, Opportunity, ProductViewData } from "@pytorch-fit/domain-protocol/career-evidence";
 import { resumeProfileFromEvidence } from "@pytorch-fit/domain-server/resumes";
 
 type SourceState = Pick<EvidenceSource, "id" | "connectionStatus" | "lastSyncedAt" | "configuredUrl">;
@@ -41,12 +41,37 @@ function database() {
       updated_at TEXT NOT NULL,
       PRIMARY KEY (user_id, evidence_id)
     ) STRICT;
+    CREATE TABLE IF NOT EXISTS product_manual_opportunities (
+      user_id TEXT NOT NULL,
+      id TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, id)
+    ) STRICT;
   `);
   const sourceColumns = db.prepare("PRAGMA table_info(product_source_states)").all();
   if (!sourceColumns.some((column) => String(column.name) === "configured_url")) {
     db.exec("ALTER TABLE product_source_states ADD COLUMN configured_url TEXT");
   }
   return db;
+}
+
+export function saveLocalOpportunity(userId: string, opportunity: Opportunity): Opportunity {
+  const db = database();
+  try {
+    db.prepare(`INSERT INTO product_manual_opportunities (user_id,id,payload_json,updated_at)
+      VALUES (?,?,?,?) ON CONFLICT(user_id,id) DO UPDATE SET payload_json=excluded.payload_json,updated_at=excluded.updated_at`)
+      .run(userId, opportunity.id, JSON.stringify(opportunity), new Date().toISOString());
+    return opportunity;
+  } finally { db.close(); }
+}
+
+export function listLocalOpportunities(userId: string): Opportunity[] {
+  const db = database();
+  try {
+    return db.prepare("SELECT payload_json FROM product_manual_opportunities WHERE user_id=? ORDER BY updated_at DESC").all(userId)
+      .flatMap((row) => { try { return [JSON.parse(String(row.payload_json)) as Opportunity]; } catch { return []; } });
+  } finally { db.close(); }
 }
 
 export function saveLocalEvidence(userId: string, item: EvidenceItem): EvidenceItem {
@@ -139,9 +164,13 @@ export function overlayLocalCareerState(data: ProductViewData, userId: string): 
     return { ...source, ...state, status: state.connectionStatus === "connected" ? "verified" as const : state.connectionStatus === "verification_required" ? "blocked" as const : "ready" as const };
   });
   const resumeProfile = resumeProfileFromEvidence(items, data.resumeProfile);
+  const manualOpportunities = listLocalOpportunities(userId);
+  const manualById = new Map(manualOpportunities.map((item) => [item.id, item]));
+  const opportunities = [...(data.opportunities || []).map((item) => manualById.get(item.id) || item), ...manualOpportunities.filter((item) => !(data.opportunities || []).some((base) => base.id === item.id))];
   return {
     ...data,
     evidence: data.evidence ? { ...data.evidence, items, sources } : data.evidence,
     resumeProfile: resumeProfile || data.resumeProfile,
+    opportunities,
   };
 }

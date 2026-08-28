@@ -13,6 +13,7 @@ export function validatedEvidenceItem(value: unknown, options: { id?: string; ap
   const title = text(item.title, 200);
   if (!title) throw new Error("Achievement title is required.");
   const sourceId = text(item.sourceId, 80, "manual");
+  const collectionOrigin = sourceId === "manual" ? "manual" as const : sourceId === "upload" ? "upload" as const : "automated_scrape" as const;
   const sourceUrl = text(item.sourceUrl, 2_000);
   if (sourceUrl) {
     const parsed = new URL(sourceUrl);
@@ -27,6 +28,7 @@ export function validatedEvidenceItem(value: unknown, options: { id?: string; ap
   return {
     id: options.id || text(item.id, 100),
     sourceId,
+    collectionOrigin,
     title,
     organization: text(item.organization, 200),
     role: text(item.role, 200),

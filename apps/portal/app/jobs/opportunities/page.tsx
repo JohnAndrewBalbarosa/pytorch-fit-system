@@ -1,2 +1,2 @@
 import { ProductWorkspace } from "@pytorch-fit/domain-client/career-evidence";
-export default function Page() { return <ProductWorkspace capabilityKey="job_discovery" view="opportunities" safety="Job demands and interview material remain human-reviewable; unsupported evidence stays unknown or omitted." />; }
+export default function Page() { return <ProductWorkspace capabilityKey="opportunities_read" view="opportunities" safety="Manual opportunity review stays available. Automated discovery remains separately locked until its prerequisites are verified." />; }
