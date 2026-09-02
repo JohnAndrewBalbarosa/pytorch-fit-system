@@ -24,7 +24,7 @@
     "dev:process-lab": "node development/local-workspace/start-process-lab.mjs",
     "build": "npm run build --workspace @pytorch-fit/portal",
     "typecheck": "npm run typecheck --workspace @pytorch-fit/portal",
-    "test:boundaries": "node --test tests/node/workspace-boundaries.test.mjs tests/node/logic-doc-contracts.test.mjs",
+    "test:boundaries": "node --test tests/node/workspace-boundaries.test.mjs tests/node/logic-doc-contracts.test.mjs tests/node/observability-project.test.mjs",
     "test:grades": "npm run test --workspace @pytorch-fit/academic-records",
     "grades:login": "npm run login --workspace @pytorch-fit/academic-records --",
     "grades:scrape": "npm run scrape --workspace @pytorch-fit/academic-records --",

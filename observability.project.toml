@@ -1,0 +1,5 @@
+[project]
+id = "01a060b6-3356-77ce-a5fd-f490a039dc0a"
+name = "PyTorch FIT System"
+slug = "pytorch-fit-system"
+schema_version = 1
