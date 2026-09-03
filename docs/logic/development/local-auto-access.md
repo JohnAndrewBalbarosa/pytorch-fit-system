@@ -35,6 +35,9 @@ and leaves the other production boundaries unchanged.
   loopback origins. Hostname selection never grants officer authority.
 - Missing local auth state, an unavailable browser, or a non-loopback/production runtime fails
   closed. Credentials, cookies, and tokens are never written to feedback output.
+- The integrated development launcher always selects the `local` product-data provider. Loopback
+  Supabase remains available for normal authentication, while product views use deterministic
+  synthetic data; production continues to require the `supabase` provider.
 
 ## Feedback and failure modes
 
@@ -51,3 +54,4 @@ fall back to a production identity or URL.
   width instead of remaining at Playwright's default `1280px`.
 - Existing workspace-boundary tests continue to reject production, Vercel, CI, HTTPS, and
   non-loopback automatic access.
+- The integrated development launcher pins `PYTORCH_FIT_DATA_PROVIDER` to `local`.

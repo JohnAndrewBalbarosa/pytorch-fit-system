@@ -23,7 +23,7 @@ const environment = {
   NEXT_PUBLIC_SUPABASE_URL: values.API_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: values.ANON_KEY,
   SUPABASE_SERVICE_ROLE_KEY: values.SERVICE_ROLE_KEY || "",
-  PYTORCH_FIT_DATA_PROVIDER: "supabase",
+  PYTORCH_FIT_DATA_PROVIDER: "local",
   PYTORCH_FIT_MEMBER_HOSTS: "members.localhost:3000,localhost:3000,127.0.0.1:3000",
   PYTORCH_FIT_OFFICER_HOSTS: "officers.localhost:3000",
   PYTORCH_FIT_MEMBER_URL: "http://members.localhost:3000",

@@ -73,3 +73,9 @@ test("local automatic access uses the native maximized browser viewport", () => 
   assert.equal(options.viewport, null);
   assert.ok(options.args.includes("--start-maximized"));
 });
+
+test("integrated development always uses local synthetic product data", () => {
+  const launcher = readFileSync(join(root, "development/local-workspace/start.mjs"), "utf8");
+  assert.match(launcher, /PYTORCH_FIT_DATA_PROVIDER:\s*["']local["']/);
+  assert.doesNotMatch(launcher, /PYTORCH_FIT_DATA_PROVIDER:\s*["']supabase["']/);
+});
