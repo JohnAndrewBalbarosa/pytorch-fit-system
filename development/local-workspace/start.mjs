@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
-import { run, stopTogether, waitFor } from "./processes.mjs";
+import { commandInvocation, run, stopTogether, waitFor } from "./processes.mjs";
 import { runtimePath, workspaceRoot as root } from "./runtime-paths.mjs";
 
 if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
@@ -8,12 +8,14 @@ if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
 }
 
 const python = runtimePath("environments", "process-lab", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
-const supabase = process.platform === "win32" ? "npx.cmd" : "npx";
 const supabasePrefix = ["--yes", "supabase@latest"];
 const manual = process.argv.includes("--manual-login");
+const supabaseProvider = process.argv.includes("--supabase");
 
-execFileSync(supabase, [...supabasePrefix, "start"], { cwd: root, stdio: "inherit" });
-const status = execFileSync(supabase, [...supabasePrefix, "status", "-o", "env"], { cwd: root, encoding: "utf8" });
+const supabaseStart = commandInvocation("npx", [...supabasePrefix, "start"]);
+execFileSync(supabaseStart.command, supabaseStart.args, { cwd: root, stdio: ["inherit", "ignore", "inherit"] });
+const supabaseStatus = commandInvocation("npx", [...supabasePrefix, "status", "-o", "env"]);
+const status = execFileSync(supabaseStatus.command, supabaseStatus.args, { cwd: root, encoding: "utf8" });
 const values = Object.fromEntries(status.split(/\r?\n/).filter((line) => line.includes("=")).map((line) => {
   const index = line.indexOf("=");
   return [line.slice(0, index), line.slice(index + 1).replace(/^['"]|['"]$/g, "")];
@@ -23,7 +25,7 @@ const environment = {
   NEXT_PUBLIC_SUPABASE_URL: values.API_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: values.ANON_KEY,
   SUPABASE_SERVICE_ROLE_KEY: values.SERVICE_ROLE_KEY || "",
-  PYTORCH_FIT_DATA_PROVIDER: "local",
+  PYTORCH_FIT_DATA_PROVIDER: supabaseProvider ? "supabase" : "local",
   PYTORCH_FIT_MEMBER_HOSTS: "members.localhost:3000,localhost:3000,127.0.0.1:3000",
   PYTORCH_FIT_OFFICER_HOSTS: "officers.localhost:3000",
   PYTORCH_FIT_MEMBER_URL: "http://members.localhost:3000",

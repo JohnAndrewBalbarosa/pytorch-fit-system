@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
+import { commandInvocation } from "../local-workspace/processes.mjs";
 import { runtimePath, workspaceRoot as root } from "../local-workspace/runtime-paths.mjs";
 
 const source = runtimePath("cache", "process-lab", "prefect-ui-source");
@@ -12,7 +13,8 @@ const expectedCommit = "d8f54b5c4857e933c31aac97e8ef56ea732c5138";
 const patchHash = createHash("sha256").update(readFileSync(patch)).digest("hex");
 
 function command(name, args, cwd = root) {
-  execFileSync(name, args, { cwd, stdio: "inherit" });
+  const invocation = commandInvocation(name, args);
+  execFileSync(invocation.command, invocation.args, { cwd, stdio: "inherit" });
 }
 
 function cloneSource() {

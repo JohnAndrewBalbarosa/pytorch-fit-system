@@ -2,6 +2,9 @@
 logic_id: development.local-auto-access
 code_paths:
   - development/local-access
+  - development/prefect-dashboard/build-dashboard.mjs
+  - development/local-workspace/processes.mjs
+  - development/local-workspace/setup.mjs
   - development/local-workspace/start.mjs
 tests:
   - tests/node/workspace-boundaries.test.mjs
@@ -41,6 +44,14 @@ and leaves the other production boundaries unchanged.
 - The integrated development launcher always selects the `local` product-data provider. Loopback
   Supabase remains available for normal authentication, while product views use deterministic
   synthetic data; production continues to require the `supabase` provider.
+- `npm run dev` defaults to the local synthetic product provider. Supabase-backed product reads are
+  opt-in only with `npm run dev -- --supabase`; both modes still authenticate against the local
+  loopback Supabase instance.
+- Local workspace child processes resolve Node package-manager launchers for the host platform.
+  Windows invokes npm's JavaScript entry points through Node, avoiding unsupported direct batch-file
+  spawning; POSIX hosts retain `npm`/`npx`.
+- Supabase startup output is not copied to local logs because its status payload contains keys;
+  bounded lifecycle messages and stderr remain available for diagnosis.
 
 ## Feedback and failure modes
 
@@ -60,3 +71,6 @@ fall back to a production identity or URL.
 - The auto-login watcher uses a referenced keepalive handle and closes both browser contexts when
   the process receives a stop signal.
 - The integrated development launcher pins `PYTORCH_FIT_DATA_PROVIDER` to `local`.
+- The default launcher mode is local, and the Supabase product provider requires an explicit flag.
+- Workspace setup and startup resolve npm-family commands to executable Windows Node entry points.
+- Prefect dashboard build commands follow the same cross-platform npm launcher contract.

@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { extname, join, relative, resolve } from "node:path";
 import test from "node:test";
 import { assertDevelopmentRuntime, assertLocalUrl, developmentBrowserOptions } from "../../development/local-access/policy.mjs";
+import { commandInvocation } from "../../development/local-workspace/processes.mjs";
 
 const root = resolve(import.meta.dirname, "../..");
 
@@ -19,7 +20,7 @@ function importsFrom(directory, forbidden) {
   return sourceFiles(directory).flatMap((path) => {
     const content = readFileSync(path, "utf8");
     return forbidden.some((value) => content.includes(value))
-      ? [relative(root, path)]
+      ? [relative(root, path).replaceAll("\\", "/")]
       : [];
   });
 }
@@ -76,8 +77,8 @@ test("local automatic access uses the native maximized browser viewport", () => 
 
 test("integrated development always uses local synthetic product data", () => {
   const launcher = readFileSync(join(root, "development/local-workspace/start.mjs"), "utf8");
-  assert.match(launcher, /PYTORCH_FIT_DATA_PROVIDER:\s*["']local["']/);
-  assert.doesNotMatch(launcher, /PYTORCH_FIT_DATA_PROVIDER:\s*["']supabase["']/);
+  assert.match(launcher, /const supabaseProvider = process\.argv\.includes\(["']--supabase["']\)/);
+  assert.match(launcher, /PYTORCH_FIT_DATA_PROVIDER:\s*supabaseProvider \? ["']supabase["'] : ["']local["']/);
 });
 
 test("local auto-login retains a real event-loop handle", () => {
@@ -85,4 +86,21 @@ test("local auto-login retains a real event-loop handle", () => {
   assert.match(watcher, /const keepAlive = setInterval\(/);
   assert.match(watcher, /clearInterval\(keepAlive\)/);
   assert.doesNotMatch(watcher, /await new Promise\(\(\) => \{\}\)/);
+});
+
+test("local workspace resolves package-manager launchers for each platform", () => {
+  const options = { platform: "win32", execPath: "C:/node.exe", npmExecPath: "C:/npm/bin/npm-cli.js" };
+  assert.deepEqual(commandInvocation("npm", ["install"], options), {
+    command: "C:/node.exe",
+    args: ["C:/npm/bin/npm-cli.js", "install"],
+  });
+  assert.deepEqual(commandInvocation("npx", ["tool"], options), {
+    command: "C:/node.exe",
+    args: [resolve("C:/npm/bin/npx-cli.js"), "tool"],
+  });
+  assert.deepEqual(commandInvocation("npm", ["install"], { platform: "linux" }), {
+    command: "npm",
+    args: ["install"],
+  });
+  assert.throws(() => commandInvocation("npm", [], { platform: "win32", npmExecPath: "" }), /npm_execpath/);
 });

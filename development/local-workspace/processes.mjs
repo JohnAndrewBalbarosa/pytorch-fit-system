@@ -1,7 +1,21 @@
 import { spawn } from "node:child_process";
+import { dirname, resolve } from "node:path";
+
+export function commandInvocation(command, args, options = {}) {
+  const platform = options.platform || process.platform;
+  const node = options.execPath || process.execPath;
+  const npm = options.npmExecPath === undefined ? process.env.npm_execpath : options.npmExecPath;
+  if (platform === "win32" && ["npm", "npx"].includes(command)) {
+    if (!npm) throw new Error(`${command} requires npm_execpath on Windows; run this command through npm.`);
+    const cli = command === "npm" ? npm : resolve(dirname(npm), "npx-cli.js");
+    return { command: node, args: [cli, ...args] };
+  }
+  return { command, args };
+}
 
 export function run(command, args, options = {}) {
-  return spawn(command, args, { stdio: "inherit", ...options });
+  const invocation = commandInvocation(command, args);
+  return spawn(invocation.command, invocation.args, { stdio: "inherit", ...options });
 }
 
 export function stopTogether(processes) {
