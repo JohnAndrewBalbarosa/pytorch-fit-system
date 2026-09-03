@@ -75,10 +75,11 @@ async function openRole(role, account) {
 }
 
 const contexts = await Promise.all(Object.entries(localAccounts).map(([role, account]) => openRole(role, account)));
+const keepAlive = setInterval(() => {}, 60_000);
 const stop = async () => {
+  clearInterval(keepAlive);
   await Promise.allSettled(contexts.map((context) => context.close()));
   process.exit(0);
 };
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);
-await new Promise(() => {});

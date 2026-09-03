@@ -79,3 +79,10 @@ test("integrated development always uses local synthetic product data", () => {
   assert.match(launcher, /PYTORCH_FIT_DATA_PROVIDER:\s*["']local["']/);
   assert.doesNotMatch(launcher, /PYTORCH_FIT_DATA_PROVIDER:\s*["']supabase["']/);
 });
+
+test("local auto-login retains a real event-loop handle", () => {
+  const watcher = readFileSync(join(root, "development/local-access/watch-login.mjs"), "utf8");
+  assert.match(watcher, /const keepAlive = setInterval\(/);
+  assert.match(watcher, /clearInterval\(keepAlive\)/);
+  assert.doesNotMatch(watcher, /await new Promise\(\(\) => \{\}\)/);
+});
