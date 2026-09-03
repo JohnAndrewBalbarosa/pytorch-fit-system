@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { commandInvocation, run, stopTogether, waitFor } from "./processes.mjs";
 import { runtimePath, workspaceRoot as root } from "./runtime-paths.mjs";
@@ -37,7 +38,10 @@ const environment = {
   PREFECT_HOME: runtimePath("state", "process-lab", "prefect"),
   PREFECT_UI_STATIC_DIRECTORY: runtimePath("cache", "process-lab", "prefect-ui"),
   PREFECT_SERVER_UI_V2_ENABLED: "true",
+  PYTHONUTF8: "1",
+  PYTHONIOENCODING: "utf-8",
 };
+mkdirSync(environment.PREFECT_HOME, { recursive: true });
 
 execFileSync("node", [resolve(root, "development/prefect-dashboard/build-dashboard.mjs")], {
   cwd: root,

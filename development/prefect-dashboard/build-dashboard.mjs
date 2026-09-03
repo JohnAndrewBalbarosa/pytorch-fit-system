@@ -37,11 +37,15 @@ if (!existsSync(marker) || readFileSync(marker, "utf8").trim() !== patchHash) {
 }
 
 const ui = resolve(source, "ui-v2");
-if (!existsSync(resolve(ui, "node_modules/react-joyride"))) {
-  command("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund"], ui);
+if (existsSync(resolve(output, "index.html"))) {
+  console.log(`Pinned Prefect 3.8.3 dashboard cache reused: ${output}`);
+} else {
+  if (!existsSync(resolve(ui, "node_modules/react-joyride"))) {
+    command("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund"], ui);
+  }
+  command("npm", ["run", "build"], ui);
+  rmSync(output, { recursive: true, force: true });
+  mkdirSync(output, { recursive: true });
+  cpSync(resolve(ui, "dist"), output, { recursive: true });
+  console.log(`Pinned Prefect 3.8.3 dashboard ready: ${output}`);
 }
-command("npm", ["run", "build"], ui);
-rmSync(output, { recursive: true, force: true });
-mkdirSync(output, { recursive: true });
-cpSync(resolve(ui, "dist"), output, { recursive: true });
-console.log(`Pinned Prefect 3.8.3 dashboard ready: ${output}`);

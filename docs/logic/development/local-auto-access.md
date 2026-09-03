@@ -52,6 +52,12 @@ and leaves the other production boundaries unchanged.
   spawning; POSIX hosts retain `npm`/`npx`.
 - Supabase startup output is not copied to local logs because its status payload contains keys;
   bounded lifecycle messages and stderr remain available for diagnosis.
+- The Prefect local state directory is created before its server starts, so a clean workspace can
+  initialize its SQLite metadata without a manual filesystem step.
+- Python child processes use UTF-8 output on Windows so Prefect/process-lab diagnostics cannot fail
+  on Unicode console output under the host `cp1252` code page.
+- The pinned Prefect dashboard is rebuilt only when its validated cache is absent; repeated local
+  starts reuse the existing patched output and avoid unnecessary compilation.
 
 ## Feedback and failure modes
 
@@ -74,3 +80,6 @@ fall back to a production identity or URL.
 - The default launcher mode is local, and the Supabase product provider requires an explicit flag.
 - Workspace setup and startup resolve npm-family commands to executable Windows Node entry points.
 - Prefect dashboard build commands follow the same cross-platform npm launcher contract.
+- Prefect startup creates its configured local SQLite state directory before launching the server.
+- Prefect and process-lab child commands inherit UTF-8 Python I/O settings on Windows.
+- Repeated startup reuses a valid pinned Prefect dashboard cache instead of rebuilding it.
